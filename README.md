@@ -66,7 +66,7 @@ Proyecto Flutter en `app/`. La dirección de los datos y los teléfonos están e
 cd app
 flutter test                 # tests (no usan internet)
 flutter run                  # con un celular conectado por USB
-flutter build apk --release  # genera buildpp\outputslutter-apkpp-release.apk
+flutter build apk --release  # genera build/app/outputs/flutter-apk/app-release.apk
 ```
 
 Para instalar por USB en un Xiaomi/Redmi hay que activar, en *Opciones de desarrollador*,
