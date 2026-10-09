@@ -55,9 +55,22 @@ GitHub Actions corre el lector cada 30 minutos (workflow "Lector CARU") y GitHub
 - https://maticascov.github.io/rio-paysandu/data/historial.json
 - https://maticascov.github.io/rio-paysandu/data/umbrales.json
 
-GitHub puede demorar las corridas programadas y Pages guarda copia unos 10 minutos, así que un dato
-nuevo de CARU puede tardar hasta cerca de una hora en verse. Para forzar una corrida:
-pestaña **Actions → Lector CARU → Run workflow**, o `gh workflow run lector.yml`.
+### Cómo se mantiene actualizado
+
+El horario programado de GitHub no resultó confiable (pasó horas sin disparar), así que el workflow
+"Lector CARU" trabaja en cadena: cada corrida lee CARU **cada 10 minutos durante unas 5 horas** y,
+antes de terminar, lanza la corrida siguiente. El horario programado queda solo como respaldo.
+
+- **Ver que está vivo:** `gh run list --workflow lector.yml --limit 3` tiene que mostrar una corrida
+  `in_progress`. Los commits "Datos de CARU …" aparecen cada vez que CARU publica algo nuevo.
+- **Si la cadena se cortó** (ninguna corrida en curso): `gh workflow run lector.yml`, o pestaña
+  **Actions → Lector CARU → Run workflow**.
+- **Para detenerla:** `gh workflow disable lector.yml`. Cancelar una corrida no alcanza, porque al
+  cancelarse lanza la siguiente. Para reanudar: `gh workflow enable lector.yml` y lanzarla.
+
+Entre que CARU publica y que la app lo muestra pasan hasta unos 20 minutos (10 del lector más la
+copia que guarda GitHub Pages). La estación automática de CARU suele publicar con cerca de una hora
+de atraso respecto de la hora de la medición; eso no depende de este proyecto.
 
 ## App Android
 
