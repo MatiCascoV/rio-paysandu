@@ -1,8 +1,8 @@
 {
   "validado": false,
   "cero": "Local",
-  "atencion_m": 5.0,
-  "alerta_m": 6.0,
+  "atencion_m": null,
+  "alerta_m": 4.39,
   "evacuacion_m": 6.89,
   "actualizado": "2026-10-09"
 }

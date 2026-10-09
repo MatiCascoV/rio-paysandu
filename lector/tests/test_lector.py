@@ -10,7 +10,10 @@ import lector
 import validar
 from fuentes import caru_registro
 from fuentes.caru_registro import TZ_UY
-from nivel import UMBRALES_PROVISORIOS, calcular_nivel
+from nivel import calcular_nivel
+
+# Umbrales fijos para los tests (no dependen de data/umbrales.json).
+UMBRALES_PROVISORIOS = {"atencion_m": 5.0, "alerta_m": 6.0, "evacuacion_m": 6.89}
 
 FIXTURES = Path(__file__).parent / "fixtures"
 CFG = json.loads((Path(lector.__file__).parent / "config.json").read_text(encoding="utf-8"))
@@ -35,6 +38,14 @@ def armar(registro, anterior=None, ahora=AHORA):
 ])
 def test_calcular_nivel(valor, esperado):
     assert calcular_nivel(valor, UMBRALES_PROVISORIOS) == esperado
+
+
+def test_nivel_sin_umbral_de_atencion():
+    u = {"atencion_m": None, "alerta_m": 4.39, "evacuacion_m": 6.89}
+    assert calcular_nivel(4.38, u) == "normal"
+    assert calcular_nivel(4.39, u) == "alerta"
+    assert calcular_nivel(5.94, u) == "alerta"
+    assert calcular_nivel(6.89, u) == "evacuacion"
 
 
 # ----- validación -----
@@ -71,13 +82,21 @@ def test_actual_con_datos_reales():
     assert a["avisos"] == []
 
 
-def test_estacion_vieja_usa_prefectura():
-    # 4 h después del último dato de la estación: pasa a mostrarse Prefectura.
+def test_estacion_vieja_pero_mas_reciente_se_muestra_con_aviso():
+    # 4 h después del último dato de la estación (07:00). Prefectura es de las 06:00:
+    # se muestra igual la estación, que es la lectura más reciente, avisando.
     a = armar(registro_real(), ahora=datetime(2026, 10, 9, 11, 0, tzinfo=TZ_UY))
+    assert a["altura_actual"]["valor_m"] == 5.89
+    assert a["avisos"] == ["dato_desactualizado"]
+
+
+def test_estacion_caida_usa_prefectura_si_es_mas_reciente():
+    r = registro_real()
+    r["estacion"]["fecha"] = datetime(2026, 10, 8, 20, 0, tzinfo=TZ_UY)  # dejó de transmitir anoche
+    a = armar(r)
     assert a["altura_actual"]["valor_m"] == 5.9
     assert "Prefectura" in a["altura_actual"]["fuente"]
     assert a["avisos"] == ["estacion_desactualizada"]
-    assert a["nivel"] == "atencion"
 
 
 def test_todo_viejo_avisa_y_no_da_nivel():

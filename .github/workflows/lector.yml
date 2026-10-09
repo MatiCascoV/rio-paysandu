@@ -1,0 +1,46 @@
+name: Lector CARU
+
+on:
+  schedule:
+    # Cada 30 minutos (hora UTC). CARU publica a las :00 y :30; corremos unos
+    # minutos después. GitHub puede demorar el arranque cuando está cargado.
+    - cron: "10,40 * * * *"
+  workflow_dispatch: # permite correrlo a mano desde la pestaña Actions
+
+permissions:
+  contents: write # para guardar data/ en el repositorio
+
+concurrency:
+  group: lector
+  cancel-in-progress: false
+
+jobs:
+  leer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: lector/requirements.txt
+
+      - run: pip install -r lector/requirements.txt
+
+      - name: Leer CARU y generar los JSON
+        run: python lector/lector.py
+
+      - name: Guardar data/ solo si cambió
+        run: |
+          git add data
+          if git diff --cached --quiet; then
+            echo "Sin cambios"
+            exit 0
+          fi
+          git config user.name "lector-caru[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Datos de CARU $(TZ=America/Montevideo date '+%d/%m/%Y %H:%M')"
+          git pull --rebase
+          git push

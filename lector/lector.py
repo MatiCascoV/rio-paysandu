@@ -93,18 +93,14 @@ def elegir_principal(estacion, prefectura, ahora, cfg):
     est = (estacion, FUENTE_ESTACION, cfg["estacion_max_horas"])
     pre = (prefectura, FUENTE_PREFECTURA, cfg["prefectura_max_horas"])
 
-    if al_dia(*est[::2]):
-        elegida = est
-    elif al_dia(*pre[::2]):
-        # La estación automática se quedó sin transmitir: mostramos Prefectura y avisamos.
-        elegida = pre
-        avisos.append("estacion_desactualizada")
-    else:
-        # Ninguna está al día: mostramos la más reciente que haya.
-        candidatas = [c for c in (est, pre) if c[0]]
-        if not candidatas:
-            return None, None, None, avisos
-        elegida = max(candidatas, key=lambda c: c[0]["fecha"])
+    # Se muestra siempre la lectura más reciente de las dos (si empatan, la estación).
+    candidatas = [c for c in (est, pre) if c[0]]
+    if not candidatas:
+        return None, None, None, avisos
+    elegida = max(candidatas, key=lambda c: c[0]["fecha"])
+    if elegida is pre and estacion and not al_dia(*est[::2]):
+        avisos.append("estacion_desactualizada")  # la estación dejó de transmitir
+    if not al_dia(*elegida[::2]):
         avisos.append("dato_desactualizado")
     return (*elegida, avisos)
 
