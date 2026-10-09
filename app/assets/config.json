@@ -1,0 +1,9 @@
+{
+  "url_base": "https://maticascov.github.io/rio-paysandu/data/",
+  "horas_aviso_dato_viejo": 6,
+  "horas_sin_dato": 48,
+  "contactos": [
+    { "nombre": "Emergencias", "telefono": "911", "detalle": "Si hay personas en peligro" },
+    { "nombre": "Sinae", "telefono": "150 1353", "detalle": "Sistema Nacional de Emergencias" }
+  ]
+}
