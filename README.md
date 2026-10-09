@@ -46,7 +46,20 @@ Los umbrales de nivel están en `data/umbrales.json` y son **provisorios** hasta
 
 `generado` indica la última vez que cambió el contenido, no la última vez que corrió el lector.
 
+## Datos publicados
+
+GitHub Actions corre el lector cada 30 minutos (workflow "Lector CARU") y GitHub Pages publica el resultado:
+
+- https://maticascov.github.io/rio-paysandu/data/actual.json
+- https://maticascov.github.io/rio-paysandu/data/historial.json
+- https://maticascov.github.io/rio-paysandu/data/umbrales.json
+
+GitHub puede demorar las corridas programadas y Pages guarda copia unos 10 minutos, así que un dato
+nuevo de CARU puede tardar hasta cerca de una hora en verse. Para forzar una corrida:
+pestaña **Actions → Lector CARU → Run workflow**, o `gh workflow run lector.yml`.
+
 ## Estado
 
-- Fase 0 (entorno): falta completar el SDK de Android y crear el repositorio en GitHub.
+- Fase 0 (entorno): falta el SDK de Android (abrir Android Studio una vez y correr `flutter doctor`).
 - Fase 1 (lector local): hecha.
+- Fase 2 (automatización y publicación): hecha.
