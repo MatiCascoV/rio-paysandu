@@ -1,23 +1,34 @@
 name: Lector CARU
 
+# Cómo se mantiene corriendo:
+# El horario programado de GitHub (schedule) no es confiable: puede demorar horas
+# o no disparar. Por eso este trabajo no hace una sola lectura: se queda leyendo
+# CARU cada 10 minutos durante unas 5 horas y, antes de terminar, lanza la corrida
+# siguiente. Así hay siempre una corrida activa. El horario queda solo como
+# respaldo, para volver a arrancar la cadena si alguna vez se corta.
+
 on:
   schedule:
-    # Cada 30 minutos (hora UTC). CARU publica a las :00 y :30; corremos unos
-    # minutos después. GitHub puede demorar el arranque cuando está cargado.
-    - cron: "10,40 * * * *"
-  workflow_dispatch: # permite correrlo a mano desde la pestaña Actions
+    - cron: "10,40 * * * *" # respaldo (hora UTC)
+  workflow_dispatch: # arranque a mano: pestaña Actions o `gh workflow run lector.yml`
 
 permissions:
-  contents: write # para guardar data/ en el repositorio
+  contents: write # guardar data/ en el repositorio
+  actions: write # lanzar la corrida siguiente
 
+# Nunca dos a la vez: una corrida nueva espera a que termine la que está activa.
 concurrency:
   group: lector
   cancel-in-progress: false
 
+env:
+  MINUTOS_ENTRE_LECTURAS: 10
+  MINUTOS_DE_TRABAJO: 320 # el límite de GitHub por trabajo es 360
+
 jobs:
   leer:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 350
     steps:
       - uses: actions/checkout@v5
 
@@ -29,18 +40,28 @@ jobs:
 
       - run: pip install -r lector/requirements.txt
 
-      - name: Leer CARU y generar los JSON
-        run: python lector/lector.py
-
-      - name: Guardar data/ solo si cambió
+      - name: Leer CARU cada 10 minutos y guardar data/ cuando cambia
         run: |
-          git add data
-          if git diff --cached --quiet; then
-            echo "Sin cambios"
-            exit 0
-          fi
           git config user.name "lector-caru[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "Datos de CARU $(TZ=America/Montevideo date '+%d/%m/%Y %H:%M')"
-          git pull --rebase
-          git push
+          fin=$(( $(date +%s) + MINUTOS_DE_TRABAJO * 60 ))
+          while :; do
+            # Traer cambios del repositorio (por ejemplo, umbrales editados a mano).
+            git pull --rebase --quiet || echo "::warning::No se pudo traer el repositorio"
+            # Si una lectura falla, se sigue: la próxima pasada lo vuelve a intentar.
+            python lector/lector.py || echo "::warning::El lector falló en esta pasada"
+            git add data
+            if ! git diff --cached --quiet; then
+              git commit --quiet -m "Datos de CARU $(TZ=America/Montevideo date '+%d/%m/%Y %H:%M')"
+              git push --quiet || { git pull --rebase --quiet && git push --quiet; } \
+                || echo "::warning::No se pudieron subir los datos"
+            fi
+            [ "$(date +%s)" -ge "$fin" ] && break
+            sleep $(( MINUTOS_ENTRE_LECTURAS * 60 ))
+          done
+
+      - name: Lanzar la corrida siguiente
+        if: always() # también si algo falló arriba, para que la cadena no se corte
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run lector.yml --repo "$GITHUB_REPOSITORY" --ref main
