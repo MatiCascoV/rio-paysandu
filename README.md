@@ -60,6 +60,6 @@ pestaña **Actions → Lector CARU → Run workflow**, o `gh workflow run lector
 
 ## Estado
 
-- Fase 0 (entorno): falta el SDK de Android (abrir Android Studio una vez y correr `flutter doctor`).
+- Fase 0 (entorno): hecha (`flutter doctor` sin problemas).
 - Fase 1 (lector local): hecha.
 - Fase 2 (automatización y publicación): hecha.
