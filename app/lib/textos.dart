@@ -4,6 +4,7 @@ library;
 import 'package:flutter/material.dart';
 
 import 'modelos.dart';
+import 'tema.dart';
 
 /// Las horas se muestran siempre en hora de Uruguay (UTC-3), esté donde esté el teléfono.
 DateTime enHoraUruguay(DateTime fecha) => fecha.toUtc().subtract(const Duration(hours: 3));
@@ -89,23 +90,31 @@ class EstiloNivel {
   final Color fondo;
   final Color texto;
 
-  /// Tono oscuro del nivel: borde de la tarjeta, líneas del gráfico y marcas
-  /// de la escala (contraste de 5,5:1 o más sobre fondo claro).
-  final Color oscuro;
+  final Color _trazoClaro;
+  final Color _trazoOscuro;
   final IconData icono;
-  const EstiloNivel(this.nombre, this.fondo, this.texto, this.oscuro, this.icono);
+  const EstiloNivel(this.nombre, this.fondo, this.texto, this._trazoClaro, this._trazoOscuro, this.icono);
+
+  /// Color del nivel para trazos sobre el fondo de la app: borde de la tarjeta,
+  /// líneas del gráfico y marcas de la escala. En modo claro es un tono oscuro
+  /// y en modo oscuro uno claro (contraste de 5,5:1 o más en los dos casos).
+  Color get oscuro => Colores.oscuro ? _trazoOscuro : _trazoClaro;
 }
 
 const _tinta = Color(0xFF111B24);
 
 EstiloNivel estiloNivel(Nivel n) => switch (n) {
       Nivel.normal =>
-        const EstiloNivel('Normal', Color(0xFF1B5E20), Colors.white, Color(0xFF1B5E20), Icons.check_circle),
-      Nivel.atencion => const EstiloNivel('Atención', Color(0xFFFFD600), _tinta, Color(0xFF7A5F00), Icons.visibility),
-      Nivel.alerta => const EstiloNivel('Alerta', Color(0xFFF57C00), _tinta, Color(0xFFA84300), Icons.warning),
+        const EstiloNivel(
+            'Normal', Color(0xFF1B5E20), Colors.white, Color(0xFF1B5E20), Color(0xFF81C784), Icons.check_circle),
+      Nivel.atencion => const EstiloNivel(
+          'Atención', Color(0xFFFFD600), _tinta, Color(0xFF7A5F00), Color(0xFFFFD600), Icons.visibility),
+      Nivel.alerta => const EstiloNivel('Alerta', Color(0xFFF57C00), _tinta, Color(0xFFA84300), Color(0xFFFF9F40), Icons.warning),
       Nivel.evacuacion =>
-        const EstiloNivel('Evacuación', Color(0xFFB71C1C), Colors.white, Color(0xFFB71C1C), Icons.report),
-      Nivel.sinDato => const EstiloNivel('Sin dato', Color(0xFF424242), Colors.white, Color(0xFF424242), Icons.help),
+        const EstiloNivel(
+            'Evacuación', Color(0xFFB71C1C), Colors.white, Color(0xFFB71C1C), Color(0xFFFF8A80), Icons.report),
+      Nivel.sinDato => const EstiloNivel(
+          'Sin dato', Color(0xFF424242), Colors.white, Color(0xFF424242), Color(0xFFBDBDBD), Icons.help),
     };
 
 /// Lo que el lector de pantalla dice de la escala de niveles de Inicio.

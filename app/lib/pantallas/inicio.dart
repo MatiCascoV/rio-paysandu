@@ -174,7 +174,7 @@ class PantallaInicio extends StatelessWidget {
                 width: 36,
                 height: 36,
                 decoration: BoxDecoration(color: viejo ? Colores.tintaSecundaria : Colores.primario, shape: BoxShape.circle),
-                child: Icon(iconoTendencia(altura), size: 22, color: Colors.white),
+                child: Icon(iconoTendencia(altura), size: 22, color: viejo ? Colores.superficie : Colores.sobrePrimario),
               ),
               const SizedBox(width: 12),
               Flexible(
@@ -242,9 +242,9 @@ class PantallaInicio extends StatelessWidget {
         Card(
           child: ListTile(
             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-            leading: const Icon(Icons.notifications_active, color: Colores.primario, size: 28),
+            leading: Icon(Icons.notifications_active, color: Colores.primario, size: 28),
             title: Text('¿Querés que el teléfono te avise? Tocá acá', style: tema.titleMedium),
-            trailing: const Icon(Icons.chevron_right, color: Colores.primario),
+            trailing: Icon(Icons.chevron_right, color: Colores.primario),
             onTap: alPedirAvisos,
           ),
         ),
@@ -329,7 +329,7 @@ class _TarjetaEstado extends StatelessWidget {
     return Container(
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Colores.superficie,
         borderRadius: BorderRadius.circular(16),
         // Borde en el tono oscuro del nivel: el amarillo y el naranja solos no
         // se despegan lo suficiente del fondo claro.
@@ -438,7 +438,7 @@ class _TarjetaPronostico extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.calendar_month, size: 20, color: Colores.primario),
+                Icon(Icons.calendar_month, size: 20, color: Colores.primario),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Semantics(

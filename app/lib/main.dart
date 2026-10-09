@@ -26,7 +26,10 @@ Future<void> main() async {
   runApp(RioPaysanduApp(config: config, prefs: prefs, repositorio: Repositorio(config.urlBase)));
 }
 
-class RioPaysanduApp extends StatelessWidget {
+/// Preferencia guardada del modo: 'claro', 'oscuro' o nada (seguir al teléfono).
+const claveTema = 'tema';
+
+class RioPaysanduApp extends StatefulWidget {
   final Config config;
   final SharedPreferences prefs;
   final Repositorio repositorio;
@@ -34,7 +37,44 @@ class RioPaysanduApp extends StatelessWidget {
   const RioPaysanduApp({super.key, required this.config, required this.prefs, required this.repositorio});
 
   @override
+  State<RioPaysanduApp> createState() => _RioPaysanduAppState();
+}
+
+class _RioPaysanduAppState extends State<RioPaysanduApp> with WidgetsBindingObserver {
+  Config get config => widget.config;
+  SharedPreferences get prefs => widget.prefs;
+  Repositorio get repositorio => widget.repositorio;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// Si el teléfono cambia entre claro y oscuro, la app lo sigue.
+  @override
+  void didChangePlatformBrightness() => setState(() {});
+
+  bool get _oscuro => switch (prefs.getString(claveTema)) {
+        'oscuro' => true,
+        'claro' => false,
+        _ => WidgetsBinding.instance.platformDispatcher.platformBrightness == Brightness.dark,
+      };
+
+  Future<void> _cambiarTema() async {
+    await prefs.setString(claveTema, _oscuro ? 'claro' : 'oscuro');
+    if (mounted) setState(() {});
+  }
+
+  @override
   Widget build(BuildContext context) {
+    Colores.oscuro = _oscuro; // todos los colores salen de la paleta elegida
     return MaterialApp(
       title: 'Río Paysandú',
       debugShowCheckedModeBanner: false,
@@ -42,7 +82,12 @@ class RioPaysanduApp extends StatelessWidget {
       supportedLocales: const [Locale('es')],
       localizationsDelegates: GlobalMaterialLocalizations.delegates,
       theme: temaApp(),
-      home: PaginaPrincipal(config: config, prefs: prefs, repositorio: repositorio),
+      // La clave hace que toda la pantalla se vuelva a dibujar al cambiar de modo.
+      home: KeyedSubtree(
+        key: ValueKey(_oscuro),
+        child: PaginaPrincipal(
+            config: config, prefs: prefs, repositorio: repositorio, oscuro: _oscuro, alCambiarTema: _cambiarTema),
+      ),
     );
   }
 }
@@ -51,8 +96,17 @@ class PaginaPrincipal extends StatefulWidget {
   final Config config;
   final SharedPreferences prefs;
   final Repositorio repositorio;
+  final bool oscuro;
+  final VoidCallback? alCambiarTema;
 
-  const PaginaPrincipal({super.key, required this.config, required this.prefs, required this.repositorio});
+  const PaginaPrincipal({
+    super.key,
+    required this.config,
+    required this.prefs,
+    required this.repositorio,
+    this.oscuro = false,
+    this.alCambiarTema,
+  });
 
   @override
   State<PaginaPrincipal> createState() => _PaginaPrincipalState();
@@ -158,6 +212,12 @@ class _PaginaPrincipalState extends State<PaginaPrincipal> with WidgetsBindingOb
           child: ColoredBox(color: Colores.agua, child: SizedBox(height: 3, width: double.infinity)),
         ),
         actions: [
+          if (widget.alCambiarTema != null)
+            IconButton(
+              tooltip: widget.oscuro ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro',
+              onPressed: widget.alCambiarTema,
+              icon: Icon(widget.oscuro ? Icons.light_mode : Icons.dark_mode),
+            ),
           // El botón queda siempre en su lugar (el lector de pantalla no pierde el foco).
           IconButton(
             tooltip: _actualizando ? 'Actualizando' : 'Actualizar',
@@ -182,7 +242,7 @@ class _PaginaPrincipalState extends State<PaginaPrincipal> with WidgetsBindingOb
         ),
       ),
       bottomNavigationBar: DecoratedBox(
-        decoration: const BoxDecoration(border: Border(top: BorderSide(color: Colores.bordeSuave))),
+        decoration: BoxDecoration(border: Border(top: BorderSide(color: Colores.bordeSuave))),
         // Tope al agrandado de letra: con más, las cuatro etiquetas no entran.
         child: MediaQuery.withClampedTextScaling(
           maxScaleFactor: 1.3,

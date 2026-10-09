@@ -13,6 +13,7 @@ import 'package:rio_paysandu/pantallas/ajustes.dart';
 import 'package:rio_paysandu/pantallas/grafico.dart';
 import 'package:rio_paysandu/pantallas/inicio.dart';
 import 'package:rio_paysandu/pantallas/que_hacer.dart';
+import 'package:rio_paysandu/tema.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'datos_de_prueba.dart';
@@ -291,6 +292,42 @@ void main() {
       await t.pumpWidget(const SizedBox());
     });
   }
+
+  testWidgets('modo oscuro: se cambia con el botón, se recuerda y no rompe ninguna pestaña', (t) async {
+    addTearDown(() => Colores.oscuro = false);
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final falso = actualFalso('alerta', 5.95);
+    (falso['altura_actual'] as Map)['fecha'] = DateTime.now().toUtc().toIso8601String();
+    final cliente = MockClient((pedido) async => http.Response.bytes(
+        utf8.encode(switch (pedido.url.pathSegments.last) {
+          'actual.json' => jsonEncode(falso),
+          'umbrales.json' => umbralesReal,
+          _ => '[{"fecha": "${DateTime.now().toUtc().toIso8601String()}", "valor_m": 5.9, "fuente": "estacion"}]',
+        }),
+        200));
+    Widget app() => RioPaysanduApp(config: config, prefs: prefs, repositorio: Repositorio(config.urlBase, cliente: cliente));
+    await t.pumpWidget(app());
+    await t.pumpAndSettle();
+    expect(Theme.of(t.element(find.text('ALERTA'))).brightness, Brightness.light);
+
+    await t.tap(find.byTooltip('Cambiar a modo oscuro'));
+    await t.pumpAndSettle();
+    expect(prefs.getString('tema'), 'oscuro');
+    expect(Theme.of(t.element(find.text('ALERTA'))).brightness, Brightness.dark);
+    expect(find.text('5,95 m'), findsOneWidget);
+    for (final pestana in ['Gráfico', 'Qué hacer', 'Avisos', 'Inicio']) {
+      await t.tap(find.text(pestana));
+      await t.pumpAndSettle();
+      expect(t.takeException(), isNull, reason: 'error en $pestana en modo oscuro');
+    }
+
+    await t.tap(find.byTooltip('Cambiar a modo claro'));
+    await t.pumpAndSettle();
+    expect(prefs.getString('tema'), 'claro');
+    expect(Theme.of(t.element(find.text('ALERTA'))).brightness, Brightness.light);
+    await t.pumpWidget(const SizedBox());
+  });
 
   test('assets/config.json es válido y trae los teléfonos', () {
     final c = Config.desdeJson(jsonDecode(File('assets/config.json').readAsStringSync()) as Map<String, dynamic>);

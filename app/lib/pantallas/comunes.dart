@@ -46,9 +46,13 @@ class Recuadro extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (fondo, banda) = switch (tipo) {
-      TipoRecuadro.advertencia => (const Color(0xFFFFF4D6), const Color(0xFF7A4A00)),
+      TipoRecuadro.advertencia => Colores.oscuro
+          ? (const Color(0xFF3A2E12), const Color(0xFFFFC857))
+          : (const Color(0xFFFFF4D6), const Color(0xFF7A4A00)),
       TipoRecuadro.informacion => (Colores.primarioSuave, Colores.primario),
-      TipoRecuadro.sinConexion => (const Color(0xFFE9ECEF), const Color(0xFF424242)),
+      TipoRecuadro.sinConexion => Colores.oscuro
+          ? (const Color(0xFF2A3038), const Color(0xFFBDBDBD))
+          : (const Color(0xFFE9ECEF), const Color(0xFF424242)),
     };
     final contenido = Material(
       color: fondo,

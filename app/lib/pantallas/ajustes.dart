@@ -160,13 +160,13 @@ class _OpcionNivel extends StatelessWidget {
     final estilo = estiloNivel(nivel);
     final colorTexto = habilitada ? Colores.tinta : Colores.bordeControl;
     return Material(
-      color: elegida ? Colores.primarioSuave : (habilitada ? Colors.white : Colores.fondo),
+      color: elegida ? Colores.primarioSuave : (habilitada ? Colores.superficie : Colores.fondo),
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: elegida
-            ? const BorderSide(color: Colores.primario, width: 2)
-            : const BorderSide(color: Colores.bordeSuave),
+            ? BorderSide(color: Colores.primario, width: 2)
+            : BorderSide(color: Colores.bordeSuave),
       ),
       child: RadioListTile<Nivel>(
         value: nivel,

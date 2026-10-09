@@ -8,10 +8,10 @@ import '../modelos.dart';
 import '../tema.dart';
 import '../textos.dart';
 
-const _colorEstacion = Colores.primario;
-const _colorAtencion = Color(0xFF7A5F00);
-const _colorAlerta = Color(0xFFA84300);
-const _colorEvacuacion = Color(0xFFB71C1C);
+Color get _colorEstacion => Colores.primario;
+Color get _colorAtencion => estiloNivel(Nivel.atencion).oscuro;
+Color get _colorAlerta => estiloNivel(Nivel.alerta).oscuro;
+Color get _colorEvacuacion => estiloNivel(Nivel.evacuacion).oscuro;
 const _rayaAtencion = [3, 4];
 const _rayaAlerta = [8, 5];
 const _rayaEvacuacion = [16, 5];
@@ -168,7 +168,7 @@ class _Grafico extends StatelessWidget {
     final maxY = (valores.reduce(math.max) + 0.6).ceilToDouble();
     final dias = (hasta.difference(desde).inMinutes / 60 / 24).round();
     final cadaDias = dias <= 7 ? 1 : (dias <= 30 ? 5 : 15);
-    const estiloEje = TextStyle(fontSize: 14, color: Colores.tinta);
+    final estiloEje = TextStyle(fontSize: 14, color: Colores.tinta);
 
     return LineChart(
       LineChartData(
@@ -180,11 +180,11 @@ class _Grafico extends StatelessWidget {
         gridData: FlGridData(
           horizontalInterval: 1,
           verticalInterval: 24.0 * cadaDias,
-          getDrawingHorizontalLine: (_) => const FlLine(color: Colores.divisor, strokeWidth: 1),
-          getDrawingVerticalLine: (_) => const FlLine(color: Colores.divisor, strokeWidth: 1, dashArray: [2, 4]),
+          getDrawingHorizontalLine: (_) => FlLine(color: Colores.divisor, strokeWidth: 1),
+          getDrawingVerticalLine: (_) => FlLine(color: Colores.divisor, strokeWidth: 1, dashArray: [2, 4]),
         ),
         borderData: FlBorderData(
-          border: const Border(
+          border: Border(
             left: BorderSide(color: Colores.bordeControl),
             bottom: BorderSide(color: Colores.bordeControl),
           ),
@@ -245,7 +245,7 @@ class _Grafico extends StatelessWidget {
                 LineTooltipItem(
                   '${formatoAltura(t.y)} m\n'
                   '${formatoFecha(_fechaDe(t.x), hasta)}',
-                  const TextStyle(color: Colors.white, fontSize: 16),
+                  TextStyle(color: Colores.fondo, fontSize: 16),
                 ),
             ],
           ),
@@ -267,7 +267,7 @@ class _Grafico extends StatelessWidget {
               barWidth: 0.1,
               dotData: FlDotData(
                 getDotPainter: (_, _, _, _) =>
-                    FlDotCirclePainter(radius: 4.5, color: Colors.white, strokeWidth: 2, strokeColor: Colores.tinta),
+                    FlDotCirclePainter(radius: 4.5, color: Colores.superficie, strokeWidth: 2, strokeColor: Colores.tinta),
               ),
             ),
         ],
@@ -312,7 +312,7 @@ class _Leyenda extends StatelessWidget {
               width: 12,
               height: 12,
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: Colores.superficie,
                 shape: BoxShape.circle,
                 border: Border.all(color: Colores.tinta, width: 2),
               ),

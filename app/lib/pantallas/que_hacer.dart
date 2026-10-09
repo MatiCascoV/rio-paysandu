@@ -75,8 +75,8 @@ class PantallaQueHacer extends StatelessWidget {
                         Container(
                           width: 48,
                           height: 48,
-                          decoration: const BoxDecoration(color: Colores.primario, shape: BoxShape.circle),
-                          child: const Icon(Icons.phone, color: Colors.white, size: 24),
+                          decoration: BoxDecoration(color: Colores.primario, shape: BoxShape.circle),
+                          child: Icon(Icons.phone, color: Colores.sobrePrimario, size: 24),
                         ),
                         const SizedBox(width: 16),
                         Expanded(
@@ -120,7 +120,7 @@ class PantallaQueHacer extends StatelessWidget {
                           width: 8,
                           height: 8,
                           margin: const EdgeInsets.only(top: 10),
-                          decoration: const BoxDecoration(color: Colores.primario, shape: BoxShape.circle),
+                          decoration: BoxDecoration(color: Colores.primario, shape: BoxShape.circle),
                         ),
                         const SizedBox(width: 12),
                         Expanded(child: Text(item, style: tema.bodyLarge)),
