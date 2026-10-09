@@ -11,6 +11,13 @@ on:
   schedule:
     - cron: "10,40 * * * *" # respaldo (hora UTC)
   workflow_dispatch: # arranque a mano: pestaña Actions o `gh workflow run lector.yml`
+    inputs: # solo para pruebas; sin tocarlos se usan los valores normales
+      minutos_de_trabajo:
+        description: Cuántos minutos se queda leyendo antes de lanzar la corrida siguiente
+        default: "320"
+      minutos_entre_lecturas:
+        description: Minutos entre una lectura y la siguiente
+        default: "10"
 
 permissions:
   contents: write # guardar data/ en el repositorio
@@ -22,8 +29,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  MINUTOS_ENTRE_LECTURAS: 10
-  MINUTOS_DE_TRABAJO: 320 # el límite de GitHub por trabajo es 360
+  MINUTOS_ENTRE_LECTURAS: ${{ inputs.minutos_entre_lecturas || 10 }}
+  MINUTOS_DE_TRABAJO: ${{ inputs.minutos_de_trabajo || 320 }} # el límite de GitHub por trabajo es 360
 
 jobs:
   leer:
