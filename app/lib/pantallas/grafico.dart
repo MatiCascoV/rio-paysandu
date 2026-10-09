@@ -11,6 +11,9 @@ const _colorEstacion = Color(0xFF0D47A1);
 const _colorAtencion = Color(0xFF8D6E00);
 const _colorAlerta = Color(0xFFBF4B00);
 const _colorEvacuacion = Color(0xFFB71C1C);
+const _rayaAtencion = [3, 4];
+const _rayaAlerta = [8, 5];
+const _rayaEvacuacion = [16, 5];
 
 /// "De 4,42 m a 5,95 m (subió 1,53 m). Máximo: 5,95 m el 9/10."
 /// Sirve de resumen visible y de descripción del gráfico para el lector de pantalla.
@@ -55,9 +58,12 @@ class _PantallaGraficoState extends State<PantallaGrafico> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        Text('Altura del río en los últimos días', style: tema.titleLarge),
+        Semantics(header: true, child: Text('Altura del río en los últimos días', style: tema.titleLarge)),
         const SizedBox(height: 12),
-        SegmentedButton<int>(
+        // Tope al agrandado de letra: con más, los tres botones no entran en una fila.
+        MediaQuery.withClampedTextScaling(
+          maxScaleFactor: 1.4,
+          child: SegmentedButton<int>(
           segments: const [
             ButtonSegment(value: 7, label: Text('7 días')),
             ButtonSegment(value: 30, label: Text('30 días')),
@@ -66,9 +72,9 @@ class _PantallaGraficoState extends State<PantallaGrafico> {
           selected: {_dias},
           showSelectedIcon: false,
           onSelectionChanged: (s) => setState(() => _dias = s.first),
-        ),
+        )),
         const SizedBox(height: 12),
-        Text(resumenHistorial(puntos), style: tema.bodyLarge),
+        Semantics(liveRegion: true, child: Text(resumenHistorial(puntos), style: tema.bodyLarge)),
         if (puntos.isNotEmpty && diasConDatos < _dias - 1)
           Padding(
             padding: const EdgeInsets.only(top: 4),
@@ -80,9 +86,13 @@ class _PantallaGraficoState extends State<PantallaGrafico> {
         const SizedBox(height: 16),
         if (puntos.isNotEmpty)
           Semantics(
-            label: 'Gráfico de la altura del río. ${resumenHistorial(puntos)}',
+            label: 'Gráfico de la altura del río en los últimos $_dias días. El resumen está antes y los niveles después.',
             excludeSemantics: true,
-            child: SizedBox(height: 320, child: _Grafico(puntos: puntos, umbrales: umbrales, desde: desde, hasta: ahora)),
+            // El resumen y la leyenda agrandan la letra sin tope; dentro del gráfico se limita para que los ejes no se pisen.
+            child: MediaQuery.withClampedTextScaling(
+              maxScaleFactor: 1.3,
+              child: SizedBox(height: 320, child: _Grafico(puntos: puntos, umbrales: umbrales, desde: desde, hasta: ahora)),
+            ),
           ),
         const SizedBox(height: 16),
         _Leyenda(umbrales: umbrales, hayPrefectura: puntos.any((p) => p.fuente == 'prefectura')),
@@ -116,17 +126,19 @@ class _Grafico extends StatelessWidget {
     final estacion = [for (final p in puntos) if (p.fuente == 'estacion') FlSpot(_x(p.fecha), p.valorM)];
     final prefectura = [for (final p in puntos) if (p.fuente == 'prefectura') FlSpot(_x(p.fecha), p.valorM)];
 
-    final lineas = <(double, Color, String)>[
-      if (umbrales?.atencionM != null) (umbrales!.atencionM!, _colorAtencion, 'Atención'),
-      if (umbrales?.alertaM != null) (umbrales!.alertaM!, _colorAlerta, 'Alerta'),
-      if (umbrales?.evacuacionM != null) (umbrales!.evacuacionM!, _colorEvacuacion, 'Evacuación'),
+    // Cada nivel tiene su color y además un punteado distinto (no depender solo del color).
+    final lineas = <(double, Color, String, List<int>)>[
+      if (umbrales?.atencionM != null) (umbrales!.atencionM!, _colorAtencion, 'Atención', _rayaAtencion),
+      if (umbrales?.alertaM != null) (umbrales!.alertaM!, _colorAlerta, 'Alerta', _rayaAlerta),
+      if (umbrales?.evacuacionM != null) (umbrales!.evacuacionM!, _colorEvacuacion, 'Evacuación', _rayaEvacuacion),
     ];
+    final letraEtiqueta = MediaQuery.textScalerOf(context).scale(14);
     final valores = [...puntos.map((p) => p.valorM), ...lineas.map((l) => l.$1)];
     final minY = (valores.reduce(math.min) - 0.3).floorToDouble().clamp(0.0, 20.0);
     final maxY = (valores.reduce(math.max) + 0.6).ceilToDouble();
     final dias = (hasta.difference(desde).inMinutes / 60 / 24).round();
     final cadaDias = dias <= 7 ? 1 : (dias <= 30 ? 5 : 15);
-    const estiloEje = TextStyle(fontSize: 13, color: Colors.black);
+    const estiloEje = TextStyle(fontSize: 14, color: Colors.black);
 
     return LineChart(
       LineChartData(
@@ -143,7 +155,7 @@ class _Grafico extends StatelessWidget {
           leftTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
-              reservedSize: 40,
+              reservedSize: 50,
               interval: 1,
               getTitlesWidget: (v, meta) => v == meta.min || v == meta.max
                   ? const SizedBox.shrink()
@@ -153,7 +165,7 @@ class _Grafico extends StatelessWidget {
           bottomTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
-              reservedSize: 30,
+              reservedSize: 38,
               interval: 24.0 * cadaDias,
               getTitlesWidget: (v, meta) => v == meta.min || v == meta.max
                   ? const SizedBox.shrink()
@@ -169,17 +181,17 @@ class _Grafico extends StatelessWidget {
         ),
         extraLinesData: ExtraLinesData(
           horizontalLines: [
-            for (final (y, color, nombre) in lineas)
+            for (final (y, color, nombre, raya) in lineas)
               HorizontalLine(
                 y: y,
                 color: color,
                 strokeWidth: 2,
-                dashArray: [8, 5],
+                dashArray: raya,
                 label: HorizontalLineLabel(
                   show: true,
                   alignment: Alignment.topRight,
                   padding: const EdgeInsets.only(right: 6, bottom: 2),
-                  style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 13),
+                  style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: letraEtiqueta),
                   labelResolver: (_) => '$nombre ${formatoAltura(y)} m',
                 ),
               ),
@@ -235,16 +247,18 @@ class _Leyenda extends StatelessWidget {
     Widget fila(Widget muestra, String texto) => Padding(
           padding: const EdgeInsets.symmetric(vertical: 3),
           child: Row(children: [
-            SizedBox(width: 36, child: Center(child: muestra)),
+            SizedBox(width: 48, child: Center(child: muestra)),
             const SizedBox(width: 10),
             Expanded(child: Text(texto, style: estilo)),
           ]),
         );
     Widget raya(Color c) => Container(width: 30, height: 3, color: c);
-    Widget rayaCortada(Color c) => Row(mainAxisSize: MainAxisSize.min, children: [
-          Container(width: 9, height: 3, color: c),
-          const SizedBox(width: 4),
-          Container(width: 9, height: 3, color: c),
+    // Muestra de la línea con el mismo punteado que en el gráfico.
+    Widget rayaCortada(Color c, List<int> raya) => Row(mainAxisSize: MainAxisSize.min, children: [
+          for (var ancho = 0; ancho + raya[0] <= 44; ancho += raya[0] + raya[1]) ...[
+            Container(width: raya[0].toDouble(), height: 3, color: c),
+            SizedBox(width: raya[1].toDouble()),
+          ],
         ]);
     final u = umbrales;
     return Column(
@@ -263,10 +277,10 @@ class _Leyenda extends StatelessWidget {
             ),
             'Prefectura (una lectura por día)',
           ),
-        if (u?.atencionM != null) fila(rayaCortada(_colorAtencion), 'Nivel de atención: ${formatoAltura(u!.atencionM!)} m'),
-        if (u?.alertaM != null) fila(rayaCortada(_colorAlerta), 'Nivel de alerta: ${formatoAltura(u!.alertaM!)} m'),
+        if (u?.atencionM != null) fila(rayaCortada(_colorAtencion, _rayaAtencion), 'Nivel de atención: ${formatoAltura(u!.atencionM!)} m'),
+        if (u?.alertaM != null) fila(rayaCortada(_colorAlerta, _rayaAlerta), 'Nivel de alerta: ${formatoAltura(u!.alertaM!)} m'),
         if (u?.evacuacionM != null)
-          fila(rayaCortada(_colorEvacuacion), 'Nivel de evacuación: ${formatoAltura(u!.evacuacionM!)} m'),
+          fila(rayaCortada(_colorEvacuacion, _rayaEvacuacion), 'Nivel de evacuación: ${formatoAltura(u!.evacuacionM!)} m'),
       ],
     );
   }

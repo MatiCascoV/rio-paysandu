@@ -61,6 +61,6 @@ class AvisoOficial extends StatelessWidget {
         icono: Icons.info,
         fondo: Color(0xFFE3F2FD),
         texto: 'Esta app es un canal de información de la Intendencia de Paysandú. '
-            'No reemplaza la alerta oficial, que la dan el Sinae y el Cecoed.',
+            'No reemplaza la alerta oficial, que la dan el Sinae y el Cecoed (el centro de emergencias de Paysandú).',
       );
 }

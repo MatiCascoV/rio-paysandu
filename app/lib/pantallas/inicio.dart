@@ -10,19 +10,38 @@ class PantallaInicio extends StatelessWidget {
   final Config config;
   final Future<void> Function() alActualizar;
 
+  /// Si los avisos están apagados se invita a prenderlos.
+  final bool avisosActivos;
+  final VoidCallback? alPedirAvisos;
+
   /// Solo para pruebas: permite fijar la hora actual.
   final DateTime? ahora;
 
-  const PantallaInicio({super.key, required this.datos, required this.config, required this.alActualizar, this.ahora});
+  const PantallaInicio({
+    super.key,
+    required this.datos,
+    required this.config,
+    required this.alActualizar,
+    this.avisosActivos = true,
+    this.alPedirAvisos,
+    this.ahora,
+  });
 
   @override
   Widget build(BuildContext context) {
     final datos = this.datos;
     if (datos == null) {
       return const Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [CircularProgressIndicator(), SizedBox(height: 16), Text('Cargando el nivel del río…')],
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('Cargando el nivel del río…', textAlign: TextAlign.center),
+            ],
+          ),
         ),
       );
     }
@@ -59,7 +78,7 @@ class PantallaInicio extends StatelessWidget {
         Text(
           datos.sinConexion
               ? 'Conectate a internet y tocá "Reintentar".'
-              : 'En este momento no hay un dato del nivel del río. Probá de nuevo en unos minutos.',
+              : 'Probá de nuevo en unos minutos. Si hay personas en peligro, llamá al 911.',
           style: tema.bodyLarge,
         ),
         const SizedBox(height: 12),
@@ -70,16 +89,28 @@ class PantallaInicio extends StatelessWidget {
     }
 
     final horas = ahora.difference(altura.fecha).inMinutes / 60;
+    final viejo = horas > config.horasAvisoDatoViejo;
+    final cuando = formatoFecha(altura.fecha, ahora);
     final pronostico = actual.pronostico;
     final esEstacion = (altura.fuente ?? '').contains('estación');
     final prefectura = actual.prefectura;
+    final umbrales = datos.umbrales;
 
     return [
       ?sinConexion,
-      _TarjetaNivel(estilo: estilo, descripcion: descripcionNivel(nivel, datos.umbrales)),
-      const SizedBox(height: 16),
+      _TarjetaNivel(estilo: estilo, descripcion: descripcionNivel(nivel, umbrales, altura.valorM)),
+      const SizedBox(height: 12),
 
-      // Altura actual: el número grande.
+      // Si el dato es viejo se dice antes del número, para que no se lea como actual.
+      if (viejo)
+        Recuadro(
+          icono: Icons.schedule,
+          texto: 'Este dato es de $cuando. Después no llegó información nueva: '
+              '${horas > config.horasSinDato ? 'no se puede saber el nivel actual del río.' : 'el río puede estar distinto ahora.'} '
+              'Guiate por los avisos del Cecoed.',
+        ),
+
+      // Altura: el número grande.
       Semantics(
         label: 'Altura del río: ${formatoAltura(altura.valorM)} metros',
         excludeSemantics: true,
@@ -91,7 +122,12 @@ class PantallaInicio extends StatelessWidget {
           ),
         ),
       ),
-      const SizedBox(height: 8),
+      Text(
+        'Altura medida en el puerto de Paysandú. No es la altura del agua en tu calle.',
+        style: tema.bodyMedium,
+        textAlign: TextAlign.center,
+      ),
+      const SizedBox(height: 10),
 
       // Tendencia: flecha y texto.
       Row(
@@ -100,54 +136,62 @@ class PantallaInicio extends StatelessWidget {
           Icon(iconoTendencia(altura), size: 32, color: Colors.black),
           const SizedBox(width: 8),
           Flexible(
-            child: Text(textoTendencia(altura), style: tema.headlineSmall?.copyWith(fontWeight: FontWeight.w600)),
+            child: Text(
+              textoTendencia(altura, pasado: viejo),
+              style: tema.headlineSmall?.copyWith(fontWeight: FontWeight.w600),
+            ),
           ),
         ],
       ),
       const SizedBox(height: 16),
 
       // Fecha, hora y fuente: toda altura mostrada las lleva.
-      Text('Actualizado: ${formatoFecha(altura.fecha, ahora)}', style: tema.titleMedium, textAlign: TextAlign.center),
+      Text('Medido: $cuando', style: tema.titleMedium, textAlign: TextAlign.center),
       Text('Fuente: ${altura.fuente ?? 'CARU'}', style: tema.bodyLarge, textAlign: TextAlign.center),
       if (altura.url != null)
         Center(
           child: TextButton.icon(
             onPressed: () => abrirEnlace(context, altura.url!),
             icon: const Icon(Icons.open_in_new),
-            label: const Text('Ver fuente'),
+            label: const Text('Ver en la página de CARU'),
           ),
         ),
       const SizedBox(height: 8),
 
-      if (horas > config.horasAvisoDatoViejo)
-        Recuadro(
-          icono: Icons.schedule,
-          texto: horas > config.horasSinDato
-              ? 'El último dato tiene más de ${config.horasSinDato} horas. No se puede saber el nivel actual del río.'
-              : 'Este dato tiene más de ${config.horasAvisoDatoViejo} horas. El río puede haber cambiado.',
-        ),
       for (final aviso in actual.avisos)
-        if (textoAviso(aviso) != null) Recuadro(icono: Icons.warning_amber, texto: textoAviso(aviso)!),
+        // Con el recuadro de dato viejo ya a la vista, no se repite lo mismo.
+        if (textoAviso(aviso) != null && !(viejo && aviso == 'dato_desactualizado'))
+          Recuadro(icono: Icons.warning_amber, texto: textoAviso(aviso)!),
 
       if (esEstacion && prefectura != null)
         Padding(
           padding: const EdgeInsets.only(bottom: 12),
           child: Text(
-            'Lectura de Prefectura (${formatoFecha(prefectura.fecha, ahora)}): '
-            '${formatoAltura(prefectura.valorM)} m. ${textoTendencia(prefectura)}.',
+            'Prefectura midió ${formatoAltura(prefectura.valorM)} m (${formatoFecha(prefectura.fecha, ahora)}). '
+            '${textoTendencia(prefectura, pasado: true)}.',
             style: tema.bodyLarge,
           ),
         ),
 
       if (pronostico != null && pronostico.vigente && pronostico.alturaEsperadaM != null)
-        _TarjetaPronostico(pronostico: pronostico),
+        _TarjetaPronostico(pronostico: pronostico, alturaM: altura.valorM, umbrales: umbrales, ahora: ahora),
 
-      if (datos.umbrales != null && !datos.umbrales!.validado)
+      if (!avisosActivos && alPedirAvisos != null)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: OutlinedButton.icon(
+            onPressed: alPedirAvisos,
+            icon: const Icon(Icons.notifications_active),
+            label: const Text('¿Querés que el teléfono te avise? Tocá acá'),
+          ),
+        ),
+
+      if (umbrales != null && !umbrales.validado)
         const Recuadro(
           icono: Icons.rule,
           fondo: Color(0xFFEEEEEE),
-          texto: 'Los niveles de alerta y evacuación que usa la app son provisorios: '
-              'todavía no fueron confirmados por el Cecoed.',
+          texto: 'Los niveles de alerta y evacuación que usa la app son de referencia: el Cecoed todavía '
+              'los está revisando. Tu casa puede mojarse antes o después de esos niveles.',
         ),
       const AvisoOficial(),
     ];
@@ -169,7 +213,11 @@ class _TarjetaNivel extends StatelessWidget {
       excludeSemantics: true,
       child: Container(
         padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(color: estilo.fondo, borderRadius: BorderRadius.circular(16)),
+        decoration: BoxDecoration(
+          color: estilo.fondo,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.black54),
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -178,15 +226,20 @@ class _TarjetaNivel extends StatelessWidget {
                 Icon(estilo.icono, color: estilo.texto, size: 44),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: Text(
-                    estilo.nombre.toUpperCase(),
-                    style: tema.headlineMedium?.copyWith(color: estilo.texto, fontWeight: FontWeight.w900),
+                  // Con letra muy grande se achica en vez de cortar la palabra.
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      estilo.nombre.toUpperCase(),
+                      style: tema.headlineMedium?.copyWith(color: estilo.texto, fontWeight: FontWeight.w900),
+                    ),
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 8),
-            Text(descripcion, style: tema.bodyLarge?.copyWith(color: estilo.texto)),
+            Text(descripcion, style: tema.titleMedium?.copyWith(color: estilo.texto)),
           ],
         ),
       ),
@@ -196,13 +249,32 @@ class _TarjetaNivel extends StatelessWidget {
 
 class _TarjetaPronostico extends StatelessWidget {
   final Pronostico pronostico;
+  final double alturaM;
+  final Umbrales? umbrales;
+  final DateTime ahora;
 
-  const _TarjetaPronostico({required this.pronostico});
+  const _TarjetaPronostico({required this.pronostico, required this.alturaM, required this.umbrales, required this.ahora});
+
+  /// Compara lo que espera CARU con la altura de ahora y con el nivel de
+  /// evacuación. Son restas entre valores publicados, no estimaciones propias.
+  String _comparacion(double esperada) {
+    final partes = <String>[];
+    final diferencia = esperada - alturaM;
+    if ((diferencia * 100).round() > 0) partes.add('Son ${formatoDiferencia(diferencia)} más que ahora.');
+    final evacuacion = umbrales?.evacuacionM;
+    if (evacuacion != null) {
+      partes.add(esperada >= evacuacion
+          ? 'Pasa el nivel de evacuación (${formatoAltura(evacuacion)} m).'
+          : 'Queda por debajo del nivel de evacuación (${formatoAltura(evacuacion)} m).');
+    }
+    return partes.join(' ');
+  }
 
   @override
   Widget build(BuildContext context) {
     final tema = Theme.of(context).textTheme;
     final p = pronostico;
+    final comparacion = _comparacion(p.alturaEsperadaM!);
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       shape: RoundedRectangleBorder(
@@ -214,18 +286,28 @@ class _TarjetaPronostico extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Pronóstico de CARU', style: tema.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+            Semantics(
+              header: true,
+              child: Text(
+                'Lo que espera CARU para los próximos días',
+                style: tema.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+              ),
+            ),
             const SizedBox(height: 4),
             Text(
               'CARU estima hasta ${formatoAltura(p.alturaEsperadaM!)} m',
               style: tema.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
             ),
-            if (p.informeFecha != null) Text('Informe del ${formatoDia(p.informeFecha!)}', style: tema.bodyLarge),
+            if (comparacion.isNotEmpty) Text(comparacion, style: tema.bodyLarge),
+            if (p.informeFecha != null) ...[
+              const SizedBox(height: 8),
+              Text('Informe de CARU del ${formatoDia(p.informeFecha!)}', style: tema.bodyLarge),
+            ],
             if (p.texto != null) ...[const SizedBox(height: 8), Text(p.texto!, style: tema.bodyLarge)],
             if (p.caudalM3s != null) ...[
               const SizedBox(height: 8),
               Text(
-                'Salto Grande prevé largar hasta ${formatoMiles(p.caudalM3s!)} metros cúbicos por segundo.',
+                'La represa de Salto Grande prevé largar hasta ${formatoMiles(p.caudalM3s!)} metros cúbicos de agua por segundo.',
                 style: tema.bodyLarge,
               ),
             ],

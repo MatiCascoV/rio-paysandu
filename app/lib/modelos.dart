@@ -22,6 +22,7 @@ String nivelATexto(Nivel n) => switch (n) {
 
 double? _numero(Object? v) => v is num ? v.toDouble() : null;
 DateTime? _fecha(Object? v) => v is String ? DateTime.tryParse(v) : null;
+String? _texto(Object? v) => v is String ? v : null;
 
 class Lectura {
   final double valorM;
@@ -51,10 +52,10 @@ class Lectura {
       valorM: valor,
       fecha: fecha,
       variacionM: _numero(j['variacion_m']),
-      periodo: j['periodo'] as String?,
-      estado: j['estado'] as String?,
-      fuente: j['fuente'] as String?,
-      url: j['url'] as String?,
+      periodo: _texto(j['periodo']),
+      estado: _texto(j['estado']),
+      fuente: _texto(j['fuente']),
+      url: _texto(j['url']),
     );
   }
 }
@@ -82,9 +83,9 @@ class Pronostico {
       vigente: j['vigente'] == true,
       informeFecha: _fecha(j['informe_fecha']),
       alturaEsperadaM: _numero(j['altura_esperada_m']),
-      texto: j['texto'] as String?,
+      texto: _texto(j['texto']),
       caudalM3s: _numero(j['caudal_salto_grande_m3s'])?.round(),
-      urlInforme: j['url_informe'] as String?,
+      urlInforme: _texto(j['url_informe']),
     );
   }
 }
@@ -113,9 +114,9 @@ class Actual {
       altura: Lectura.desdeJson(j['altura_actual']),
       prefectura: Lectura.desdeJson(j['lectura_prefectura']),
       pronostico: Pronostico.desdeJson(j['pronostico']),
-      nivel: nivelDesdeTexto(j['nivel'] as String?),
+      nivel: nivelDesdeTexto(_texto(j['nivel'])),
       avisos: avisos is List ? avisos.whereType<String>().toList() : const [],
-      cero: j['cero'] as String?,
+      cero: _texto(j['cero']),
     );
   }
 
@@ -170,7 +171,7 @@ class PuntoHistorial {
       final fecha = _fecha(e['fecha']);
       final valor = _numero(e['valor_m']);
       if (fecha != null && valor != null) {
-        puntos.add(PuntoHistorial(fecha, valor, e['fuente'] as String? ?? ''));
+        puntos.add(PuntoHistorial(fecha, valor, _texto(e['fuente']) ?? ''));
       }
     }
     puntos.sort((a, b) => a.fecha.compareTo(b.fecha));

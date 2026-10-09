@@ -9,7 +9,7 @@ const _recomendaciones = <(String, IconData, List<String>)>[
     'Si el río está creciendo',
     Icons.backpack,
     [
-      'Seguí la información oficial del Cecoed y del Sinae.',
+      'Seguí la información oficial del Cecoed (el centro de emergencias de Paysandú) y del Sinae.',
       'Guardá documentos, medicamentos, agua, linterna y cargador en una bolsa que no se moje.',
       'Subí a un lugar alto lo que no quieras perder.',
       'Acordá con tu familia a dónde irían y pensá a dónde llevar a tus mascotas.',
@@ -49,18 +49,24 @@ class PantallaQueHacer extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        const AvisoOficial(),
-        Text('Teléfonos', style: tema.titleLarge),
+        Semantics(header: true, child: Text('Teléfonos', style: tema.titleLarge)),
         const SizedBox(height: 8),
         for (final c in config.contactos)
           Card(
-            child: ListTile(
-              leading: const Icon(Icons.phone, size: 32),
-              title: Text('${c.nombre}: ${c.telefono}', style: tema.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-              subtitle: c.detalle == null ? null : Text(c.detalle!, style: tema.bodyLarge),
+            // Para el lector de pantalla: un botón que dice a quién llama, con el
+            // número dígito por dígito (si no, "150 1353" se lee como un millón y pico).
+            child: Semantics(
+              button: true,
+              excludeSemantics: true,
+              label: 'Llamar a ${c.nombre}, ${c.telefono.replaceAll(' ', '').split('').join(' ')}. ${c.detalle ?? ''}',
               onTap: () => abrirEnlace(context, 'tel:${c.telefono.replaceAll(' ', '')}'),
-              // Para el lector de pantalla: es un botón que llama.
-              trailing: const Icon(Icons.call, semanticLabel: 'Llamar'),
+              child: ListTile(
+                leading: const Icon(Icons.phone, size: 32),
+                title: Text('${c.nombre}: ${c.telefono}', style: tema.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                subtitle: Text('${c.detalle == null ? '' : '${c.detalle}. '}Tocá para llamar.', style: tema.bodyLarge),
+                onTap: () => abrirEnlace(context, 'tel:${c.telefono.replaceAll(' ', '')}'),
+                trailing: const Icon(Icons.call),
+              ),
             ),
           ),
         const SizedBox(height: 16),
@@ -84,6 +90,7 @@ class PantallaQueHacer extends StatelessWidget {
             ),
           const SizedBox(height: 12),
         ],
+        const AvisoOficial(),
       ],
     );
   }

@@ -21,6 +21,8 @@ String formatoFecha(DateTime fecha, DateTime ahora) {
   final hora = '${_dos(f.hour)}:${_dos(f.minute)}';
   if (dias == 0) return 'hoy $hora';
   if (dias == 1) return 'ayer $hora';
+  // Un dato guardado de hace casi un año necesita el año para no confundirse.
+  if (dias > 300) return '${f.day}/${f.month}/${f.year} $hora';
   return '${f.day}/${f.month} $hora';
 }
 
@@ -47,21 +49,29 @@ String _centimetros(double metros) {
   return cm == 1 ? '1 cm' : '$cm cm';
 }
 
+/// Diferencia entre dos alturas: "94 cm" o "1,19 m".
+String formatoDiferencia(double metros) =>
+    metros.abs() < 1 ? _centimetros(metros) : '${formatoAltura(metros.abs())} m';
+
 /// "Crece 30 cm en 24 h", "Baja 5 cm en 30 min" o "Estable".
-String textoTendencia(Lectura l) {
+/// Con [pasado] (cuando el dato ya es viejo): "Crecía…", "Bajaba…".
+String textoTendencia(Lectura l, {bool pasado = false}) {
   final periodo = (l.periodo ?? '').replaceAll('hs', 'h');
   final variacion = l.variacionM;
   final sinCambio = variacion == null || (variacion.abs() * 100).round() == 0;
   final enPeriodo = periodo.isEmpty ? '' : ' en $periodo';
   switch (l.estado) {
     case 'crece':
-      return sinCambio ? 'Crece' : 'Crece ${_centimetros(variacion)}$enPeriodo';
+      final verbo = pasado ? 'Crecía' : 'Crece';
+      return sinCambio ? verbo : '$verbo ${_centimetros(variacion)}$enPeriodo';
     case 'baja':
-      return sinCambio ? 'Baja' : 'Baja ${_centimetros(variacion)}$enPeriodo';
+      final verbo = pasado ? 'Bajaba' : 'Baja';
+      return sinCambio ? verbo : '$verbo ${_centimetros(variacion)}$enPeriodo';
     case 'estacionado':
-      return periodo.isEmpty ? 'Estable' : 'Estable (sin cambios$enPeriodo)';
+      final verbo = pasado ? 'Estaba estable' : 'Estable';
+      return periodo.isEmpty ? verbo : '$verbo (sin cambios$enPeriodo)';
     default:
-      return 'Sin información de tendencia';
+      return 'No se sabe si crece o baja';
   }
 }
 
@@ -73,7 +83,7 @@ IconData iconoTendencia(Lectura l) => switch (l.estado) {
     };
 
 /// Color de fondo, color del texto, ícono y nombre de cada nivel. Los pares de
-/// colores tienen contraste alto (más de 7:1) y el nivel siempre se dice con texto.
+/// colores tienen contraste alto (6,5:1 o más) y el nivel siempre se dice con texto.
 class EstiloNivel {
   final String nombre;
   final Color fondo;
@@ -90,16 +100,28 @@ EstiloNivel estiloNivel(Nivel n) => switch (n) {
       Nivel.sinDato => const EstiloNivel('Sin dato', Color(0xFF424242), Colors.white, Icons.help),
     };
 
-String descripcionNivel(Nivel n, Umbrales? u) {
+/// Frase que acompaña al nivel. Si se conoce la altura, dice cuánto falta para
+/// el nivel siguiente: es una resta entre valores publicados, no una estimación.
+String descripcionNivel(Nivel n, Umbrales? u, [double? alturaM]) {
   String ref(double? m) => m == null ? '' : ' (${formatoAltura(m)} m)';
-  return switch (n) {
-    Nivel.normal => 'El río está por debajo de los niveles de aviso.',
-    Nivel.atencion => 'El río superó el nivel de atención${ref(u?.atencionM)}. Seguí la información.',
-    Nivel.alerta => 'El río superó el nivel de alerta${ref(u?.alertaM)}. Estate atento a los avisos oficiales.',
-    Nivel.evacuacion =>
-      'El río superó el nivel de evacuación${ref(u?.evacuacionM)}. Seguí las indicaciones del Cecoed.',
-    Nivel.sinDato => 'No hay un dato reciente y confiable del nivel del río.',
-  };
+  String falta(double? umbral, String nombre) => umbral == null || alturaM == null || umbral <= alturaM
+      ? ''
+      : ' Faltan ${formatoDiferencia(umbral - alturaM)} para el nivel de $nombre${ref(umbral)}.';
+  switch (n) {
+    case Nivel.normal:
+      return u?.atencionM != null
+          ? 'El río está por debajo del nivel de atención.${falta(u!.atencionM, 'atención')}'
+          : 'El río está por debajo del nivel de alerta.${falta(u?.alertaM, 'alerta')}';
+    case Nivel.atencion:
+      return 'El río pasó el nivel de atención${ref(u?.atencionM)}.${falta(u?.alertaM, 'alerta')}';
+    case Nivel.alerta:
+      return 'El río pasó el nivel de alerta${ref(u?.alertaM)}.${falta(u?.evacuacionM, 'evacuación')}';
+    case Nivel.evacuacion:
+      return 'El río pasó el nivel de evacuación${ref(u?.evacuacionM)}. Si vivís cerca del río, prepará la '
+          'salida. La orden de evacuar la da el Cecoed. Si hay personas en peligro, llamá al 911.';
+    case Nivel.sinDato:
+      return 'No hay un dato reciente del nivel del río. Esto no quiere decir que el río esté bajo.';
+  }
 }
 
 /// Explicación de cada aviso que manda el lector. Los que no conocemos no se muestran.
@@ -107,9 +129,8 @@ String? textoAviso(String codigo) => switch (codigo) {
       'dato_desactualizado' => 'Este dato puede estar desactualizado. Fijate en la fecha y la hora.',
       'estacion_desactualizada' =>
         'La estación automática no está informando. Se muestra la lectura de Prefectura.',
-      'dato_a_verificar' =>
-        'La fuente informó un cambio brusco o datos que no coinciden. Este valor puede corregirse.',
-      'dato_fuera_de_rango' => 'Se descartó una lectura con error de la fuente.',
-      'fuente_no_disponible' => 'No se pudo consultar a CARU. Se muestra el último dato disponible.',
+      'dato_a_verificar' => 'Este dato puede tener un error. Puede cambiar cuando CARU lo revise.',
+      'dato_fuera_de_rango' => 'Llegó un dato con error y no se muestra.',
+      'fuente_no_disponible' => 'No llegó información nueva de CARU. Se muestra el último dato que hay.',
       _ => null,
     };

@@ -45,9 +45,12 @@ bool debeAvisar(Nivel? anterior, Nivel nuevo, Nivel minimo) {
   final subio = anterior == null || _orden(nuevo) > _orden(anterior);
   final titulo = subio ? 'Río Uruguay: nivel de $nombre' : 'Río Uruguay: bajó a nivel $nombre';
   final a = actual.altura!;
+  // Fecha completa: la notificación puede leerse al día siguiente y "hoy" sería falso.
+  final f = enHoraUruguay(a.fecha);
+  final cuando = '${f.day}/${f.month} a las ${f.hour.toString().padLeft(2, '0')}:${f.minute.toString().padLeft(2, '0')}';
   return (
     titulo,
-    'Altura en Paysandú: ${formatoAltura(a.valorM)} m (${formatoFecha(a.fecha, ahora)}). '
+    'Altura en Paysandú: ${formatoAltura(a.valorM)} m (el $cuando). '
         'Fuente: CARU. La alerta oficial la dan el Sinae y el Cecoed.',
   );
 }
@@ -62,6 +65,7 @@ Future<void> _iniciarPlugin() => _plugin.initialize(
 Future<void> revisarNivel(Actual? actual, SharedPreferences prefs, {DateTime? ahora}) async {
   if (kIsWeb || actual == null) return;
   ahora ??= DateTime.now();
+  await prefs.reload(); // la app y la tarea en segundo plano comparten estos datos
   final nuevo = actual.nivelVigente(ahora, prefs.getInt(_claveHorasSinDato) ?? 48);
   if (nuevo == Nivel.sinDato) return;
   final guardado = prefs.getString(_claveUltimo);
@@ -98,7 +102,7 @@ void tareaEnSegundoPlano() {
       final url = prefs.getString(_claveUrl);
       if (url == null) return true;
       await _iniciarPlugin();
-      final datos = await Repositorio(url).cargar();
+      final datos = await Repositorio(url).cargar(soloActual: true);
       if (!datos.sinConexion) await revisarNivel(datos.actual, prefs);
     } catch (_) {
       // Si falla, se reintenta en la próxima pasada.
@@ -138,6 +142,9 @@ class Notificaciones {
     final permitido = await android?.requestNotificationsPermission() ?? true;
     if (!permitido) return false;
     await prefs.setBool(claveActivos, true);
+    // Se olvida el último nivel para que la próxima revisión avise el nivel de
+    // ahora: sirve de confirmación a quien activa los avisos en plena crecida.
+    await prefs.remove(_claveUltimo);
     await _programar();
     return true;
   }

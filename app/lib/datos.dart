@@ -37,8 +37,8 @@ class Config {
         urlBase: const String.fromEnvironment('URL_BASE', defaultValue: '').isNotEmpty
             ? const String.fromEnvironment('URL_BASE')
             : j['url_base'] as String,
-        horasAvisoDatoViejo: j['horas_aviso_dato_viejo'] as int? ?? 6,
-        horasSinDato: j['horas_sin_dato'] as int? ?? 48,
+        horasAvisoDatoViejo: (j['horas_aviso_dato_viejo'] as num?)?.toInt() ?? 6,
+        horasSinDato: (j['horas_sin_dato'] as num?)?.toInt() ?? 48,
         contactos: [
           for (final c in (j['contactos'] as List? ?? const []))
             Contacto(c['nombre'] as String, c['telefono'] as String, c['detalle'] as String?),
@@ -92,9 +92,12 @@ class Repositorio {
     }
   }
 
-  Future<Datos> cargar({bool usarRed = true}) async {
+  /// [soloActual] lo usa la tarea en segundo plano, que no necesita el historial.
+  Future<Datos> cargar({bool usarRed = true, bool soloActual = false}) async {
     final prefs = await SharedPreferences.getInstance();
-    final r = await Future.wait(_archivos.map((a) => _leer(a, prefs, usarRed)));
+    // La tarea en segundo plano corre aparte y pudo haber guardado datos más nuevos.
+    await prefs.reload();
+    final r = await Future.wait(_archivos.map((a) => _leer(a, prefs, usarRed && !(soloActual && a != 'actual'))));
     return Datos(
       actual: Actual.desdeJson(r[0].$1),
       umbrales: Umbrales.desdeJson(r[1].$1),

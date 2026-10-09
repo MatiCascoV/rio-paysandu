@@ -79,7 +79,21 @@ void main() {
       expect(textoTendencia(l('crece', 0.01, '30 min')), 'Crece 1 cm en 30 min');
       expect(textoTendencia(l('baja', -0.05, '30 min')), 'Baja 5 cm en 30 min');
       expect(textoTendencia(l('estacionado', 0, '30 min')), 'Estable (sin cambios en 30 min)');
-      expect(textoTendencia(Lectura(valorM: 5, fecha: ahora)), 'Sin información de tendencia');
+      expect(textoTendencia(Lectura(valorM: 5, fecha: ahora)), 'No se sabe si crece o baja');
+    });
+
+    test('la hora no depende de la zona del teléfono', () {
+      final ahoraUtc = DateTime.utc(2026, 10, 10, 1, 30); // 22:30 del 9/10 en Uruguay
+      expect(formatoFecha(DateTime.utc(2026, 10, 9, 15), ahoraUtc), 'hoy 12:00');
+      expect(formatoFecha(DateTime.utc(2026, 10, 9, 2, 30), ahoraUtc), 'ayer 23:30');
+      expect(formatoFecha(DateTime.utc(2025, 10, 9, 15), ahoraUtc), '9/10/2025 12:00');
+    });
+
+    test('tendencia en pasado y diferencias', () {
+      final l = Lectura(valorM: 5, fecha: ahora, estado: 'crece', variacionM: 0.3, periodo: '24 hs');
+      expect(textoTendencia(l, pasado: true), 'Crecía 30 cm en 24 h');
+      expect(formatoDiferencia(0.94), '94 cm');
+      expect(formatoDiferencia(1.19), '1,19 m');
     });
 
     test('miles', () {
@@ -123,7 +137,7 @@ void main() {
       final a = Actual.desdeJson(jsonDecode(actualReal))!;
       final (titulo, cuerpo) = mensajeDeCambio(Nivel.normal, a, Nivel.alerta, ahora);
       expect(titulo, 'Río Uruguay: nivel de ALERTA');
-      expect(cuerpo, contains('5,95 m (hoy 12:00)'));
+      expect(cuerpo, contains('5,95 m (el 9/10 a las 12:00)'));
       expect(cuerpo, contains('Fuente: CARU'));
       expect(mensajeDeCambio(Nivel.alerta, a, Nivel.normal, ahora).$1, 'Río Uruguay: bajó a nivel NORMAL');
     });
