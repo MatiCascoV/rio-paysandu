@@ -206,11 +206,6 @@ class _PaginaPrincipalState extends State<PaginaPrincipal> with WidgetsBindingOb
     return Scaffold(
       appBar: AppBar(
         title: const FittedBox(fit: BoxFit.scaleDown, child: Text('Río Uruguay en Paysandú')),
-        // Línea celeste bajo la barra: el único adorno de la app.
-        bottom: const PreferredSize(
-          preferredSize: Size.fromHeight(3),
-          child: ColoredBox(color: Colores.agua, child: SizedBox(height: 3, width: double.infinity)),
-        ),
         actions: [
           if (widget.alCambiarTema != null)
             IconButton(
@@ -223,10 +218,10 @@ class _PaginaPrincipalState extends State<PaginaPrincipal> with WidgetsBindingOb
             tooltip: _actualizando ? 'Actualizando' : 'Actualizar',
             onPressed: _actualizando ? null : _actualizarAPedido,
             icon: _actualizando
-                ? const SizedBox(
+                ? SizedBox(
                     width: 24,
                     height: 24,
-                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3),
+                    child: CircularProgressIndicator(color: Colores.primario, strokeWidth: 3),
                   )
                 : const Icon(Icons.refresh),
           ),

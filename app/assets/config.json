@@ -3,10 +3,10 @@
   "horas_aviso_dato_viejo": 6,
   "horas_sin_dato": 48,
   "contactos": [
-    { "nombre": "Cecoed Paysandú", "telefono": "4722 0700", "detalle": "Centro de emergencias de Paysandú. De 6 a 18 horas" },
-    { "nombre": "Cecoed Paysandú", "telefono": "4722 1505", "detalle": "De 6 a 18 horas" },
-    { "nombre": "Cecoed Paysandú (celular)", "telefono": "092 634 993", "detalle": "De 6 a 18 horas" },
-    { "nombre": "Emergencias", "telefono": "911", "detalle": "De 18 a 6 de la mañana, o si hay personas en peligro" },
-    { "nombre": "Sinae", "telefono": "150 1353", "detalle": "Sistema Nacional de Emergencias" }
+    { "grupo": "De 6 a 18 horas · Cecoed Paysandú", "nombre": "Cecoed Paysandú", "telefono": "4722 0700" },
+    { "grupo": "De 6 a 18 horas · Cecoed Paysandú", "nombre": "Cecoed Paysandú", "telefono": "4722 1505" },
+    { "grupo": "De 6 a 18 horas · Cecoed Paysandú", "nombre": "Cecoed Paysandú", "telefono": "092 634 993", "detalle": "celular" },
+    { "grupo": "De 18 a 6, o si hay personas en peligro", "nombre": "Emergencias", "telefono": "911" },
+    { "grupo": "Sinae · Sistema Nacional de Emergencias", "nombre": "Sinae", "telefono": "150 1353" }
   ]
 }

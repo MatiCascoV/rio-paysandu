@@ -13,8 +13,13 @@ import 'modelos.dart';
 class Contacto {
   final String nombre;
   final String telefono;
+
+  /// Aclaración corta que va bajo el número (por ejemplo "celular").
   final String? detalle;
-  const Contacto(this.nombre, this.telefono, this.detalle);
+
+  /// Título del grupo en "Qué hacer" (por ejemplo "De 6 a 18 horas · Cecoed Paysandú").
+  final String grupo;
+  const Contacto(this.nombre, this.telefono, this.detalle, [this.grupo = '']);
 }
 
 /// Configuración de la app (assets/config.json). Acá viven la dirección de los
@@ -41,7 +46,7 @@ class Config {
         horasSinDato: (j['horas_sin_dato'] as num?)?.toInt() ?? 48,
         contactos: [
           for (final c in (j['contactos'] as List? ?? const []))
-            Contacto(c['nombre'] as String, c['telefono'] as String, c['detalle'] as String?),
+            Contacto(c['nombre'] as String, c['telefono'] as String, c['detalle'] as String?, c['grupo'] as String? ?? ''),
         ],
       );
 

@@ -20,7 +20,11 @@ import 'datos_de_prueba.dart';
 
 const config = Config(
   urlBase: 'https://ejemplo.test/data/',
-  contactos: [Contacto('Emergencias', '911', null), Contacto('Sinae', '150 1353', null)],
+  contactos: [
+    Contacto('Cecoed Paysandú', '4722 0700', null, 'De 6 a 18 horas · Cecoed Paysandú'),
+    Contacto('Cecoed Paysandú', '092 634 993', 'celular', 'De 6 a 18 horas · Cecoed Paysandú'),
+    Contacto('Emergencias', '911', null, 'De 18 a 6, o si hay personas en peligro'),
+  ],
 );
 final ahora = DateTime.parse('2026-10-09T13:00:00-03:00');
 final umbrales = Umbrales.desdeJson(jsonDecode(umbralesReal));
@@ -48,8 +52,8 @@ void main() {
     final casos = {
       'normal': (3.20, 'NORMAL', 'por debajo del nivel de alerta'),
       'atencion': (4.10, 'ATENCIÓN', 'nivel de atención'),
-      'alerta': (5.95, 'ALERTA', 'nivel de alerta (4,39 m)'),
-      'evacuacion': (7.05, 'EVACUACIÓN', 'prepará la salida'),
+      'alerta': (5.95, 'ALERTA', 'El río pasó el nivel de alerta.'),
+      'evacuacion': (7.05, 'EVACUACIÓN', 'La orden de evacuar la da el Cecoed'),
     };
     casos.forEach((nivel, caso) {
       testWidgets(nivel, (t) async {
@@ -57,14 +61,14 @@ void main() {
         await mostrarInicio(t, datosCon(actualFalso(nivel, valor)));
         expect(find.text(nombre), findsOneWidget); // el nivel se dice con texto, no solo color
         expect(find.textContaining(descripcion), findsOneWidget);
-        expect(find.text('${valor.toStringAsFixed(2).replaceAll('.', ',')} m'), findsOneWidget);
+        expect(find.text('${valor.toStringAsFixed(2).replaceAll('.', ',')} m'), findsNWidgets(2)); // número grande y escalera
         // toda altura lleva fecha, hora y fuente
-        expect(find.text('Medido: hoy 12:00'), findsOneWidget);
-        expect(find.text('Fuente: CARU – estación automática Paysandú'), findsOneWidget);
+        expect(find.text('Hoy 12:00'), findsOneWidget);
+        expect(find.text('· CARU, estación automática'), findsOneWidget);
         expect(find.text('Ver en la página de CARU'), findsOneWidget);
         expect(find.text('Crece 1 cm en 30 min'), findsOneWidget);
-        expect(find.textContaining('No es la altura del agua en tu calle'), findsOneWidget);
-        expect(find.textContaining('ayuda a la comunidad'), findsOneWidget);
+        expect(find.textContaining('no es la altura del agua en tu calle'), findsOneWidget);
+        expect(find.text('App de ayuda a la comunidad, sin vínculo oficial. No reemplaza la alerta oficial.'), findsOneWidget);
       });
     });
 
@@ -78,19 +82,24 @@ void main() {
 
   testWidgets('pronóstico vigente con enlace al PDF', (t) async {
     await mostrarInicio(t, datosCon(actualFalso('alerta', 5.95)));
-    expect(find.text('CARU estima hasta 6,66 m'), findsOneWidget);
-    expect(find.text('Informe de CARU del 8/10/2026'), findsOneWidget);
-    expect(find.textContaining('18.000 metros cúbicos'), findsOneWidget);
-    expect(find.text('Ver informe (PDF)'), findsOneWidget);
+    expect(find.text('Máximo esperado por CARU'), findsOneWidget);
+    expect(find.text('Informe del 8/10/2026'), findsOneWidget);
+    expect(find.text('6,66 m'), findsOneWidget);
+    expect(find.text('Queda 23 cm por debajo de evacuación.'), findsOneWidget);
+    // el texto del informe queda plegado hasta que se toca
+    expect(find.textContaining('18.000 m³'), findsNothing);
+    await t.tap(find.text('Leer el informe'));
+    await t.pumpAndSettle();
+    expect(find.textContaining('18.000 m³'), findsOneWidget);
+    expect(find.text('Abrir el informe de CARU (PDF)'), findsOneWidget);
   });
 
   testWidgets('dice cuánto falta para el nivel siguiente y compara el pronóstico', (t) async {
     await mostrarInicio(t, datosCon(actualFalso('alerta', 5.95)));
-    expect(find.textContaining('Faltan 94 cm para el nivel de evacuación (6,89 m)'), findsOneWidget);
-    expect(find.text('Son 71 cm más que ahora. Queda por debajo del nivel de evacuación (6,89 m).'), findsOneWidget);
+    expect(find.text('Faltan 94 cm para evacuación'), findsOneWidget);
 
     await mostrarInicio(t, datosCon(actualFalso('normal', 3.20)));
-    expect(find.textContaining('Faltan 1,19 m para el nivel de alerta (4,39 m)'), findsOneWidget);
+    expect(find.text('Faltan 1,19 m para alerta'), findsOneWidget);
   });
 
   testWidgets('la app completa arranca, muestra el dato y cambia de pestaña', (t) async {
@@ -109,7 +118,7 @@ void main() {
         RioPaysanduApp(config: config, prefs: prefs, repositorio: Repositorio(config.urlBase, cliente: cliente)));
     await t.pumpAndSettle();
     expect(find.text('ALERTA'), findsOneWidget);
-    expect(find.text('5,95 m'), findsOneWidget);
+    expect(find.text('5,95 m'), findsWidgets);
     await t.tap(find.text('Avisos'));
     await t.pumpAndSettle();
     expect(find.text('Recibir avisos'), findsOneWidget);
@@ -137,40 +146,40 @@ void main() {
     final j = actualFalso('alerta', 5.95);
     (j['pronostico'] as Map)['vigente'] = false;
     await mostrarInicio(t, datosCon(j));
-    expect(find.textContaining('CARU estima'), findsNothing);
+    expect(find.textContaining('Máximo esperado'), findsNothing);
   });
 
   testWidgets('umbrales sin validar: se avisa', (t) async {
     await mostrarInicio(t, datosCon(actualFalso('alerta', 5.95)));
-    expect(find.textContaining('los está revisando'), findsWidgets);
+    expect(find.textContaining('los está revisando'), findsOneWidget); // una sola vez
   });
 
   testWidgets('sin conexión: muestra el dato guardado y lo dice', (t) async {
     await mostrarInicio(t, datosCon(actualFalso('alerta', 5.95), sinConexion: true));
-    expect(find.textContaining('último dato guardado'), findsOneWidget);
-    expect(find.text('5,95 m'), findsOneWidget);
-    expect(find.text('Medido: hoy 12:00'), findsOneWidget);
+    expect(find.text('Sin conexión. Dato guardado en este teléfono.'), findsOneWidget);
+    expect(find.text('5,95 m'), findsWidgets);
+    expect(find.text('Hoy 12:00'), findsOneWidget);
   });
 
   testWidgets('sin conexión y sin nada guardado', (t) async {
     await mostrarInicio(t, const Datos(sinConexion: true));
     expect(find.text('SIN DATO'), findsOneWidget);
-    expect(find.text('No hay conexión a internet.'), findsOneWidget);
+    expect(find.text('Sin conexión a internet.'), findsOneWidget);
   });
 
   testWidgets('dato viejo: avisa, y pasadas 48 h deja de mostrar el nivel', (t) async {
     final datos = datosCon(actualFalso('alerta', 5.95));
     await mostrarInicio(t, datos, cuando: ahora.add(const Duration(hours: 8)));
-    expect(find.textContaining('el río puede estar distinto ahora'), findsOneWidget);
+    expect(find.textContaining('el río puede estar distinto'), findsOneWidget);
     expect(find.text('ALERTA'), findsOneWidget);
     expect(find.text('Crecía 1 cm en 30 min'), findsOneWidget); // en pasado: ya no se sabe si sigue creciendo
 
     await mostrarInicio(t, datos, cuando: ahora.add(const Duration(hours: 60)));
     expect(find.text('SIN DATO'), findsOneWidget);
     expect(find.text('ALERTA'), findsNothing);
-    expect(find.textContaining('no se puede saber el nivel actual'), findsOneWidget);
-    expect(find.text('5,95 m'), findsOneWidget); // el valor sigue visible, con su fecha real
-    expect(find.text('Medido: 9/10 12:00'), findsOneWidget);
+    expect(find.text('No se puede saber el nivel actual del río.'), findsOneWidget);
+    expect(find.text('5,95 m'), findsWidgets); // el valor sigue visible, con su fecha real
+    expect(find.text('9/10 12:00'), findsOneWidget);
   });
 
   testWidgets('avisos del lector en palabras simples', (t) async {
@@ -195,9 +204,9 @@ void main() {
     await t.pumpWidget(enApp(PantallaGrafico(datos: Datos(umbrales: umbrales, historial: historial), ahora: ahora)));
     expect(find.text('7 días'), findsOneWidget);
     expect(find.textContaining('Máximo:'), findsOneWidget);
-    expect(find.text('Nivel de alerta: 4,39 m'), findsOneWidget);
-    expect(find.text('Nivel de evacuación: 6,89 m'), findsOneWidget);
-    expect(find.textContaining('Nivel de atención'), findsNothing); // no está definido
+    expect(find.text('Estación automática'), findsOneWidget);
+    expect(find.text('Prefectura (una por día)'), findsOneWidget);
+    expect(find.text('Fuente: CARU. Los niveles marcados son de referencia.'), findsOneWidget);
     await t.tap(find.text('90 días'));
     await t.pump();
     expect(find.textContaining('hay datos guardados desde'), findsOneWidget);
@@ -214,9 +223,13 @@ void main() {
     t.view.devicePixelRatio = 2.0;
     addTearDown(t.view.reset);
     await t.pumpWidget(enApp(const PantallaQueHacer(config: config)));
-    expect(find.text('Emergencias: 911'), findsOneWidget);
-    expect(find.text('Sinae: 150 1353'), findsOneWidget);
-    expect(find.textContaining('ayuda a la comunidad'), findsOneWidget);
+    expect(find.text('De 6 a 18 horas · Cecoed Paysandú'), findsOneWidget); // un título por grupo
+    expect(find.text('4722 0700'), findsOneWidget);
+    expect(find.text('celular'), findsOneWidget);
+    expect(find.text('De 18 a 6, o si hay personas en peligro'), findsOneWidget);
+    expect(find.text('911'), findsOneWidget);
+    expect(find.text('Llamar'), findsNWidgets(3));
+    expect(find.textContaining('No tiene vínculo con ningún organismo ni canal oficial'), findsOneWidget);
   });
 
   testWidgets('ajustes: elegir desde qué nivel avisar', (t) async {
@@ -233,13 +246,21 @@ void main() {
 
   testWidgets('escala de niveles: solo marca los umbrales que existen', (t) async {
     await mostrarInicio(t, datosCon(actualFalso('alerta', 5.95)));
-    expect(find.text('Alerta 4,39 m'), findsOneWidget);
-    expect(find.text('Evacuación 6,89 m'), findsOneWidget);
+    expect(find.text('Alerta'), findsOneWidget);
+    expect(find.text('4,39 m'), findsOneWidget);
+    expect(find.text('Evacuación'), findsOneWidget);
+    expect(find.text('6,89 m'), findsOneWidget);
+    expect(find.text('Ahora'), findsOneWidget);
     expect(find.textContaining('Atención'), findsNothing); // atencion_m viene en null
     expect(
-        find.bySemanticsLabel('Escala de niveles. El río está en 5,95 metros, medido hoy 12:00. '
-            'Nivel de alerta: 4,39 metros, ya superado. Nivel de evacuación: 6,89 metros, faltan 94 centímetros.'),
+        find.bySemanticsLabel(RegExp('^Escala de niveles. El río está en 5,95 metros, medido hoy 12:00. '
+            'Nivel de alerta: 4,39 metros, ya superado. Nivel de evacuación: 6,89 metros, faltan 94 centímetros.')),
         findsOneWidget);
+
+    // por encima de evacuación, "Ahora" pasa a ser el peldaño de arriba
+    await mostrarInicio(t, datosCon(actualFalso('evacuacion', 7.20)));
+    expect(find.text('31 cm por encima de evacuación'), findsOneWidget);
+    expect(t.getTopLeft(find.text('Ahora')).dy, lessThan(t.getTopLeft(find.text('Evacuación')).dy));
   });
 
   testWidgets('en alerta hay un acceso directo a Qué hacer', (t) async {
@@ -315,7 +336,7 @@ void main() {
     await t.pumpAndSettle();
     expect(prefs.getString('tema'), 'oscuro');
     expect(Theme.of(t.element(find.text('ALERTA'))).brightness, Brightness.dark);
-    expect(find.text('5,95 m'), findsOneWidget);
+    expect(find.text('5,95 m'), findsWidgets);
     for (final pestana in ['Gráfico', 'Qué hacer', 'Avisos', 'Inicio']) {
       await t.tap(find.text(pestana));
       await t.pumpAndSettle();

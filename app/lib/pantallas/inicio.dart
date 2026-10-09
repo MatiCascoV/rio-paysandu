@@ -6,8 +6,10 @@ import '../tema.dart';
 import '../textos.dart';
 import 'comunes.dart';
 
-/// Pantalla principal. Los bloques van siempre en el mismo orden; según el
-/// estado (nivel, dato viejo, sin conexión…) algunos aparecen y otros no.
+/// Pantalla principal. Solo dos superficies: la franja de color con el nivel y
+/// la escalera de niveles. Todo lo demás va suelto sobre el fondo, separado con
+/// aire o una línea fina. Los bloques van siempre en el mismo orden; según el
+/// estado algunos aparecen y otros no.
 class PantallaInicio extends StatelessWidget {
   final Datos? datos;
   final Config config;
@@ -53,7 +55,7 @@ class PantallaInicio extends StatelessWidget {
     return RefreshIndicator(
       onRefresh: alActualizar,
       child: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
         children: _contenido(context, datos, ahora ?? DateTime.now()),
       ),
     );
@@ -61,46 +63,52 @@ class PantallaInicio extends StatelessWidget {
 
   List<Widget> _contenido(BuildContext context, Datos datos, DateTime ahora) {
     final tema = Theme.of(context).textTheme;
-    final secundario = tema.bodyMedium?.copyWith(color: Colores.tintaSecundaria);
+    final apoyo = tema.bodyMedium?.copyWith(color: Colores.tintaSecundaria);
     final actual = datos.actual;
     final altura = actual?.altura;
     final nivel = actual?.nivelVigente(ahora, config.horasSinDato) ?? Nivel.sinDato;
     final estilo = estiloNivel(nivel);
 
     final sinConexion = datos.sinConexion
-        ? Recuadro(
-            icono: Icons.wifi_off,
-            tipo: TipoRecuadro.sinConexion,
-            texto: altura == null
-                ? 'No hay conexión a internet.'
-                : 'No hay conexión a internet. Se muestra el último dato guardado en este teléfono.',
+        ? Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.wifi_off, size: 24, color: Colores.tinta),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    altura == null ? 'Sin conexión a internet.' : 'Sin conexión. Dato guardado en este teléfono.',
+                    style: tema.titleMedium,
+                  ),
+                ),
+              ],
+            ),
           )
         : null;
-    final botonQueHacer = alVerQueHacer == null
-        ? null
-        : OutlinedButton.icon(
-            onPressed: alVerQueHacer,
-            icon: const Icon(Icons.health_and_safety),
-            label: const Text('Ver qué hacer'),
-          );
+    final deslinde = _Deslinde(alTocar: alVerQueHacer);
 
     // ----- Sin ninguna altura para mostrar -----
     if (actual == null || altura == null) {
       return [
         ?sinConexion,
-        _TarjetaEstado(estilo: estilo, descripcion: descripcionNivel(Nivel.sinDato, null)),
-        const SizedBox(height: 16),
+        _FranjaNivel(estilo: estilo, frase: descripcionNivel(Nivel.sinDato, null)),
+        const SizedBox(height: 24),
         Text(
           datos.sinConexion
-              ? 'Conectate a internet y tocá "Reintentar".'
+              ? 'Conectate a internet y tocá Reintentar.'
               : 'Probá de nuevo en unos minutos. Si hay personas en peligro, llamá al 911.',
           style: tema.bodyLarge,
         ),
         const SizedBox(height: 12),
         FilledButton.icon(onPressed: alActualizar, icon: const Icon(Icons.refresh), label: const Text('Reintentar')),
-        if (botonQueHacer != null) ...[const SizedBox(height: 12), botonQueHacer],
-        const SizedBox(height: 24),
-        const AvisoOficial(),
+        if (alVerQueHacer != null) ...[
+          const SizedBox(height: 12),
+          OutlinedButton(onPressed: alVerQueHacer, child: const Text('Ver qué hacer')),
+        ],
+        const Separador(arriba: 24, abajo: 0),
+        deslinde,
       ];
     }
 
@@ -112,37 +120,53 @@ class PantallaInicio extends StatelessWidget {
     final prefectura = actual.prefectura;
     final umbrales = datos.umbrales;
     final hayNivel = nivel != Nivel.sinDato;
-    final conEscala = hayNivel && umbrales != null && EscalaNiveles.marcas(umbrales).isNotEmpty;
+    final conEscalera = hayNivel && umbrales != null && umbralesOrdenados(umbrales).isNotEmpty;
     final esGrave = nivel == Nivel.alerta || nivel == Nivel.evacuacion;
-    const notaPuerto = 'Altura medida en el puerto de Paysandú. No es la altura del agua en tu calle.';
     // El dato pierde protagonismo cuando ya no se puede tomar como actual.
     final colorDato = viejo ? Colores.tintaSecundaria : Colores.tinta;
+    final avisos = [
+      for (final aviso in actual.avisos)
+        // Con el aviso de dato viejo ya a la vista, no se repite lo mismo.
+        if (textoAviso(aviso) != null &&
+            !(viejo && (aviso == 'dato_desactualizado' || aviso == 'fuente_no_disponible')))
+          textoAviso(aviso)!,
+    ];
+    final hayPronostico = pronostico != null && pronostico.vigente && pronostico.alturaEsperadaM != null;
+    final invitarAvisos = hayNivel && !avisosActivos && alPedirAvisos != null;
 
     return [
       ?sinConexion,
 
-      // ----- Tarjeta de estado: nivel + altura + fecha y fuente -----
-      _TarjetaEstado(
+      // ----- Nivel: el único color fuerte de la pantalla -----
+      _FranjaNivel(
         estilo: estilo,
-        descripcion: descripcionNivel(nivel, umbrales, altura.valorM),
-        accion: esGrave ? botonQueHacer : null,
-        // Si el dato es viejo se dice antes del número, para que no se lea como actual.
-        aviso: viejo
-            ? Recuadro(
-                integrado: true,
-                icono: Icons.schedule,
-                texto: 'Este dato es de $cuando. Después no llegó información nueva: '
-                    '${horas > config.horasSinDato ? 'no se puede saber el nivel actual del río.' : 'el río puede estar distinto ahora.'} '
-                    'Guiate por los avisos del Cecoed.',
-              )
-            : null,
-        lectura: [
-          if (viejo || datos.sinConexion) Text('Último dato', style: tema.titleSmall?.copyWith(color: colorDato)),
-          // Altura: el número grande. No crece con la letra del sistema (ya es enorme).
-          Semantics(
-            label: 'Altura del río: ${formatoAltura(altura.valorM)} metros',
-            excludeSemantics: true,
-            child: MediaQuery.withClampedTextScaling(
+        frase: descripcionNivel(nivel, umbrales, viejo: viejo),
+        alVerQueHacer: esGrave ? alVerQueHacer : null,
+      ),
+
+      // Si el dato es viejo se dice antes del número, para que no se lea como actual.
+      if (viejo) ...[
+        const SizedBox(height: 12),
+        Recuadro(
+          icono: Icons.schedule,
+          texto: 'Dato de $cuando. Después no llegó información nueva'
+              '${horas > config.horasSinDato ? '.' : ': el río puede estar distinto.'}',
+        ),
+      ],
+      SizedBox(height: viejo ? 16 : 24),
+
+      // ----- Altura, con su fecha, hora y fuente pegadas -----
+      if (viejo || datos.sinConexion)
+        Text('Último dato', style: tema.titleMedium?.copyWith(color: Colores.tintaSecundaria), textAlign: TextAlign.center),
+      Semantics(
+        container: true,
+        excludeSemantics: true,
+        label: 'Altura del río: ${formatoAltura(altura.valorM)} metros. Medido $cuando. '
+            'Fuente: ${fuenteCorta(altura.fuente)}.',
+        child: Column(
+          children: [
+            // El número no crece con la letra del sistema (ya es enorme).
+            MediaQuery.withClampedTextScaling(
               maxScaleFactor: 1.0,
               child: FittedBox(
                 fit: BoxFit.scaleDown,
@@ -164,234 +188,161 @@ class PantallaInicio extends StatelessWidget {
                 ),
               ),
             ),
-          ),
-          const SizedBox(height: 12),
-          // Tendencia: flecha y texto. Siempre en azul: no usa colores de nivel.
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(color: viejo ? Colores.tintaSecundaria : Colores.primario, shape: BoxShape.circle),
-                child: Icon(iconoTendencia(altura), size: 22, color: viejo ? Colores.superficie : Colores.sobrePrimario),
-              ),
-              const SizedBox(width: 12),
-              Flexible(
-                child: Text(textoTendencia(altura, pasado: viejo), style: tema.headlineSmall?.copyWith(color: colorDato)),
-              ),
-            ],
-          ),
-          if (!conEscala) ...[const SizedBox(height: 12), Text(notaPuerto, style: secundario, textAlign: TextAlign.center)],
-        ],
-        // Fecha, hora y fuente: toda altura mostrada las lleva, siempre a la vista.
-        pie: [
-          _FilaDato(icono: Icons.schedule, child: Text('Medido: $cuando', style: tema.titleMedium)),
-          const SizedBox(height: 4),
-          _FilaDato(icono: Icons.sensors, child: Text('Fuente: ${altura.fuente ?? 'CARU'}', style: secundario)),
-        ],
-      ),
-      const SizedBox(height: 16),
-
-      for (final aviso in actual.avisos)
-        // Con el aviso de dato viejo ya a la vista, no se repite lo mismo.
-        if (textoAviso(aviso) != null &&
-            !(viejo && (aviso == 'dato_desactualizado' || aviso == 'fuente_no_disponible')))
-          Recuadro(icono: Icons.warning_amber, texto: textoAviso(aviso)!),
-
-      // ----- Dónde está el río respecto de los niveles -----
-      if (conEscala) ...[
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            const SizedBox(height: 8),
+            // Toda altura mostrada lleva fecha, hora y fuente, siempre a la vista.
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 6,
               children: [
-                EscalaNiveles(
-                  alturaM: altura.valorM,
-                  umbrales: umbrales,
-                  descripcion: descripcionEscala(altura.valorM, cuando, viejo, umbrales),
-                ),
-                const SizedBox(height: 12),
-                Text(notaPuerto, style: secundario),
-                if (!umbrales.validado) ...[
-                  const SizedBox(height: 4),
-                  Text('Niveles de referencia: el Cecoed todavía los está revisando.', style: secundario),
-                ],
+                Text(conMayuscula(cuando), style: tema.titleMedium),
+                Text('· ${fuenteCorta(altura.fuente)}', style: tema.bodyLarge),
               ],
             ),
-          ),
+          ],
         ),
-        const SizedBox(height: 16),
-      ],
+      ),
+      const SizedBox(height: 12),
 
-      if (pronostico != null && pronostico.vigente && pronostico.alturaEsperadaM != null) ...[
-        _TarjetaPronostico(
-          pronostico: pronostico,
+      // Tendencia: flecha y texto.
+      Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(iconoTendencia(altura), size: 28, color: viejo ? Colores.tintaSecundaria : Colores.primario),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(textoTendencia(altura, pasado: viejo), style: tema.titleLarge?.copyWith(color: colorDato)),
+          ),
+        ],
+      ),
+
+      for (final texto in avisos) ...[const SizedBox(height: 16), Recuadro(icono: Icons.warning_amber, texto: texto)],
+      const SizedBox(height: 24),
+
+      // ----- Dónde está el río respecto de los niveles -----
+      if (conEscalera)
+        EscaleraNiveles(
           alturaM: altura.valorM,
           umbrales: umbrales,
+          viejo: viejo,
+          descripcion: descripcionEscala(altura.valorM, cuando, viejo, umbrales),
+        )
+      else
+        Text(
+          'Medido en el puerto de Paysandú: no es la altura del agua en tu calle.',
+          style: apoyo,
+          textAlign: TextAlign.center,
+        ),
+      const Separador(arriba: 24, abajo: 0),
+
+      if (hayPronostico) ...[
+        const SizedBox(height: 16),
+        _Pronostico(
+          pronostico: pronostico,
+          umbrales: umbrales,
           // Si el río todavía no está en alerta pero CARU espera que la pase.
-          accion: !esGrave && umbrales?.alertaM != null && pronostico.alturaEsperadaM! >= umbrales!.alertaM!
-              ? botonQueHacer
+          alVerQueHacer: !esGrave && umbrales?.alertaM != null && pronostico.alturaEsperadaM! >= umbrales!.alertaM!
+              ? alVerQueHacer
               : null,
         ),
-        const SizedBox(height: 16),
+        const Separador(arriba: 8, abajo: 0),
       ],
 
-      if (hayNivel && !avisosActivos && alPedirAvisos != null) ...[
-        Card(
-          child: ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-            leading: Icon(Icons.notifications_active, color: Colores.primario, size: 28),
-            title: Text('¿Querés que el teléfono te avise? Tocá acá', style: tema.titleMedium),
-            trailing: Icon(Icons.chevron_right, color: Colores.primario),
-            onTap: alPedirAvisos,
-          ),
+      if (invitarAvisos) ...[
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          minTileHeight: 56,
+          leading: Icon(Icons.notifications_active, color: Colores.primario),
+          title: Text('Recibir avisos en este teléfono', style: tema.titleMedium),
+          trailing: Icon(Icons.chevron_right, color: Colores.primario),
+          onTap: alPedirAvisos,
         ),
-        const SizedBox(height: 16),
+        const Divider(),
       ],
 
-      // ----- Más detalles: dato de respaldo y enlace al original -----
-      Semantics(header: true, child: Text('Más detalles', style: tema.titleSmall?.copyWith(color: Colores.primario))),
-      const SizedBox(height: 4),
+      // ----- Detalles: dato de respaldo y enlace al original -----
+      const SizedBox(height: 16),
       if (esEstacion && prefectura != null)
         Text(
-          'Prefectura midió ${formatoAltura(prefectura.valorM)} m (${formatoFecha(prefectura.fecha, ahora)}). '
-          '${textoTendencia(prefectura, pasado: true)}.',
-          style: secundario,
+          'Prefectura midió ${formatoAltura(prefectura.valorM)} m ${formatoFecha(prefectura.fecha, ahora)}.',
+          style: apoyo,
         ),
       if (altura.url != null)
         Align(
           alignment: Alignment.centerLeft,
-          child: TextButton.icon(
+          child: TextButton(
             onPressed: () => abrirEnlace(context, altura.url!),
-            icon: const Icon(Icons.open_in_new, size: 22),
-            label: const Text('Ver en la página de CARU'),
+            child: const Text('Ver en la página de CARU'),
           ),
         ),
-      const SizedBox(height: 16),
-
-      if (hayNivel && umbrales != null && !umbrales.validado)
-        const Recuadro(
-          icono: Icons.rule,
-          tipo: TipoRecuadro.informacion,
-          texto: 'Los niveles de alerta y evacuación que usa la app son de referencia: el Cecoed todavía '
-              'los está revisando. Tu casa puede mojarse antes o después de esos niveles.',
-        ),
-      const AvisoOficial(),
+      const Separador(arriba: 8, abajo: 0),
+      deslinde,
     ];
   }
 }
 
-class _FilaDato extends StatelessWidget {
-  final IconData icono;
-  final Widget child;
-
-  const _FilaDato({required this.icono, required this.child});
-
-  @override
-  Widget build(BuildContext context) => Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(top: 3),
-            child: Icon(icono, size: 20, color: Colores.tintaSecundaria),
-          ),
-          const SizedBox(width: 8),
-          Expanded(child: child),
-        ],
-      );
-}
-
-/// El bloque principal de Inicio: zona de color con el nivel, zona blanca con
-/// la altura y la tendencia, y pie con fecha y fuente. Es el único lugar de la
-/// pantalla con color fuerte.
-class _TarjetaEstado extends StatelessWidget {
+/// Franja de color con el nivel: ícono, palabra, una frase y, en alerta o
+/// evacuación, el botón para ir a "Qué hacer".
+class _FranjaNivel extends StatelessWidget {
   final EstiloNivel estilo;
-  final String descripcion;
-  final Widget? accion;
-  final Widget? aviso;
-  final List<Widget> lectura;
-  final List<Widget> pie;
+  final String frase;
+  final VoidCallback? alVerQueHacer;
 
-  const _TarjetaEstado({
-    required this.estilo,
-    required this.descripcion,
-    this.accion,
-    this.aviso,
-    this.lectura = const [],
-    this.pie = const [],
-  });
+  const _FranjaNivel({required this.estilo, required this.frase, this.alVerQueHacer});
 
   @override
   Widget build(BuildContext context) {
     final tema = Theme.of(context).textTheme;
+    // El amarillo casi no se despega de un fondo blanco: es la única franja con contorno.
+    final contorno = estilo.fondo == const Color(0xFFFFD600) && !Colores.oscuro;
     return Container(
-      clipBehavior: Clip.antiAlias,
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colores.superficie,
-        borderRadius: BorderRadius.circular(16),
-        // Borde en el tono oscuro del nivel: el amarillo y el naranja solos no
-        // se despegan lo suficiente del fondo claro.
-        border: Border.all(color: estilo.oscuro, width: 2),
+        color: estilo.fondo,
+        borderRadius: radioSuperficie,
+        border: contorno ? Border.all(color: estilo.oscuro, width: 1.5) : null,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Container(
-            color: estilo.fondo,
-            padding: const EdgeInsets.all(16),
+          Semantics(
+            container: true,
+            label: 'Nivel: ${estilo.nombre}. $frase',
+            excludeSemantics: true,
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Semantics(
-                  container: true,
-                  label: 'Nivel: ${estilo.nombre}. $descripcion',
-                  excludeSemantics: true,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(estilo.icono, color: estilo.texto, size: 40),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            // Con letra muy grande se achica en vez de cortar la palabra.
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              alignment: Alignment.centerLeft,
-                              child: Text(
-                                estilo.nombre.toUpperCase(),
-                                style: tema.headlineMedium?.copyWith(color: estilo.texto, letterSpacing: 0.5),
-                              ),
-                            ),
-                          ),
-                        ],
+                Row(
+                  children: [
+                    Icon(estilo.icono, color: estilo.texto, size: 32),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      // Con letra muy grande se achica en vez de cortar la palabra.
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          estilo.nombre.toUpperCase(),
+                          style: tema.headlineMedium?.copyWith(color: estilo.texto, letterSpacing: 0.5),
+                        ),
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        descripcion,
-                        style: tema.bodyLarge?.copyWith(color: estilo.texto, fontWeight: FontWeight.w500, height: 1.35),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-                if (accion != null) ...[const SizedBox(height: 12), accion!],
+                const SizedBox(height: 6),
+                Text(frase, style: tema.bodyLarge?.copyWith(color: estilo.texto)),
               ],
             ),
           ),
-          ?aviso,
-          if (lectura.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-              child: Column(children: lectura),
-            ),
-          if (pie.isNotEmpty) ...[
-            const Divider(),
-            Container(
-              color: Colores.fondo,
-              padding: const EdgeInsets.all(16),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: pie),
+          if (alVerQueHacer != null) ...[
+            const SizedBox(height: 14),
+            // El botón toma el color del texto de la franja: contrasta en todos los niveles.
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: estilo.texto,
+                foregroundColor: estilo.texto == Colors.white ? const Color(0xFF111B24) : Colors.white,
+              ),
+              onPressed: alVerQueHacer,
+              child: const Text('Ver qué hacer'),
             ),
           ],
         ],
@@ -400,93 +351,118 @@ class _TarjetaEstado extends StatelessWidget {
   }
 }
 
-class _TarjetaPronostico extends StatelessWidget {
+/// Pronóstico de CARU como un dato: el máximo esperado. El texto del informe
+/// queda plegado. Solo existe durante crecidas, cuando CARU publica informes.
+class _Pronostico extends StatelessWidget {
   final Pronostico pronostico;
-  final double alturaM;
   final Umbrales? umbrales;
-  final Widget? accion;
+  final VoidCallback? alVerQueHacer;
 
-  const _TarjetaPronostico({required this.pronostico, required this.alturaM, required this.umbrales, this.accion});
-
-  /// Compara lo que espera CARU con la altura de ahora y con el nivel de
-  /// evacuación. Son restas entre valores publicados, no estimaciones propias.
-  String _comparacion(double esperada) {
-    final partes = <String>[];
-    final diferencia = esperada - alturaM;
-    if ((diferencia * 100).round() > 0) partes.add('Son ${formatoDiferencia(diferencia)} más que ahora.');
-    final evacuacion = umbrales?.evacuacionM;
-    if (evacuacion != null) {
-      partes.add(esperada >= evacuacion
-          ? 'Pasa el nivel de evacuación (${formatoAltura(evacuacion)} m).'
-          : 'Queda por debajo del nivel de evacuación (${formatoAltura(evacuacion)} m).');
-    }
-    return partes.join(' ');
-  }
+  const _Pronostico({required this.pronostico, required this.umbrales, this.alVerQueHacer});
 
   @override
   Widget build(BuildContext context) {
     final tema = Theme.of(context).textTheme;
     final p = pronostico;
-    final comparacion = _comparacion(p.alturaEsperadaM!);
-    return Card(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Container(
-            color: Colores.primarioSuave,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Row(
+    final esperada = p.alturaEsperadaM!;
+    final evacuacion = umbrales?.evacuacionM;
+    // Comparación entre dos valores publicados, no una estimación propia.
+    final comparacion = evacuacion == null
+        ? null
+        : (esperada * 100).round() >= (evacuacion * 100).round()
+            ? 'Pasa el nivel de evacuación.'
+            : 'Queda ${formatoDiferencia(evacuacion - esperada)} por debajo de evacuación.';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 16,
+          runSpacing: 4,
+          children: [
+            Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.calendar_month, size: 20, color: Colores.primario),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Semantics(
-                    header: true,
-                    child: Text(
-                      'Lo que espera CARU para los próximos días',
-                      style: tema.titleSmall?.copyWith(color: Colores.primario),
-                    ),
-                  ),
-                ),
+                Semantics(header: true, child: Text('Máximo esperado por CARU', style: tema.titleMedium)),
+                if (p.informeFecha != null)
+                  Text('Informe del ${formatoDia(p.informeFecha!)}',
+                      style: tema.bodyMedium?.copyWith(color: Colores.tintaSecundaria)),
               ],
             ),
+            Text('${formatoAltura(esperada)} m', style: tema.headlineMedium),
+          ],
+        ),
+        if (comparacion != null) ...[const SizedBox(height: 8), Text(comparacion, style: tema.bodyLarge)],
+        if (alVerQueHacer != null) ...[
+          const SizedBox(height: 12),
+          OutlinedButton(onPressed: alVerQueHacer, child: const Text('Ver qué hacer')),
+        ],
+        if (p.texto != null || p.caudalM3s != null || p.urlInforme != null)
+          ExpansionTile(
+            tilePadding: EdgeInsets.zero,
+            childrenPadding: const EdgeInsets.only(bottom: 8),
+            expandedCrossAxisAlignment: CrossAxisAlignment.start,
+            expandedAlignment: Alignment.centerLeft,
+            shape: const Border(),
+            collapsedShape: const Border(),
+            iconColor: Colores.primario,
+            collapsedIconColor: Colores.primario,
+            title: Text('Leer el informe', style: tema.titleMedium?.copyWith(color: Colores.primario)),
+            children: [
+              if (p.texto != null) Text(p.texto!, style: tema.bodyLarge),
+              if (p.caudalM3s != null) ...[
+                const SizedBox(height: 8),
+                Text('Salto Grande prevé largar hasta ${formatoMiles(p.caudalM3s!)} m³ por segundo.',
+                    style: tema.bodyLarge),
+              ],
+              if (p.urlInforme != null)
+                TextButton(
+                  onPressed: () => abrirEnlace(context, p.urlInforme!),
+                  child: const Text('Abrir el informe de CARU (PDF)'),
+                ),
+            ],
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      ],
+    );
+  }
+}
+
+/// Deslinde corto al pie de Inicio; el texto completo está en "Qué hacer".
+class _Deslinde extends StatelessWidget {
+  final VoidCallback? alTocar;
+
+  const _Deslinde({required this.alTocar});
+
+  @override
+  Widget build(BuildContext context) {
+    final tema = Theme.of(context).textTheme;
+    return Semantics(
+      button: alTocar != null,
+      child: InkWell(
+        onTap: alTocar,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 56),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('CARU estima hasta ${formatoAltura(p.alturaEsperadaM!)} m', style: tema.headlineSmall),
-                // La fecha del informe va pegada a la cifra: es su fecha y su fuente.
-                if (p.informeFecha != null)
+                Text(textoDeslindeCorto, style: tema.bodyMedium),
+                if (alTocar != null)
                   Text(
-                    'Informe de CARU del ${formatoDia(p.informeFecha!)}',
-                    style: tema.bodyMedium?.copyWith(color: Colores.tintaSecundaria),
+                    'Leer más en Qué hacer',
+                    style: tema.bodyMedium?.copyWith(
+                      color: Colores.primario,
+                      fontWeight: FontWeight.w600,
+                      decoration: TextDecoration.underline,
+                    ),
                   ),
-                if (comparacion.isNotEmpty) ...[const SizedBox(height: 8), Text(comparacion, style: tema.bodyLarge)],
-                if (p.texto != null) ...[const SizedBox(height: 8), Text(p.texto!, style: tema.bodyLarge)],
-                if (p.caudalM3s != null) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    'La represa de Salto Grande prevé largar hasta ${formatoMiles(p.caudalM3s!)} metros cúbicos de agua por segundo.',
-                    style: tema.bodyLarge,
-                  ),
-                ],
-                if (p.urlInforme != null) ...[
-                  const SizedBox(height: 12),
-                  const Divider(),
-                  TextButton.icon(
-                    onPressed: () => abrirEnlace(context, p.urlInforme!),
-                    icon: const Icon(Icons.picture_as_pdf, size: 22),
-                    label: const Text('Ver informe (PDF)'),
-                  ),
-                ],
-                if (accion != null) ...[const SizedBox(height: 8), SizedBox(width: double.infinity, child: accion!), const SizedBox(height: 8)],
               ],
             ),
           ),
-        ],
+        ),
       ),
     );
   }

@@ -95,39 +95,33 @@ class _PantallaGraficoState extends State<PantallaGrafico> {
               style: tema.bodyMedium,
             ),
           ),
-        const SizedBox(height: 4),
-        Text('Fuente: CARU (estación automática y Prefectura). Alturas en metros.',
-            style: tema.bodyMedium?.copyWith(color: Colores.tintaSecundaria)),
-        const SizedBox(height: 16),
-        if (puntos.isNotEmpty)
+        const SizedBox(height: 24),
+        if (puntos.isNotEmpty) ...[
           Semantics(
-            label: 'Gráfico de la altura del río en los últimos $_dias días. El resumen está antes y los niveles después.',
+            label: 'Gráfico de la altura del río en los últimos $_dias días. El resumen está antes.',
             excludeSemantics: true,
             // El resumen y la leyenda agrandan la letra sin tope; dentro del gráfico se limita para que los ejes no se pisen.
             child: MediaQuery.withClampedTextScaling(
               maxScaleFactor: 1.3,
-              child: Card(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(4, 14, 12, 8),
-                  child: SizedBox(
-                      height: 320, child: _Grafico(puntos: puntos, umbrales: umbrales, desde: desde, hasta: ahora)),
-                ),
-              ),
+              // Suelto sobre el fondo, sin tarjeta alrededor.
+              child: SizedBox(
+                  height: 320, child: _Grafico(puntos: puntos, umbrales: umbrales, desde: desde, hasta: ahora)),
             ),
           ),
-        const SizedBox(height: 16),
-        if (puntos.isNotEmpty)
+          const SizedBox(height: 16),
+          // Los niveles ya van rotulados sobre su línea: la leyenda solo explica las dos series.
           _Leyenda(
-            umbrales: umbrales,
             hayEstacion: puntos.any((p) => p.fuente == 'estacion'),
             hayPrefectura: puntos.any((p) => p.fuente == 'prefectura'),
           ),
-        if (puntos.isNotEmpty && umbrales != null && !umbrales.validado)
-          Padding(
-            padding: const EdgeInsets.only(top: 12),
-            child: Text('Niveles de referencia: el Cecoed todavía los está revisando.',
-                style: tema.bodyMedium?.copyWith(color: Colores.tintaSecundaria)),
+          const SizedBox(height: 16),
+          Text(
+            umbrales != null && !umbrales.validado
+                ? 'Fuente: CARU. Los niveles marcados son de referencia.'
+                : 'Fuente: CARU.',
+            style: tema.bodyMedium?.copyWith(color: Colores.tintaSecundaria),
           ),
+        ],
       ],
     );
   }
@@ -162,7 +156,7 @@ class _Grafico extends StatelessWidget {
       if (umbrales?.alertaM != null) (umbrales!.alertaM!, _colorAlerta, 'Alerta', _rayaAlerta),
       if (umbrales?.evacuacionM != null) (umbrales!.evacuacionM!, _colorEvacuacion, 'Evacuación', _rayaEvacuacion),
     ];
-    final letraEtiqueta = MediaQuery.textScalerOf(context).scale(14);
+    final letraEtiqueta = MediaQuery.textScalerOf(context).scale(16);
     final valores = [...puntos.map((p) => p.valorM), ...lineas.map((l) => l.$1)];
     final minY = (valores.reduce(math.min) - 0.3).floorToDouble().clamp(0.0, 20.0);
     final maxY = (valores.reduce(math.max) + 0.6).ceilToDouble();
@@ -179,13 +173,11 @@ class _Grafico extends StatelessWidget {
         clipData: const FlClipData.all(),
         gridData: FlGridData(
           horizontalInterval: 1,
-          verticalInterval: 24.0 * cadaDias,
+          drawVerticalLine: false,
           getDrawingHorizontalLine: (_) => FlLine(color: Colores.divisor, strokeWidth: 1),
-          getDrawingVerticalLine: (_) => FlLine(color: Colores.divisor, strokeWidth: 1, dashArray: [2, 4]),
         ),
         borderData: FlBorderData(
           border: Border(
-            left: BorderSide(color: Colores.bordeControl),
             bottom: BorderSide(color: Colores.bordeControl),
           ),
         ),
@@ -267,7 +259,7 @@ class _Grafico extends StatelessWidget {
               barWidth: 0.1,
               dotData: FlDotData(
                 getDotPainter: (_, _, _, _) =>
-                    FlDotCirclePainter(radius: 4.5, color: Colores.superficie, strokeWidth: 2, strokeColor: Colores.tinta),
+                    FlDotCirclePainter(radius: 4.5, color: Colores.fondo, strokeWidth: 2, strokeColor: Colores.tinta),
               ),
             ),
         ],
@@ -277,52 +269,36 @@ class _Grafico extends StatelessWidget {
 }
 
 class _Leyenda extends StatelessWidget {
-  final Umbrales? umbrales;
   final bool hayEstacion;
   final bool hayPrefectura;
 
-  const _Leyenda({required this.umbrales, required this.hayEstacion, required this.hayPrefectura});
+  const _Leyenda({required this.hayEstacion, required this.hayPrefectura});
 
   @override
   Widget build(BuildContext context) {
-    final estilo = Theme.of(context).textTheme.bodyLarge;
-    Widget fila(Widget muestra, String texto) => Padding(
-          padding: const EdgeInsets.symmetric(vertical: 3),
-          child: Row(children: [
-            SizedBox(width: 48, child: Center(child: muestra)),
-            const SizedBox(width: 10),
-            Expanded(child: Text(texto, style: estilo)),
-          ]),
+    final estilo = Theme.of(context).textTheme.bodyMedium;
+    Widget entrada(Widget muestra, String texto) => Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [muestra, const SizedBox(width: 8), Flexible(child: Text(texto, style: estilo))],
         );
-    Widget raya(Color c) => Container(width: 30, height: 3, color: c);
-    // Muestra de la línea con el mismo punteado que en el gráfico.
-    Widget rayaCortada(Color c, List<int> raya) => Row(mainAxisSize: MainAxisSize.min, children: [
-          for (var ancho = 0; ancho + raya[0] <= 44; ancho += raya[0] + raya[1]) ...[
-            Container(width: raya[0].toDouble(), height: 3, color: c),
-            SizedBox(width: raya[1].toDouble()),
-          ],
-        ]);
-    final u = umbrales;
-    return Column(
+    return Wrap(
+      spacing: 24,
+      runSpacing: 8,
       children: [
-        if (hayEstacion) fila(raya(_colorEstacion), 'Estación automática (cada 30 minutos)'),
+        if (hayEstacion) entrada(Container(width: 24, height: 3, color: _colorEstacion), 'Estación automática'),
         if (hayPrefectura)
-          fila(
+          entrada(
             Container(
               width: 12,
               height: 12,
               decoration: BoxDecoration(
-                color: Colores.superficie,
+                color: Colores.fondo,
                 shape: BoxShape.circle,
                 border: Border.all(color: Colores.tinta, width: 2),
               ),
             ),
-            'Prefectura (una lectura por día)',
+            'Prefectura (una por día)',
           ),
-        if (u?.atencionM != null) fila(rayaCortada(_colorAtencion, _rayaAtencion), 'Nivel de atención: ${formatoAltura(u!.atencionM!)} m'),
-        if (u?.alertaM != null) fila(rayaCortada(_colorAlerta, _rayaAlerta), 'Nivel de alerta: ${formatoAltura(u!.alertaM!)} m'),
-        if (u?.evacuacionM != null)
-          fila(rayaCortada(_colorEvacuacion, _rayaEvacuacion), 'Nivel de evacuación: ${formatoAltura(u!.evacuacionM!)} m'),
       ],
     );
   }

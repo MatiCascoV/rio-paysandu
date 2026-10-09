@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -19,193 +17,182 @@ Future<void> abrirEnlace(BuildContext context, String url) async {
   }
 }
 
-enum TipoRecuadro { advertencia, informacion, sinConexion }
+/// Línea fina que separa bloques sueltos, con aire arriba y abajo.
+class Separador extends StatelessWidget {
+  final double arriba;
+  final double abajo;
 
-/// Recuadro de aviso: banda de color a la izquierda, ícono y texto (no depende
-/// solo del color). Hay tres tipos y ninguno usa los colores de nivel del río.
-class Recuadro extends StatelessWidget {
-  final IconData icono;
-  final String texto;
-  final TipoRecuadro tipo;
-
-  /// Botón opcional debajo del texto (por ejemplo "Reintentar").
-  final Widget? accion;
-
-  /// Sin esquinas redondeadas ni margen, para ir pegado dentro de otra tarjeta.
-  final bool integrado;
-
-  const Recuadro({
-    super.key,
-    required this.icono,
-    required this.texto,
-    this.tipo = TipoRecuadro.advertencia,
-    this.accion,
-    this.integrado = false,
-  });
+  const Separador({super.key, this.arriba = 16, this.abajo = 16});
 
   @override
-  Widget build(BuildContext context) {
-    final (fondo, banda) = switch (tipo) {
-      TipoRecuadro.advertencia => Colores.oscuro
-          ? (const Color(0xFF3A2E12), const Color(0xFFFFC857))
-          : (const Color(0xFFFFF4D6), const Color(0xFF7A4A00)),
-      TipoRecuadro.informacion => (Colores.primarioSuave, Colores.primario),
-      TipoRecuadro.sinConexion => Colores.oscuro
-          ? (const Color(0xFF2A3038), const Color(0xFFBDBDBD))
-          : (const Color(0xFFE9ECEF), const Color(0xFF424242)),
-    };
-    final contenido = Material(
-      color: fondo,
-      clipBehavior: Clip.antiAlias,
-      shape: integrado
-          ? const RoundedRectangleBorder()
-          : const RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(12))),
-      child: DecoratedBox(
-        decoration: BoxDecoration(border: Border(left: BorderSide(color: banda, width: 6))),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 14, 16, 14),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(icono, color: banda, size: 28),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [Text(texto, style: Theme.of(context).textTheme.bodyLarge), ?accion],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-    return integrado ? contenido : Padding(padding: const EdgeInsets.only(bottom: 12), child: contenido);
-  }
-}
-
-/// Deslinde de responsabilidad: la app es una ayuda a la comunidad, sin vínculo
-/// con organismos oficiales. Va en Inicio y en "Qué hacer".
-class AvisoOficial extends StatelessWidget {
-  const AvisoOficial({super.key});
-
-  @override
-  Widget build(BuildContext context) => const Recuadro(
-        icono: Icons.info,
-        tipo: TipoRecuadro.informacion,
-        texto: 'Esta app es una ayuda a la comunidad. No tiene vínculo con ningún organismo ni canal oficial '
-            'y no reemplaza la alerta oficial. Ante cualquier duda, comunicate con los canales oficiales: '
-            'el Cecoed (centro de emergencias de Paysandú) o el Sinae.',
+  Widget build(BuildContext context) => Padding(
+        padding: EdgeInsets.only(top: arriba, bottom: abajo),
+        child: const Divider(),
       );
 }
 
-/// Regla horizontal que muestra dónde está el río respecto de los niveles de
-/// alerta y evacuación. Solo usa la altura publicada y los umbrales: no dibuja
-/// pronósticos ni valores estimados. Si falta un umbral, no se marca.
-class EscalaNiveles extends StatelessWidget {
-  final double alturaM;
-  final Umbrales umbrales;
-  final String descripcion; // para el lector de pantalla
+/// Aviso ámbar: el único recuadro que queda. Se usa solo cuando algo anda mal
+/// (dato viejo, dato dudoso, falta un permiso). Ícono y texto, no solo color.
+class Recuadro extends StatelessWidget {
+  final IconData icono;
+  final String texto;
 
-  const EscalaNiveles({super.key, required this.alturaM, required this.umbrales, required this.descripcion});
-
-  /// Marcas a dibujar: (valor, nivel), solo las que tienen valor.
-  static List<(double, Nivel)> marcas(Umbrales u) => [
-        if (u.atencionM != null) (u.atencionM!, Nivel.atencion),
-        if (u.alertaM != null) (u.alertaM!, Nivel.alerta),
-        if (u.evacuacionM != null) (u.evacuacionM!, Nivel.evacuacion),
-      ];
+  const Recuadro({super.key, required this.icono, required this.texto});
 
   @override
   Widget build(BuildContext context) {
-    final lista = marcas(umbrales);
-    if (lista.isEmpty) return const SizedBox.shrink();
-    final minimo = alturaM < 0 ? alturaM.floorToDouble() : 0.0;
-    final maximo = math.max(lista.map((m) => m.$1).reduce(math.max).ceilToDouble() + 1, (alturaM + 0.5).ceilToDouble());
-    return Semantics(
-      container: true,
-      excludeSemantics: true,
-      label: descripcion,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+    final fondo = Colores.oscuro ? const Color(0xFF3A2E12) : const Color(0xFFFFF4D6);
+    final colorIcono = Colores.oscuro ? const Color(0xFFFFC857) : const Color(0xFF7A4A00);
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: fondo, borderRadius: radioSuperficie),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            height: 36,
-            child: CustomPaint(
-              painter: _PintorEscala(
-                altura: alturaM,
-                minimo: minimo,
-                maximo: maximo,
-                marcas: [for (final (valor, nivel) in lista) (valor, estiloNivel(nivel).oscuro)],
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          // Rótulos debajo, en el mismo orden que las marcas; se apilan si no entran.
-          Wrap(
-            alignment: WrapAlignment.spaceBetween,
-            spacing: 16,
-            runSpacing: 4,
-            children: [
-              for (final (valor, nivel) in lista)
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(width: 5, height: 18, color: estiloNivel(nivel).oscuro),
-                    const SizedBox(width: 8),
-                    Text(
-                      '${estiloNivel(nivel).nombre} ${formatoAltura(valor)} m',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
-                    ),
-                  ],
-                ),
-            ],
-          ),
+          Icon(icono, color: colorIcono, size: 24),
+          const SizedBox(width: 12),
+          Expanded(child: Text(texto, style: Theme.of(context).textTheme.bodyLarge)),
         ],
       ),
     );
   }
 }
 
-class _PintorEscala extends CustomPainter {
-  final double altura, minimo, maximo;
-  final List<(double, Color)> marcas;
+/// Deslinde de responsabilidad completo. Va en "Qué hacer".
+const textoDeslinde = 'Esta app es una ayuda a la comunidad. No tiene vínculo con ningún organismo ni canal oficial '
+    'y no reemplaza la alerta oficial. Ante cualquier duda, comunicate con los canales oficiales: '
+    'el Cecoed (centro de emergencias de Paysandú) o el Sinae.';
 
-  _PintorEscala({required this.altura, required this.minimo, required this.maximo, required this.marcas});
+/// Deslinde corto, para el pie de Inicio.
+const textoDeslindeCorto = 'App de ayuda a la comunidad, sin vínculo oficial. No reemplaza la alerta oficial.';
+
+/// Escalera de niveles: los umbrales de mayor a menor y, intercalada donde
+/// corresponde, la altura de ahora. Los peldaños están en orden, no a escala,
+/// por eso cada uno lleva su altura escrita. Solo usa datos publicados; si
+/// falta un umbral, ese peldaño no se dibuja.
+class EscaleraNiveles extends StatelessWidget {
+  final double alturaM;
+  final Umbrales umbrales;
+
+  /// Dato de hace varias horas: se dice "Último dato" y se atenúa.
+  final bool viejo;
+
+  /// Texto completo para el lector de pantalla.
+  final String descripcion;
+
+  const EscaleraNiveles({
+    super.key,
+    required this.alturaM,
+    required this.umbrales,
+    required this.descripcion,
+    this.viejo = false,
+  });
 
   @override
-  void paint(Canvas canvas, Size size) {
-    double x(double metros) => ((metros - minimo) / (maximo - minimo)).clamp(0.0, 1.0) * size.width;
-    const arriba = 14.0, alto = 14.0;
-    final barra = RRect.fromLTRBR(0, arriba, size.width, arriba + alto, const Radius.circular(7));
-    canvas.drawRRect(barra, Paint()..color = Colores.divisor);
-    // Relleno hasta la altura actual.
-    canvas.save();
-    canvas.clipRRect(barra);
-    canvas.drawRect(Rect.fromLTRB(0, arriba, x(altura), arriba + alto), Paint()..color = Colores.primario);
-    canvas.restore();
-    canvas.drawRRect(barra, Paint()
-      ..color = Colores.bordeControl
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1);
-    // Marcas de los niveles: sobresalen de la barra.
-    for (final (valor, color) in marcas) {
-      final px = x(valor).clamp(2.5, size.width - 2.5);
-      canvas.drawRect(Rect.fromLTRB(px - 2.5, arriba - 6, px + 2.5, arriba + alto + 8), Paint()..color = color);
+  Widget build(BuildContext context) {
+    final tema = Theme.of(context).textTheme;
+    final lista = umbralesOrdenados(umbrales);
+    // La fila de ahora va arriba de todos los umbrales que el río ya alcanzó.
+    final posicion = lista.indexWhere((u) => (alturaM * 100).round() >= (u.$2 * 100).round());
+    final indiceAhora = posicion == -1 ? lista.length : posicion;
+    final total = lista.length + 1;
+    final acento = viejo ? Colores.tintaSecundaria : Colores.primario;
+    final cifras = tema.titleMedium?.copyWith(fontFeatures: const [FontFeature.tabularFigures()]);
+    final nota = [
+      'Medido en el puerto de Paysandú: no es la altura del agua en tu calle.',
+      if (!umbrales.validado) 'Los niveles son de referencia; el Cecoed todavía los está revisando.',
+    ].join(' ');
+
+    Widget tramo(bool visible, bool agua) => Expanded(
+          child: visible
+              ? Container(width: agua ? 4 : 2, color: agua ? acento : Colores.bordeControl)
+              : const SizedBox.shrink(),
+        );
+
+    Widget fila(int i) {
+      final esAhora = i == indiceAhora;
+      // El riel es fino y gris por encima del agua, y grueso y azul desde "ahora" hacia abajo.
+      final riel = SizedBox(
+        width: 24,
+        child: Column(
+          children: [
+            tramo(i > 0, i > indiceAhora),
+            if (esAhora)
+              Container(width: 16, height: 16, decoration: BoxDecoration(color: acento, shape: BoxShape.circle))
+            else
+              Container(
+                width: 16,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: estiloNivel(lista[i > indiceAhora ? i - 1 : i].$1).oscuro,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            tramo(true, i >= indiceAhora),
+          ],
+        ),
+      );
+      final Widget contenido;
+      if (esAhora) {
+        final falta = textoFalta(alturaM, umbrales, viejo: viejo);
+        contenido = Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Row(
+                children: [
+                  Expanded(child: Text(viejo ? 'Último dato' : 'Ahora', style: tema.titleMedium?.copyWith(color: acento))),
+                  Text('${formatoAltura(alturaM)} m', style: cifras),
+                ],
+              ),
+              if (falta != null) Text(falta, style: tema.bodyMedium),
+            ],
+          ),
+        );
+      } else {
+        final (nivel, valor) = lista[i > indiceAhora ? i - 1 : i];
+        contenido = Row(
+          children: [
+            Expanded(child: Text(estiloNivel(nivel).nombre, style: tema.bodyLarge)),
+            Text('${formatoAltura(valor)} m', style: cifras),
+          ],
+        );
+      }
+      return Container(
+        constraints: BoxConstraints(minHeight: esAhora ? 76 : 52),
+        decoration: esAhora
+            ? BoxDecoration(color: Colores.superficieAlta, borderRadius: BorderRadius.circular(12))
+            : null,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [riel, const SizedBox(width: 12), Expanded(child: contenido)],
+          ),
+        ),
+      );
     }
-    // Puntero: triángulo sobre la barra en la altura actual.
-    final px = x(altura).clamp(8.0, size.width - 8.0);
-    canvas.drawPath(
-      Path()
-        ..moveTo(px - 8, 0)
-        ..lineTo(px + 8, 0)
-        ..lineTo(px, 12)
-        ..close(),
-      Paint()..color = Colores.tinta,
+
+    return Semantics(
+      container: true,
+      excludeSemantics: true,
+      label: '$descripcion $nota',
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(8, 8, 8, 16),
+        decoration: BoxDecoration(color: Colores.superficie, borderRadius: radioSuperficie),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (var i = 0; i < total; i++) fila(i),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 12, 8, 0),
+              child: Text(nota, style: tema.bodyMedium?.copyWith(color: Colores.tintaSecundaria)),
+            ),
+          ],
+        ),
+      ),
     );
   }
-
-  @override
-  bool shouldRepaint(_PintorEscala o) =>
-      o.altura != altura || o.minimo != minimo || o.maximo != maximo || o.marcas.length != marcas.length;
 }
