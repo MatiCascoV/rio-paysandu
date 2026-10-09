@@ -1,0 +1,31 @@
+{
+  "generado": "2026-10-09T12:01:15-03:00",
+  "cero": "Local",
+  "altura_actual": {
+    "valor_m": 5.94,
+    "fecha": "2026-10-09T11:00:00-03:00",
+    "variacion_m": 0.01,
+    "periodo": "30 min",
+    "estado": "crece",
+    "fuente": "CARU – estación automática Paysandú",
+    "url": "http://190.0.152.194:8080/alturas/web/user/estacion/19/0"
+  },
+  "lectura_prefectura": {
+    "valor_m": 5.9,
+    "fecha": "2026-10-09T06:00:00-03:00",
+    "variacion_m": 0.3,
+    "periodo": "24 hs",
+    "estado": "crece",
+    "url": "http://190.0.152.194:8080/alturas/web/user/altura/24"
+  },
+  "pronostico": {
+    "vigente": true,
+    "informe_fecha": "2026-10-08",
+    "altura_esperada_m": 6.66,
+    "texto": "El río continuará creciendo a niveles mayores los próximos días aguas abajo de la represa.",
+    "caudal_salto_grande_m3s": 18000,
+    "url_informe": "https://caru.org.uy/nuevositio/wp-content/uploads/2026/10/20261008-Crecida.pdf"
+  },
+  "nivel": "atencion",
+  "avisos": []
+}
