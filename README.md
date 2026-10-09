@@ -3,8 +3,9 @@
 App Android que muestra el nivel del río Uruguay en Paysandú, su tendencia y el pronóstico
 publicado por CARU, y avisa cuando el río se acerca a los niveles de alerta o evacuación.
 
-Los datos salen siempre de la fuente oficial (CARU). Esta app es un canal de información de la
-Intendencia de Paysandú y **no reemplaza la alerta oficial del Sinae / Cecoed**.
+Los datos salen siempre de la fuente oficial (CARU). Esta app es una ayuda a la comunidad:
+**no tiene vínculo con ningún organismo ni canal oficial y no reemplaza la alerta oficial**.
+Ante cualquier duda hay que comunicarse con los canales oficiales (Cecoed Paysandú, Sinae).
 
 ## Cómo está armado
 

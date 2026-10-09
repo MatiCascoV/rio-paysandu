@@ -88,17 +88,44 @@ class EstiloNivel {
   final String nombre;
   final Color fondo;
   final Color texto;
+
+  /// Tono oscuro del nivel: borde de la tarjeta, líneas del gráfico y marcas
+  /// de la escala (contraste de 5,5:1 o más sobre fondo claro).
+  final Color oscuro;
   final IconData icono;
-  const EstiloNivel(this.nombre, this.fondo, this.texto, this.icono);
+  const EstiloNivel(this.nombre, this.fondo, this.texto, this.oscuro, this.icono);
 }
 
+const _tinta = Color(0xFF111B24);
+
 EstiloNivel estiloNivel(Nivel n) => switch (n) {
-      Nivel.normal => const EstiloNivel('Normal', Color(0xFF1B5E20), Colors.white, Icons.check_circle),
-      Nivel.atencion => const EstiloNivel('Atención', Color(0xFFFFD600), Colors.black, Icons.visibility),
-      Nivel.alerta => const EstiloNivel('Alerta', Color(0xFFFF9800), Colors.black, Icons.warning),
-      Nivel.evacuacion => const EstiloNivel('Evacuación', Color(0xFFB71C1C), Colors.white, Icons.report),
-      Nivel.sinDato => const EstiloNivel('Sin dato', Color(0xFF424242), Colors.white, Icons.help),
+      Nivel.normal =>
+        const EstiloNivel('Normal', Color(0xFF1B5E20), Colors.white, Color(0xFF1B5E20), Icons.check_circle),
+      Nivel.atencion => const EstiloNivel('Atención', Color(0xFFFFD600), _tinta, Color(0xFF7A5F00), Icons.visibility),
+      Nivel.alerta => const EstiloNivel('Alerta', Color(0xFFF57C00), _tinta, Color(0xFFA84300), Icons.warning),
+      Nivel.evacuacion =>
+        const EstiloNivel('Evacuación', Color(0xFFB71C1C), Colors.white, Color(0xFFB71C1C), Icons.report),
+      Nivel.sinDato => const EstiloNivel('Sin dato', Color(0xFF424242), Colors.white, Color(0xFF424242), Icons.help),
     };
+
+/// Lo que el lector de pantalla dice de la escala de niveles de Inicio.
+String descripcionEscala(double alturaM, String cuando, bool viejo, Umbrales u) {
+  String metros(double m) => '${formatoAltura(m)} metros';
+  final partes = <String>[
+    viejo
+        ? 'Escala de niveles. La última medición fue de ${metros(alturaM)}, $cuando.'
+        : 'Escala de niveles. El río está en ${metros(alturaM)}, medido $cuando.',
+  ];
+  for (final (nombre, umbral) in [('atención', u.atencionM), ('alerta', u.alertaM), ('evacuación', u.evacuacionM)]) {
+    if (umbral == null) continue;
+    final falta = umbral - alturaM;
+    partes.add(falta <= 0
+        ? 'Nivel de $nombre: ${metros(umbral)}, ya superado.'
+        : 'Nivel de $nombre: ${metros(umbral)}, faltan '
+            '${falta < 1 ? '${(falta * 100).round()} centímetros' : metros(falta)}.');
+  }
+  return partes.join(' ');
+}
 
 /// Frase que acompaña al nivel. Si se conoce la altura, dice cuánto falta para
 /// el nivel siguiente: es una resta entre valores publicados, no una estimación.

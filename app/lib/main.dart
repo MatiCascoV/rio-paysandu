@@ -11,6 +11,7 @@ import 'pantallas/ajustes.dart';
 import 'pantallas/grafico.dart';
 import 'pantallas/inicio.dart';
 import 'pantallas/que_hacer.dart';
+import 'tema.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -34,28 +35,13 @@ class RioPaysanduApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Tema claro de alto contraste y letra un 15 % más grande que la habitual;
-    // además se respeta el tamaño de letra que el usuario eligió en su teléfono.
-    final esquema = ColorScheme.fromSeed(seedColor: const Color(0xFF0D47A1), contrastLevel: 1);
-    final tipografia = Typography.material2021(colorScheme: esquema);
-    final letras = tipografia.englishLike
-        .merge(tipografia.black)
-        .apply(fontSizeFactor: 1.15, bodyColor: Colors.black, displayColor: Colors.black);
     return MaterialApp(
       title: 'Río Paysandú',
       debugShowCheckedModeBanner: false,
       locale: const Locale('es'),
       supportedLocales: const [Locale('es')],
       localizationsDelegates: GlobalMaterialLocalizations.delegates,
-      theme: ThemeData(
-        colorScheme: esquema,
-        useMaterial3: true,
-        textTheme: letras,
-        appBarTheme: AppBarTheme(backgroundColor: esquema.primary, foregroundColor: esquema.onPrimary),
-        navigationBarTheme: NavigationBarThemeData(
-          labelTextStyle: WidgetStatePropertyAll(letras.labelLarge?.copyWith(fontSize: 15, color: Colors.black)),
-        ),
-      ),
+      theme: temaApp(),
       home: PaginaPrincipal(config: config, prefs: prefs, repositorio: repositorio),
     );
   }
@@ -77,6 +63,7 @@ class _PaginaPrincipalState extends State<PaginaPrincipal> with WidgetsBindingOb
   bool _actualizando = false;
   int _pestana = 0;
   Timer? _reloj;
+  final _scrollQueHacer = ScrollController();
 
   @override
   void initState() {
@@ -91,6 +78,7 @@ class _PaginaPrincipalState extends State<PaginaPrincipal> with WidgetsBindingOb
   @override
   void dispose() {
     _reloj?.cancel();
+    _scrollQueHacer.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -100,8 +88,9 @@ class _PaginaPrincipalState extends State<PaginaPrincipal> with WidgetsBindingOb
     if (estado == AppLifecycleState.resumed) _cargar(); // al volver a la app, refrescar
   }
 
-  /// [anunciar]: decirle al lector de pantalla cómo terminó (cuando lo pidió el usuario).
-  Future<void> _cargar({bool primeraVez = false, bool anunciar = false}) async {
+  /// [aPedido]: la pidió el usuario, así que se le dice cómo terminó (en
+  /// pantalla y por el lector de pantalla). Las automáticas son silenciosas.
+  Future<void> _cargar({bool primeraVez = false, bool aPedido = false}) async {
     if (_actualizando) return;
     setState(() => _actualizando = true);
     try {
@@ -113,12 +102,13 @@ class _PaginaPrincipalState extends State<PaginaPrincipal> with WidgetsBindingOb
       final datos = await widget.repositorio.cargar();
       if (!mounted) return;
       setState(() => _datos = datos);
-      if (anunciar) {
-        SemanticsService.sendAnnouncement(
-          View.of(context),
-          datos.sinConexion ? 'No hay conexión. Se muestra el último dato guardado.' : 'Datos actualizados.',
-          TextDirection.ltr,
-        );
+      if (aPedido) {
+        final mensaje =
+            datos.sinConexion ? 'No hay conexión. Se muestra el último dato guardado.' : 'Datos actualizados.';
+        SemanticsService.sendAnnouncement(View.of(context), mensaje, TextDirection.ltr);
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(content: Text(mensaje), duration: const Duration(seconds: 3)));
       }
       if (!datos.sinConexion) await revisarNivel(datos.actual, widget.prefs);
     } catch (_) {
@@ -129,7 +119,13 @@ class _PaginaPrincipalState extends State<PaginaPrincipal> with WidgetsBindingOb
     }
   }
 
-  Future<void> _actualizarAPedido() => _cargar(anunciar: true);
+  Future<void> _actualizarAPedido() => _cargar(aPedido: true);
+
+  void _irAQueHacer() {
+    setState(() => _pestana = 2);
+    // La pestaña conserva su posición: se vuelve arriba, donde están los teléfonos.
+    if (_scrollQueHacer.hasClients) _scrollQueHacer.jumpTo(0);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -141,9 +137,10 @@ class _PaginaPrincipalState extends State<PaginaPrincipal> with WidgetsBindingOb
         alActualizar: _actualizarAPedido,
         avisosActivos: widget.prefs.getBool(claveActivos) ?? false,
         alPedirAvisos: () => setState(() => _pestana = 3),
+        alVerQueHacer: _irAQueHacer,
       ),
       PantallaGrafico(datos: datos),
-      PantallaQueHacer(config: widget.config),
+      PantallaQueHacer(config: widget.config, controlador: _scrollQueHacer),
       PantallaAjustes(
         prefs: widget.prefs,
         datos: datos,
@@ -155,6 +152,11 @@ class _PaginaPrincipalState extends State<PaginaPrincipal> with WidgetsBindingOb
     return Scaffold(
       appBar: AppBar(
         title: const FittedBox(fit: BoxFit.scaleDown, child: Text('Río Uruguay en Paysandú')),
+        // Línea celeste bajo la barra: el único adorno de la app.
+        bottom: const PreferredSize(
+          preferredSize: Size.fromHeight(3),
+          child: ColoredBox(color: Colores.agua, child: SizedBox(height: 3, width: double.infinity)),
+        ),
         actions: [
           // El botón queda siempre en su lugar (el lector de pantalla no pierde el foco).
           IconButton(
@@ -170,16 +172,31 @@ class _PaginaPrincipalState extends State<PaginaPrincipal> with WidgetsBindingOb
           ),
         ],
       ),
-      body: SafeArea(child: IndexedStack(index: _pestana, children: paginas)),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _pestana,
-        onDestinationSelected: (i) => setState(() => _pestana = i),
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.water), label: 'Inicio'),
-          NavigationDestination(icon: Icon(Icons.show_chart), label: 'Gráfico'),
-          NavigationDestination(icon: Icon(Icons.health_and_safety), label: 'Qué hacer'),
-          NavigationDestination(icon: Icon(Icons.notifications), label: 'Avisos'),
-        ],
+      body: SafeArea(
+        // En pantallas anchas (tablet, apaisado) el contenido no se estira de más.
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 600),
+            child: IndexedStack(index: _pestana, children: paginas),
+          ),
+        ),
+      ),
+      bottomNavigationBar: DecoratedBox(
+        decoration: const BoxDecoration(border: Border(top: BorderSide(color: Colores.bordeSuave))),
+        // Tope al agrandado de letra: con más, las cuatro etiquetas no entran.
+        child: MediaQuery.withClampedTextScaling(
+          maxScaleFactor: 1.3,
+          child: NavigationBar(
+            selectedIndex: _pestana,
+            onDestinationSelected: (i) => setState(() => _pestana = i),
+            destinations: const [
+              NavigationDestination(icon: Icon(Icons.water), label: 'Inicio'),
+              NavigationDestination(icon: Icon(Icons.show_chart), label: 'Gráfico'),
+              NavigationDestination(icon: Icon(Icons.health_and_safety), label: 'Qué hacer'),
+              NavigationDestination(icon: Icon(Icons.notifications), label: 'Avisos'),
+            ],
+          ),
+        ),
       ),
     );
   }

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -62,7 +63,7 @@ void main() {
         expect(find.text('Ver en la página de CARU'), findsOneWidget);
         expect(find.text('Crece 1 cm en 30 min'), findsOneWidget);
         expect(find.textContaining('No es la altura del agua en tu calle'), findsOneWidget);
-        expect(find.textContaining('No reemplaza la alerta oficial'), findsOneWidget);
+        expect(find.textContaining('ayuda a la comunidad'), findsOneWidget);
       });
     });
 
@@ -140,7 +141,7 @@ void main() {
 
   testWidgets('umbrales sin validar: se avisa', (t) async {
     await mostrarInicio(t, datosCon(actualFalso('alerta', 5.95)));
-    expect(find.textContaining('los está revisando'), findsOneWidget);
+    expect(find.textContaining('los está revisando'), findsWidgets);
   });
 
   testWidgets('sin conexión: muestra el dato guardado y lo dice', (t) async {
@@ -214,7 +215,7 @@ void main() {
     await t.pumpWidget(enApp(const PantallaQueHacer(config: config)));
     expect(find.text('Emergencias: 911'), findsOneWidget);
     expect(find.text('Sinae: 150 1353'), findsOneWidget);
-    expect(find.textContaining('No reemplaza la alerta oficial'), findsOneWidget);
+    expect(find.textContaining('ayuda a la comunidad'), findsOneWidget);
   });
 
   testWidgets('ajustes: elegir desde qué nivel avisar', (t) async {
@@ -227,6 +228,74 @@ void main() {
     await t.tap(find.text('Evacuación'));
     await t.pump();
     expect(prefs.getString('avisar_desde'), 'evacuacion');
+  });
+
+  testWidgets('escala de niveles: solo marca los umbrales que existen', (t) async {
+    await mostrarInicio(t, datosCon(actualFalso('alerta', 5.95)));
+    expect(find.text('Alerta 4,39 m'), findsOneWidget);
+    expect(find.text('Evacuación 6,89 m'), findsOneWidget);
+    expect(find.textContaining('Atención'), findsNothing); // atencion_m viene en null
+    expect(
+        find.bySemanticsLabel('Escala de niveles. El río está en 5,95 metros, medido hoy 12:00. '
+            'Nivel de alerta: 4,39 metros, ya superado. Nivel de evacuación: 6,89 metros, faltan 94 centímetros.'),
+        findsOneWidget);
+  });
+
+  testWidgets('en alerta hay un acceso directo a Qué hacer', (t) async {
+    var tocado = false;
+    t.view.physicalSize = const Size(1080, 6000);
+    t.view.devicePixelRatio = 2.0;
+    addTearDown(t.view.reset);
+    Widget pantalla(String nivel, double valor) => enApp(PantallaInicio(
+        // sin pronóstico (si CARU espera que pase la alerta, el botón también aparece)
+        datos: datosCon(actualFalso(nivel, valor)..['pronostico'] = {'vigente': false}),
+        config: config,
+        alActualizar: () async {},
+        alVerQueHacer: () => tocado = true,
+        ahora: ahora));
+    await t.pumpWidget(pantalla('normal', 3.2));
+    expect(find.text('Ver qué hacer'), findsNothing);
+    await t.pumpWidget(pantalla('alerta', 5.95));
+    await t.tap(find.text('Ver qué hacer'));
+    expect(tocado, isTrue);
+  });
+
+  for (final nivel in ['alerta', 'evacuacion', 'sin_dato']) {
+    testWidgets('celular angosto con letra grande: nada se desborda ($nivel)', (t) async {
+      t.view.physicalSize = const Size(720, 1480); // 360 x 740 dp
+      t.view.devicePixelRatio = 2.0;
+      t.platformDispatcher.textScaleFactorTestValue = 1.3;
+      addTearDown(t.view.reset);
+      addTearDown(t.platformDispatcher.clearTextScaleFactorTestValue);
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final falso = actualFalso(nivel, nivel == 'sin_dato' ? null : (nivel == 'alerta' ? 5.95 : 7.05));
+      if (falso['altura_actual'] != null) {
+        (falso['altura_actual'] as Map)['fecha'] = DateTime.now().toUtc().toIso8601String();
+      }
+      final cliente = MockClient((pedido) async => http.Response.bytes(
+          utf8.encode(switch (pedido.url.pathSegments.last) {
+            'actual.json' => jsonEncode(falso),
+            'umbrales.json' => umbralesReal,
+            _ => '[{"fecha": "${DateTime.now().toUtc().toIso8601String()}", "valor_m": 5.9, "fuente": "estacion"}]',
+          }),
+          200));
+      await t.pumpWidget(
+          RioPaysanduApp(config: config, prefs: prefs, repositorio: Repositorio(config.urlBase, cliente: cliente)));
+      await t.pumpAndSettle();
+      for (final pestana in ['Gráfico', 'Qué hacer', 'Avisos', 'Inicio']) {
+        await t.tap(find.text(pestana));
+        await t.pumpAndSettle();
+        expect(t.takeException(), isNull, reason: 'desborde en $pestana');
+      }
+      await t.pumpWidget(const SizedBox());
+    });
+  }
+
+  test('assets/config.json es válido y trae los teléfonos', () {
+    final c = Config.desdeJson(jsonDecode(File('assets/config.json').readAsStringSync()) as Map<String, dynamic>);
+    expect(c.urlBase, startsWith('https://'));
+    expect(c.contactos.map((x) => x.telefono), containsAll(['4722 0700', '4722 1505', '092 634 993', '911']));
   });
 
   group('repositorio', () {

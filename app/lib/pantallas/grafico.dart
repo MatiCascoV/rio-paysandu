@@ -5,11 +5,12 @@ import 'package:flutter/material.dart';
 
 import '../datos.dart';
 import '../modelos.dart';
+import '../tema.dart';
 import '../textos.dart';
 
-const _colorEstacion = Color(0xFF0D47A1);
-const _colorAtencion = Color(0xFF8D6E00);
-const _colorAlerta = Color(0xFFBF4B00);
+const _colorEstacion = Colores.primario;
+const _colorAtencion = Color(0xFF7A5F00);
+const _colorAlerta = Color(0xFFA84300);
 const _colorEvacuacion = Color(0xFFB71C1C);
 const _rayaAtencion = [3, 4];
 const _rayaAlerta = [8, 5];
@@ -48,6 +49,17 @@ class _PantallaGraficoState extends State<PantallaGrafico> {
   @override
   Widget build(BuildContext context) {
     final tema = Theme.of(context).textTheme;
+    if (widget.datos == null) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [CircularProgressIndicator(), SizedBox(height: 16), Text('Cargando el nivel del río…')],
+          ),
+        ),
+      );
+    }
     final historial = widget.datos?.historial ?? const <PuntoHistorial>[];
     final umbrales = widget.datos?.umbrales;
     final ahora = widget.ahora ?? DateTime.now();
@@ -83,6 +95,9 @@ class _PantallaGraficoState extends State<PantallaGrafico> {
               style: tema.bodyMedium,
             ),
           ),
+        const SizedBox(height: 4),
+        Text('Fuente: CARU (estación automática y Prefectura). Alturas en metros.',
+            style: tema.bodyMedium?.copyWith(color: Colores.tintaSecundaria)),
         const SizedBox(height: 16),
         if (puntos.isNotEmpty)
           Semantics(
@@ -91,13 +106,28 @@ class _PantallaGraficoState extends State<PantallaGrafico> {
             // El resumen y la leyenda agrandan la letra sin tope; dentro del gráfico se limita para que los ejes no se pisen.
             child: MediaQuery.withClampedTextScaling(
               maxScaleFactor: 1.3,
-              child: SizedBox(height: 320, child: _Grafico(puntos: puntos, umbrales: umbrales, desde: desde, hasta: ahora)),
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 14, 12, 8),
+                  child: SizedBox(
+                      height: 320, child: _Grafico(puntos: puntos, umbrales: umbrales, desde: desde, hasta: ahora)),
+                ),
+              ),
             ),
           ),
         const SizedBox(height: 16),
-        _Leyenda(umbrales: umbrales, hayPrefectura: puntos.any((p) => p.fuente == 'prefectura')),
-        const SizedBox(height: 12),
-        Text('Fuente: CARU (estación automática y Prefectura). Alturas en metros.', style: tema.bodyMedium),
+        if (puntos.isNotEmpty)
+          _Leyenda(
+            umbrales: umbrales,
+            hayEstacion: puntos.any((p) => p.fuente == 'estacion'),
+            hayPrefectura: puntos.any((p) => p.fuente == 'prefectura'),
+          ),
+        if (puntos.isNotEmpty && umbrales != null && !umbrales.validado)
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Text('Niveles de referencia: el Cecoed todavía los está revisando.',
+                style: tema.bodyMedium?.copyWith(color: Colores.tintaSecundaria)),
+          ),
       ],
     );
   }
@@ -138,7 +168,7 @@ class _Grafico extends StatelessWidget {
     final maxY = (valores.reduce(math.max) + 0.6).ceilToDouble();
     final dias = (hasta.difference(desde).inMinutes / 60 / 24).round();
     final cadaDias = dias <= 7 ? 1 : (dias <= 30 ? 5 : 15);
-    const estiloEje = TextStyle(fontSize: 14, color: Colors.black);
+    const estiloEje = TextStyle(fontSize: 14, color: Colores.tinta);
 
     return LineChart(
       LineChartData(
@@ -147,8 +177,18 @@ class _Grafico extends StatelessWidget {
         minY: minY,
         maxY: maxY,
         clipData: const FlClipData.all(),
-        gridData: FlGridData(horizontalInterval: 1, verticalInterval: 24.0 * cadaDias),
-        borderData: FlBorderData(border: Border.all(color: Colors.black54)),
+        gridData: FlGridData(
+          horizontalInterval: 1,
+          verticalInterval: 24.0 * cadaDias,
+          getDrawingHorizontalLine: (_) => const FlLine(color: Colores.divisor, strokeWidth: 1),
+          getDrawingVerticalLine: (_) => const FlLine(color: Colores.divisor, strokeWidth: 1, dashArray: [2, 4]),
+        ),
+        borderData: FlBorderData(
+          border: const Border(
+            left: BorderSide(color: Colores.bordeControl),
+            bottom: BorderSide(color: Colores.bordeControl),
+          ),
+        ),
         titlesData: FlTitlesData(
           topTitles: const AxisTitles(),
           rightTitles: const AxisTitles(),
@@ -199,13 +239,13 @@ class _Grafico extends StatelessWidget {
         ),
         lineTouchData: LineTouchData(
           touchTooltipData: LineTouchTooltipData(
-            getTooltipColor: (_) => Colors.black,
+            getTooltipColor: (_) => Colores.tinta,
             getTooltipItems: (tocados) => [
               for (final t in tocados)
                 LineTooltipItem(
                   '${formatoAltura(t.y)} m\n'
                   '${formatoFecha(_fechaDe(t.x), hasta)}',
-                  const TextStyle(color: Colors.white, fontSize: 14),
+                  const TextStyle(color: Colors.white, fontSize: 16),
                 ),
             ],
           ),
@@ -217,6 +257,7 @@ class _Grafico extends StatelessWidget {
               color: _colorEstacion,
               barWidth: 3,
               dotData: const FlDotData(show: false),
+              belowBarData: BarAreaData(show: true, color: _colorEstacion.withValues(alpha: 0.08)),
             ),
           if (prefectura.isNotEmpty)
             // Prefectura mide una vez por día: se dibuja como puntos sueltos.
@@ -226,7 +267,7 @@ class _Grafico extends StatelessWidget {
               barWidth: 0.1,
               dotData: FlDotData(
                 getDotPainter: (_, _, _, _) =>
-                    FlDotCirclePainter(radius: 4.5, color: Colors.white, strokeWidth: 2, strokeColor: Colors.black),
+                    FlDotCirclePainter(radius: 4.5, color: Colors.white, strokeWidth: 2, strokeColor: Colores.tinta),
               ),
             ),
         ],
@@ -237,9 +278,10 @@ class _Grafico extends StatelessWidget {
 
 class _Leyenda extends StatelessWidget {
   final Umbrales? umbrales;
+  final bool hayEstacion;
   final bool hayPrefectura;
 
-  const _Leyenda({required this.umbrales, required this.hayPrefectura});
+  const _Leyenda({required this.umbrales, required this.hayEstacion, required this.hayPrefectura});
 
   @override
   Widget build(BuildContext context) {
@@ -263,7 +305,7 @@ class _Leyenda extends StatelessWidget {
     final u = umbrales;
     return Column(
       children: [
-        fila(raya(_colorEstacion), 'Estación automática (cada 30 minutos)'),
+        if (hayEstacion) fila(raya(_colorEstacion), 'Estación automática (cada 30 minutos)'),
         if (hayPrefectura)
           fila(
             Container(
@@ -272,7 +314,7 @@ class _Leyenda extends StatelessWidget {
               decoration: BoxDecoration(
                 color: Colors.white,
                 shape: BoxShape.circle,
-                border: Border.all(color: Colors.black, width: 2),
+                border: Border.all(color: Colores.tinta, width: 2),
               ),
             ),
             'Prefectura (una lectura por día)',
