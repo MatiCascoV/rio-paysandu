@@ -8,6 +8,15 @@ from urllib.parse import urljoin
 import pdfplumber
 from bs4 import BeautifulSoup
 
+from red import url_permitida
+
+# Los informes reales son de una página y pesan menos de 1 MB.
+MAX_BYTES_PDF = 5_000_000
+MAX_PAGINAS_PDF = 10
+MAX_TEXTO_PDF = 50_000
+MAX_RESUMEN = 600
+MAX_CAUDAL_M3S = 100_000  # la mayor crecida registrada en Salto Grande no llegó a 40.000
+
 MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
          "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
 
@@ -28,6 +37,9 @@ def listar_informes(html, base_url, hoy=None):
     for a in sopa.find_all("a", href=True):
         url = urljoin(base_url, a["href"])
         if not url.lower().split("?")[0].endswith(".pdf"):
+            continue
+        # El PDF se descarga y su dirección se publica: solo desde el sitio de CARU.
+        if not url_permitida(url):
             continue
         texto = a.get_text(" ", strip=True)
         if "informe" not in texto.lower() and "crecida" not in url.lower():
@@ -57,8 +69,13 @@ def parsear_informe(pdf_bytes, puerto="Paysandú"):
     """Extrae del PDF la fila del puerto y datos generales. Trabaja sobre el texto
     (la tabla no siempre se detecta como tabla). Los campos que no encuentra
     quedan en None; nunca se inventan."""
+    if len(pdf_bytes) > MAX_BYTES_PDF or not pdf_bytes.startswith(b"%PDF-"):
+        raise ValueError("el archivo no es un PDF de informe válido")
     with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+        if len(pdf.pages) > MAX_PAGINAS_PDF:
+            raise ValueError("PDF con demasiadas páginas")
         texto = "\n".join(p.extract_text() or "" for p in pdf.pages)
+    texto = texto[:MAX_TEXTO_PDF]
     texto = unicodedata.normalize("NFC", texto)
     plano = re.sub(r"\s+", " ", texto)
 
@@ -85,17 +102,34 @@ def parsear_informe(pdf_bytes, puerto="Paysandú"):
             datos["nivel_evacuacion_m"] = evacuacion
 
     # Caudal máximo previsto: "...erogado por Salto Grande (18.000 m3/s)".
-    m = re.search(r"Salto Grande \(\s*([\d.]+)\s*m[3³]/s\s*\)", plano)
+    candidatos = []
+    m = re.search(r"Salto Grande \(\s*([\d.]{1,12})\s*m[3³]/s\s*\)", plano)
     if m:
-        datos["caudal_salto_grande_m3s"] = _entero_con_puntos(m.group(1))
+        candidatos = [m.group(1)]
     else:
-        m = re.search(r"variar[áa] entre ([\d.]+) y ([\d.]+) m[3³]/s", plano)
+        m = re.search(r"variar[áa] entre ([\d.]{1,12}) y ([\d.]{1,12}) m[3³]/s", plano)
         if m:
-            datos["caudal_salto_grande_m3s"] = max(_entero_con_puntos(g) for g in m.groups())
+            candidatos = list(m.groups())
+    caudales = []
+    for txt in candidatos:
+        try:
+            caudales.append(_entero_con_puntos(txt))
+        except ValueError:
+            pass
+    if caudales and 0 < max(caudales) <= MAX_CAUDAL_M3S:
+        datos["caudal_salto_grande_m3s"] = max(caudales)
 
-    # Resumen: el párrafo "Tendencia" tal cual lo escribe CARU.
-    m = re.search(r"^Tendencia\s*$(.*?)^Pron[oó]stico\s*$", texto, re.MULTILINE | re.DOTALL)
-    if m:
-        datos["texto"] = re.sub(r"\s+", " ", m.group(1)).strip() or None
+    # Resumen: el párrafo "Tendencia" tal cual lo escribe CARU, recorriendo las
+    # líneas (sin expresiones regulares sobre todo el texto) y con largo acotado.
+    lineas = [linea.strip() for linea in texto.splitlines()]
+    if "Tendencia" in lineas:
+        desde = lineas.index("Tendencia") + 1
+        hasta = next((k for k in range(desde, len(lineas)) if lineas[k] in ("Pronóstico", "Pronostico")), None)
+        if hasta is not None:
+            resumen = " ".join(" ".join(lineas[desde:hasta]).split())
+            resumen = "".join(c for c in resumen if c.isprintable())
+            if len(resumen) > MAX_RESUMEN:
+                resumen = resumen[:MAX_RESUMEN].rsplit(" ", 1)[0] + "…"
+            datos["texto"] = resumen or None
 
     return datos

@@ -13,7 +13,7 @@ import red
 import validar
 from fuentes import caru_informes, caru_registro
 from fuentes.caru_registro import TZ_UY
-from nivel import UMBRALES_PROVISORIOS, calcular_nivel
+from nivel import NIVELES_CON_DATO, UMBRALES_PROVISORIOS, calcular_nivel, umbrales_validos
 
 RAIZ = Path(__file__).resolve().parent.parent
 DATA = RAIZ / "data"
@@ -163,7 +163,18 @@ def armar_actual(registro, pronostico, umbrales, anterior, ahora, cfg):
     # Si el dato es demasiado viejo no lo usamos para decir en qué nivel está el río.
     confiable = (altura and fecha_principal
                  and validar.horas_de_antiguedad(fecha_principal, ahora) <= cfg["sin_dato_horas"])
-    nivel = calcular_nivel(altura["valor_m"], umbrales) if confiable else "sin_dato"
+    if not confiable:
+        nivel = "sin_dato"
+    elif not umbrales_validos(umbrales):
+        # Con umbrales mal cargados no se puede decir en qué nivel está el río.
+        nivel = "sin_dato"
+        avisos.append("umbrales_invalidos")
+    else:
+        nivel = calcular_nivel(altura["valor_m"], umbrales)
+    if nivel != "sin_dato" and "dato_a_verificar" in avisos and anterior.get("nivel") in NIVELES_CON_DATO:
+        # Un dato dudoso (salto brusco, fuentes que no coinciden) no cambia el nivel
+        # ni dispara avisos: se mantiene el anterior hasta que una lectura lo confirme.
+        nivel = anterior["nivel"]
 
     return {
         "generado": ahora.replace(microsecond=0).isoformat(),
@@ -221,7 +232,8 @@ def actualizar_historial(historial, nuevas, ahora, cfg):
     salida = []
     for entrada in por_clave.values():
         fecha = _fecha_iso(entrada["fecha"])
-        if not fecha or fecha < limite:
+        # Ni lecturas viejas ni con fecha futura (error o manipulación de la fuente).
+        if not fecha or fecha < limite or fecha > ahora + timedelta(minutes=30):
             continue
         if entrada["fuente"] == "estacion" and fecha < detalle:
             if fecha.minute != 0 or fecha.hour % 6 != 0:
@@ -231,7 +243,7 @@ def actualizar_historial(historial, nuevas, ahora, cfg):
 
 
 def historial_a_texto(historial):
-    return "[\n" + ",\n".join(json.dumps(e, ensure_ascii=False) for e in historial) + "\n]\n"
+    return "[\n" + ",\n".join(json.dumps(e, ensure_ascii=False, allow_nan=False) for e in historial) + "\n]\n"
 
 
 # ---------- programa ----------
@@ -241,6 +253,8 @@ def main():
     if cfg["cero"] != "Local":
         print(f"ERROR: el cero '{cfg['cero']}' todavía no está soportado; usá 'Local'.")
         return 1
+    red.permitir_origen_de(cfg["registro_url"])
+    red.permitir_origen_de(cfg["informes_indice_url"])
     bajar = lambda url: red.descargar(url, cfg["red_intentos"], cfg["red_espera_s"], cfg["red_timeout_s"])
     ahora = datetime.now(TZ_UY)
 
@@ -307,7 +321,7 @@ def main():
     # para que el repositorio no acumule commits vacíos.
     sin_hora = lambda d: {k: v for k, v in (d or {}).items() if k != "generado"}
     if sin_hora(actual) != sin_hora(anterior):
-        escribir_texto(DATA / "actual.json", json.dumps(actual, ensure_ascii=False, indent=2) + "\n")
+        escribir_texto(DATA / "actual.json", json.dumps(actual, ensure_ascii=False, indent=2, allow_nan=False) + "\n")
         print("Actualicé data/actual.json")
     else:
         print("Sin cambios en data/actual.json")
@@ -322,7 +336,9 @@ def main():
         print(f"Altura: {a['valor_m']} m ({a['fecha']}) · nivel: {actual['nivel']} · avisos: {actual['avisos']}")
     else:
         print(f"Sin dato de altura · avisos: {actual['avisos']}")
-    return 0
+    # 3 = se escribió lo que se pudo, pero no se llegó a leer el registro de CARU.
+    # El workflow lo usa para avisar al dueño si se repite muchas veces seguidas.
+    return 0 if registro is not None else 3
 
 
 if __name__ == "__main__":

@@ -1,4 +1,5 @@
 """Cálculo del nivel (normal / atención / alerta / evacuación) contra los umbrales."""
+import math
 
 # Valores con los que se crea data/umbrales.json si no existe. Alerta y evacuación
 # son los que publica CARU para Paysandú (informes de crecida 2026 y registro de
@@ -12,6 +13,25 @@ UMBRALES_PROVISORIOS = {
     "evacuacion_m": 6.89,
     "actualizado": "2026-10-09",
 }
+
+
+NIVELES_CON_DATO = ("normal", "atencion", "alerta", "evacuacion")
+
+
+def _altura_valida(v):
+    return type(v) in (int, float) and math.isfinite(v) and 0 < v <= 20
+
+
+def umbrales_validos(u):
+    """Los umbrales se editan a mano: se controla que sean alturas razonables y
+    que estén en orden (atención < alerta < evacuación). Atención puede faltar."""
+    try:
+        alerta, evacuacion, atencion = u["alerta_m"], u["evacuacion_m"], u.get("atencion_m")
+    except (KeyError, TypeError, AttributeError):
+        return False
+    if not (_altura_valida(alerta) and _altura_valida(evacuacion) and alerta < evacuacion):
+        return False
+    return atencion is None or (_altura_valida(atencion) and atencion < alerta)
 
 
 def calcular_nivel(valor_m, umbrales):

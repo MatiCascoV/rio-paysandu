@@ -6,12 +6,18 @@ de sesión). Sin enviar nada, la página viene en cero "Local", que es el que us
 Los otros ceros todavía no están soportados.
 """
 import json
+import math
 import re
 import unicodedata
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
+
+from red import url_permitida
+
+# Una semana cada 30 minutos son 336 lecturas; más que esto no es una página normal.
+MAX_LECTURAS_HISTORIAL = 1000
 
 # CARU publica en hora de Uruguay, que es UTC-3 todo el año.
 TZ_UY = timezone(timedelta(hours=-3))
@@ -28,9 +34,32 @@ def _sin_tildes(s):
 
 def _numero(txt):
     try:
-        return float(txt.replace(",", "."))
+        v = float(txt.replace(",", "."))
     except ValueError:
         return None
+    return v if math.isfinite(v) else None  # "nan" e "inf" no son alturas
+
+
+ESTADOS = {"crece", "baja", "estacionado"}
+
+
+def _periodo(txt):
+    """'24 hs.' -> '24 hs'. Solo se acepta un período con forma conocida: es
+    texto de una página ajena y la app lo muestra en la pantalla principal."""
+    txt = txt.strip().rstrip(". ")
+    return txt if re.fullmatch(r"\d{1,3} ?(min|hs?|d[ií]as?)", txt) else None
+
+
+def _estado(txt):
+    txt = txt.strip().lower()
+    return txt if txt in ESTADOS else None
+
+
+def _enlace(base_url, href):
+    """El enlace de detalle se publica y la app lo abre: solo vale si apunta
+    al mismo sitio de CARU. Si no, se usa la página general."""
+    url = urljoin(base_url, href or "")
+    return url if url_permitida(url) else base_url
 
 
 def _fecha(txt):
@@ -63,11 +92,11 @@ def _fila_del_puerto(tabla, puerto, base_url):
             "valor_m": valor,
             "fecha": fecha,
             "variacion_m": _numero(fila.get("variacion", "")),
-            "periodo": fila.get("periodo", "").rstrip(". ") or None,
-            "estado": fila.get("estado", "").lower() or None,
+            "periodo": _periodo(fila.get("periodo", "")),
+            "estado": _estado(fila.get("estado", "")),
             "anterior_m": _numero(fila.get("registro anterior", "")),
             "fecha_anterior": _fecha(fila.get("fecha - hora anterior", "")),
-            "url": urljoin(base_url, enlace["href"]) if enlace else base_url,
+            "url": _enlace(base_url, enlace.get("href")) if enlace else base_url,
         }
     return None
 
@@ -97,13 +126,24 @@ def parsear_registro(html, base_url, puerto="Paysandú"):
 def parsear_historial(html):
     """Las páginas de detalle traen la última semana en una variable JavaScript
     `alturasJson`. Devuelve una lista de (fecha, valor_m)."""
-    m = re.search(r"var\s+alturasJson\s*=\s*(\[.*?\])\s*;", html, re.DOTALL)
-    if not m:
+    # Sin expresiones regulares sobre toda la página (con una página armada a
+    # propósito tardarían horas): se busca el nombre y se lee el JSON que sigue.
+    i = html.find("alturasJson")
+    i = html.find("[", i) if i >= 0 else -1
+    if i < 0:
+        return []
+    try:
+        datos, _ = json.JSONDecoder().raw_decode(html, i)
+    except ValueError:
+        return []
+    if not isinstance(datos, list):
         return []
     lecturas = []
-    for item in json.loads(m.group(1)):
+    for item in datos[:MAX_LECTURAS_HISTORIAL]:
+        if not isinstance(item, dict):
+            continue
         fecha = _fecha(str(item.get("fecha", "")))
         valor = item.get("altura")
-        if fecha and isinstance(valor, (int, float)):
+        if fecha and type(valor) in (int, float) and math.isfinite(valor):
             lecturas.append((fecha, float(valor)))
     return lecturas
