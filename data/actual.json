@@ -1,5 +1,5 @@
 {
-  "generado": "2026-10-10T17:22:54-03:00",
+  "generado": "2026-10-10T18:14:05-03:00",
   "cero": "Local",
   "altura_actual": {
     "valor_m": 6.21,
@@ -27,5 +27,7 @@
     "url_informe": "https://caru.org.uy/nuevositio/wp-content/uploads/2026/10/20261010-Crecida.pdf"
   },
   "nivel": "alerta",
-  "avisos": []
+  "avisos": [
+    "fuente_no_disponible"
+  ]
 }
