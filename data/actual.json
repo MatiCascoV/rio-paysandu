@@ -1,5 +1,5 @@
 {
-  "generado": "2026-10-10T16:21:49-03:00",
+  "generado": "2026-10-10T16:32:12-03:00",
   "cero": "Local",
   "altura_actual": {
     "valor_m": 6.2,
@@ -20,11 +20,11 @@
   },
   "pronostico": {
     "vigente": true,
-    "informe_fecha": "2026-10-09",
+    "informe_fecha": "2026-10-10",
     "altura_esperada_m": 6.75,
     "texto": "El río continuará creciendo a niveles mayores los próximos días aguas abajo de la represa.",
     "caudal_salto_grande_m3s": 19000,
-    "url_informe": "https://caru.org.uy/nuevositio/wp-content/uploads/2026/10/20261009-Crecida-2.pdf"
+    "url_informe": "https://caru.org.uy/nuevositio/wp-content/uploads/2026/10/20261010-Crecida.pdf"
   },
   "nivel": "alerta",
   "avisos": []
