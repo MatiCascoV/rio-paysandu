@@ -1,5 +1,5 @@
 {
-  "generado": "2026-10-12T13:21:30-03:00",
+  "generado": "2026-10-12T13:42:36-03:00",
   "cero": "Local",
   "altura_actual": {
     "valor_m": 6.28,
@@ -20,11 +20,11 @@
   },
   "pronostico": {
     "vigente": true,
-    "informe_fecha": "2026-10-11",
-    "altura_esperada_m": 6.7,
+    "informe_fecha": "2026-10-12",
+    "altura_esperada_m": 6.5,
     "texto": "El río se estabilizará en torno a los valores observados actualmente, y variarán leve y localmente en función de los vientos y el nivel del Río de la Plata.",
-    "caudal_salto_grande_m3s": 18500,
-    "url_informe": "https://caru.org.uy/nuevositio/wp-content/uploads/2026/10/20261011-Crecida.pdf"
+    "caudal_salto_grande_m3s": 17700,
+    "url_informe": "https://caru.org.uy/nuevositio/wp-content/uploads/2026/10/20261012-Crecida.pdf"
   },
   "nivel": "alerta",
   "avisos": []
