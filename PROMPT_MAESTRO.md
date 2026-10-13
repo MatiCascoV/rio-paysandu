@@ -65,7 +65,7 @@ Una app Android para la población de Paysandú (Uruguay) que muestra el **nivel
 
 Principio central: **los datos salen siempre de la fuente oficial (CARU)**. El sistema no inventa ni estima alturas: las lee, las valida y las muestra con fecha, hora, fuente y enlace al original.
 
-La app es un canal de información de la Intendencia de Paysandú; no reemplaza la alerta oficial del Sinae / Cecoed. Eso debe decirse en la app.
+La app es un canal de información complementario; no reemplaza la alerta oficial del Sinae / Cecoed ni de la Intendencia de Paysandú. Eso debe decirse en la app.
 
 ## 3. Arquitectura
 
