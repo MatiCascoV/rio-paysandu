@@ -1,0 +1,3 @@
+# Solo para tests. Se compila con hashes a requirements-dev.txt (ver README).
+-c requirements.txt
+pytest>=8.0

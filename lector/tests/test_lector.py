@@ -140,12 +140,14 @@ def test_pagina_sin_filas_conserva_ultimo_dato():
     assert a["avisos"] == ["fuente_no_disponible"]
 
 
-def test_fuente_caida_conserva_avisos_del_dato():
+def test_fuente_caida_no_arrastra_dato_a_verificar():
     r = registro_real()
     r["estacion"]["valor_m"] = 7.2
     anterior = armar(r)
+    assert "dato_a_verificar" in anterior["avisos"]
     a = armar(None, anterior, ahora=AHORA + timedelta(minutes=30))
-    assert a["avisos"] == ["dato_a_verificar", "fuente_no_disponible"]
+    assert a["avisos"] == ["fuente_no_disponible"]
+    assert "nivel_retenido" not in a
 
 
 def test_fuentes_que_no_coinciden_avisan_mientras_dure():
@@ -234,17 +236,32 @@ def test_historial_no_duplica():
     assert h1[0] == {"fecha": "2026-10-09T06:30:00-03:00", "valor_m": 5.89, "fuente": "estacion"}
 
 
+def entrada(fecha, valor, fuente):
+    return {"fecha": fecha.isoformat(), "valor_m": valor, "fuente": fuente}
+
+
 def test_historial_descarta_viejas_y_fuera_de_rango():
-    nuevas = {"prefectura": [(AHORA - timedelta(days=366), 3.0), (AHORA - timedelta(days=364), 3.1),
-                             (AHORA, 99.0)]}
-    h = lector.actualizar_historial([], nuevas, AHORA, CFG)
+    previo = [entrada(AHORA - timedelta(days=366), 3.0, "prefectura"),
+              entrada(AHORA - timedelta(days=364), 3.1, "prefectura")]
+    h = lector.actualizar_historial(previo, {"prefectura": [(AHORA, 99.0)]}, AHORA, CFG)
     assert [e["valor_m"] for e in h] == [3.1]
+
+
+def test_historial_no_reescribe_ni_acepta_lecturas_fuera_de_la_semana():
+    t = AHORA - timedelta(hours=2)
+    previo = [entrada(t, 5.5, "estacion")]
+    nuevas = {"estacion": [(t, 9.9),                                  # misma clave: no se pisa
+                           (AHORA - timedelta(days=8), 1.0),           # más vieja que la semana
+                           (AHORA - timedelta(days=6), 5.0)]}
+    h = lector.actualizar_historial(previo, nuevas, AHORA, CFG)
+    assert [(e["fecha"], e["valor_m"]) for e in h] == [
+        ((AHORA - timedelta(days=6)).isoformat(), 5.0), (t.isoformat(), 5.5)]
 
 
 def test_historial_aligera_lecturas_viejas_de_la_estacion():
     viejo = datetime(2026, 9, 1, 0, 0, tzinfo=TZ_UY)
-    lecturas = [(viejo + timedelta(minutes=30 * i), 4.0) for i in range(48)]  # un día entero
-    h = lector.actualizar_historial([], {"estacion": lecturas}, AHORA, CFG)
+    previo = [entrada(viejo + timedelta(minutes=30 * i), 4.0, "estacion") for i in range(48)]  # un día entero
+    h = lector.actualizar_historial(previo, {}, AHORA, CFG)
     assert [e["fecha"][11:16] for e in h] == ["00:00", "06:00", "12:00", "18:00"]
 
 
