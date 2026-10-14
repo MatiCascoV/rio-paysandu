@@ -146,6 +146,48 @@ def test_sin_tiempo_no_pide_fuentes_secundarias(entorno, monkeypatch):
     assert "pronostico_no_disponible" in a["avisos"]
 
 
+ROTO = '{"esto": no es JSON,'
+
+
+def test_umbrales_ilegibles_publican_altura_sin_nivel(entorno):
+    data, correr = entorno
+    (data / "umbrales.json").write_text(ROTO, encoding="utf-8")
+    codigo, _ = correr()
+    assert codigo == 4
+    a = leer(data, "actual.json")
+    assert a["altura_actual"]["valor_m"] == 5.89 and a["nivel"] == "sin_dato"
+    assert "umbrales_invalidos" in a["avisos"]
+    assert (data / "umbrales.json").read_text(encoding="utf-8") == ROTO  # no se pisa
+
+
+def test_historial_ilegible_no_se_toca_pero_actual_se_escribe(entorno):
+    data, correr = entorno
+    (data / "historial.json").write_text(ROTO, encoding="utf-8")
+    codigo, pedidos = correr()
+    assert codigo == 0
+    assert leer(data, "actual.json")["altura_actual"]["valor_m"] == 5.89
+    assert (data / "historial.json").read_text(encoding="utf-8") == ROTO
+    assert not any("estacion/19" in u for u, _ in pedidos)  # ni se piden las páginas de detalle
+
+
+def test_historial_con_entradas_raras_no_se_toca(entorno):
+    data, correr = entorno
+    raro = '[{"sin": "fecha"}, 3]'
+    (data / "historial.json").write_text(raro, encoding="utf-8")
+    codigo, _ = correr()
+    assert codigo == 0 and (data / "historial.json").read_text(encoding="utf-8") == raro
+
+
+def test_actual_y_estado_ilegibles_no_frenan(entorno):
+    data, correr = entorno
+    (data / "actual.json").write_text(ROTO, encoding="utf-8")
+    (data / "estado_lector.json").write_text("[1, 2]", encoding="utf-8")
+    codigo, _ = correr()
+    assert codigo == 0
+    a = leer(data, "actual.json")
+    assert a["altura_actual"]["valor_m"] == 5.89 and a["pronostico"]["url_informe"] == URL_PDF
+
+
 def _leer_json_con(cfg):
     original = lector.leer_json
 

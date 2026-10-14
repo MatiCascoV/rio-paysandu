@@ -77,7 +77,12 @@ Lo de los pasos 2 y 3 se pide con un solo intento, solo si pasaron menos de 90 s
 
 Código de salida de `lector.py`: `0` bien; `3` no se pudo leer el registro de CARU o vino sin el dato de
 Paysandú (se publicó el último dato con `fuente_no_disponible`); `4` `data/umbrales.json` inválido (además
-imprime `::error::`); `1` configuración o archivo de `data/` con JSON mal escrito (no se modifica nada).
+imprime `::error::`); `1` `lector/config.json` mal escrito o con un cero no soportado.
+
+Un archivo de `data/` ilegible no frena la pasada (se avisa con `::error::` en el registro):
+`umbrales.json` cuenta como umbrales inválidos (altura publicada, `nivel` en `sin_dato`, código 4, y el
+archivo no se pisa); `historial.json` no se toca en esa pasada; `actual.json` se trata como si no hubiera
+dato anterior; `estado_lector.json` se empieza de cero.
 
 ## Datos publicados
 

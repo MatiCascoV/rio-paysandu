@@ -423,20 +423,34 @@ def main():
     def hay_tiempo():
         return time.monotonic() - inicio < cfg["presupuesto_secundarias_s"]
 
-    try:
-        umbrales = leer_json(DATA / "umbrales.json")
-        anterior = leer_json(DATA / "actual.json")
-        historial_previo = leer_json(DATA / "historial.json", [])
-        estado = leer_json(DATA / "estado_lector.json", {})
-    except ValueError as e:
-        print(f"ERROR: {e}. No modifiqué nada; corregí ese archivo y volvé a correr.")
-        return 1
-    if umbrales is None:
+    # Un archivo de data/ ilegible no frena la pasada: la altura se publica igual.
+    #   umbrales.json  -> se trata como umbrales inválidos (nivel sin_dato, código 4); no se pisa.
+    #   actual.json    -> como si no hubiera dato anterior (se reescribe entero).
+    #   historial.json -> no se toca en esta pasada.
+    #   estado_lector.json -> se empieza de cero.
+    def leer_o(nombre, por_defecto, tipo):
+        try:
+            valor = leer_json(DATA / nombre, por_defecto)
+        except ValueError as e:
+            print(f"::error::{e}")
+            return por_defecto, True
+        if valor is not None and not isinstance(valor, tipo):
+            print(f"::error::data/{nombre} no tiene la forma esperada")
+            return por_defecto, True
+        return valor, False
+
+    umbrales, umbrales_rotos = leer_o("umbrales.json", None, dict)
+    anterior, _ = leer_o("actual.json", None, dict)
+    historial_previo, historial_roto = leer_o("historial.json", [], list)
+    estado, _ = leer_o("estado_lector.json", {}, dict)
+    if umbrales_rotos:
+        umbrales = {}  # inválidos: no hay nivel hasta que se corrija el archivo
+    elif umbrales is None:
         umbrales = UMBRALES_PROVISORIOS
         escribir_texto(DATA / "umbrales.json", json.dumps(umbrales, ensure_ascii=False, indent=2) + "\n")
         print("Creé data/umbrales.json con los valores provisorios (sin validar).")
-    if not isinstance(estado, dict):
-        estado = {}
+    if historial_roto:
+        print("AVISO: no toco data/historial.json en esta pasada; corregilo a mano.")
     estado_previo = dict(estado)
 
     # 1) Registro de alturas
@@ -466,8 +480,19 @@ def main():
         lectura = registro and registro[fuente]
         if lectura:
             actuales[fuente] = [(lectura["fecha"], lectura["valor_m"])]
-    historial = guardar_historial(actualizar_historial(historial_previo, actuales, ahora, cfg),
-                                  historial_previo)
+    historial = historial_previo
+
+    def sumar_al_historial(nuevas):
+        nonlocal historial, historial_roto
+        if historial_roto:
+            return
+        try:
+            historial = guardar_historial(actualizar_historial(historial, nuevas, ahora, cfg), historial)
+        except (KeyError, TypeError, AttributeError) as e:  # entradas con forma rara
+            print(f"::error::data/historial.json tiene entradas inválidas ({e!r}); no lo toco.")
+            historial_roto = True
+
+    sumar_al_historial(actuales)
 
     # 2) Informe de crecida más reciente (antes que el historial detallado: en
     # una crecida importa más el pronóstico que completar el gráfico).
@@ -481,7 +506,7 @@ def main():
 
     # 3) Historial (páginas de detalle de la estación y de Prefectura)
     detalle = {}
-    for fuente in actuales:
+    for fuente in ([] if historial_roto else actuales):
         if not hay_tiempo():
             print(f"AVISO: sin tiempo para el historial de {fuente} en esta pasada")
             continue
@@ -491,7 +516,7 @@ def main():
         except Exception as e:
             print(f"AVISO: no pude leer el historial de {fuente}: {e}")
     if detalle:
-        historial = guardar_historial(actualizar_historial(historial, detalle, ahora, cfg), historial)
+        sumar_al_historial(detalle)
 
     a = actual["altura_actual"]
     if a:
