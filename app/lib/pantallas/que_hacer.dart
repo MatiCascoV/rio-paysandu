@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../datos.dart';
+import '../enlaces.dart';
 import '../tema.dart';
 import 'comunes.dart';
 
@@ -121,7 +122,7 @@ class _FilaTelefono extends StatelessWidget {
   Widget build(BuildContext context) {
     final tema = Theme.of(context).textTheme;
     final c = contacto;
-    void llamar() => abrirEnlace(context, 'tel:${c.telefono.replaceAll(' ', '')}');
+    void alLlamar() => llamar(context, c.telefono);
     return ConstrainedBox(
       constraints: const BoxConstraints(minHeight: 72),
       child: Padding(
@@ -156,13 +157,13 @@ class _FilaTelefono extends StatelessWidget {
               button: true,
               excludeSemantics: true,
               label: 'Llamar a ${c.nombre}, ${c.telefono.replaceAll(' ', '').split('').join(' ')}. $grupo',
-              onTap: llamar,
+              onTap: alLlamar,
               child: FilledButton.icon(
                 style: FilledButton.styleFrom(
                   minimumSize: const Size(112, 56),
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                 ),
-                onPressed: llamar,
+                onPressed: alLlamar,
                 icon: const Icon(Icons.phone, size: 20),
                 label: const Text('Llamar'),
               ),

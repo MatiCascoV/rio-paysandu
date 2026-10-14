@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:rio_paysandu/datos.dart';
+import 'package:rio_paysandu/enlaces.dart';
 import 'package:rio_paysandu/main.dart';
 import 'package:rio_paysandu/modelos.dart';
 import 'package:rio_paysandu/pantallas/ajustes.dart';
@@ -48,6 +49,11 @@ Datos datosCon(Map<String, dynamic> actual, {bool sinConexion = false}) =>
     Datos(actual: Actual.desdeJson(actual), umbrales: umbrales, sinConexion: sinConexion);
 
 void main() {
+  // Los mismos sitios permitidos que usa la app.
+  setUpAll(() => permitirOrigenes(
+      Config.desdeJson(jsonDecode(File('assets/config.json').readAsStringSync()) as Map<String, dynamic>)
+          .enlacesPermitidos));
+
   group('Inicio con un actual.json falso para cada nivel', () {
     final casos = {
       'normal': (3.20, 'NORMAL', 'por debajo del nivel de alerta'),

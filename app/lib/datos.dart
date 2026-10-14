@@ -30,11 +30,15 @@ class Config {
   final int horasSinDato;
   final List<Contacto> contactos;
 
+  /// Sitios cuyos enlaces se pueden abrir (esquema, sitio y puerto).
+  final List<String> enlacesPermitidos;
+
   const Config({
     required this.urlBase,
     this.horasAvisoDatoViejo = 6,
     this.horasSinDato = 48,
     this.contactos = const [],
+    this.enlacesPermitidos = const [],
   });
 
   static Config desdeJson(Map<String, dynamic> j) => Config(
@@ -47,6 +51,9 @@ class Config {
         contactos: [
           for (final c in (j['contactos'] as List? ?? const []))
             Contacto(c['nombre'] as String, c['telefono'] as String, c['detalle'] as String?, c['grupo'] as String? ?? ''),
+        ],
+        enlacesPermitidos: [
+          for (final e in (j['enlaces_permitidos'] as List? ?? const [])) e as String,
         ],
       );
 
@@ -73,16 +80,45 @@ class Repositorio {
 
   static const _archivos = ['actual', 'umbrales', 'historial'];
 
-  /// Baja un archivo; si lo consigue lo guarda. Devuelve (json, vinoDeLaRed).
+  /// Tope de cada respuesta: los archivos reales pesan unos pocos KB.
+  static const bytesMaximos = 2 * 1024 * 1024;
+
+  /// ¿El JSON tiene la forma esperada? Una respuesta rara no pisa la copia buena.
+  static bool esValido(String nombre, Object? json) => switch (nombre) {
+        'actual' => json is Map &&
+            json['nivel'] is String &&
+            Actual.desdeJson(json) != null &&
+            // Si trae altura, tiene que ser una altura posible.
+            (json['altura_actual'] == null || Lectura.desdeJson(json['altura_actual']) != null),
+        'umbrales' => Umbrales.desdeJson(json) != null,
+        'historial' => json is List,
+        _ => false,
+      };
+
+  /// Baja el archivo cortando apenas pasa de [bytesMaximos].
+  Future<List<int>?> _bajar(String nombre) async {
+    final r = await _cliente.send(http.Request('GET', Uri.parse('$urlBase$nombre.json')));
+    if (r.statusCode != 200 || (r.contentLength ?? 0) > bytesMaximos) return null;
+    final bytes = <int>[];
+    await for (final parte in r.stream) {
+      bytes.addAll(parte);
+      if (bytes.length > bytesMaximos) return null;
+    }
+    return bytes;
+  }
+
+  /// Baja un archivo; si lo consigue y es válido lo guarda. Devuelve (json, vinoDeLaRed).
   Future<(Object?, bool)> _leer(String nombre, SharedPreferences prefs, bool usarRed) async {
     if (usarRed) {
       try {
-        final r = await _cliente.get(Uri.parse('$urlBase$nombre.json')).timeout(const Duration(seconds: 15));
-        if (r.statusCode == 200) {
-          final texto = utf8.decode(r.bodyBytes);
+        final bytes = await _bajar(nombre).timeout(const Duration(seconds: 15));
+        if (bytes != null) {
+          final texto = utf8.decode(bytes);
           final json = jsonDecode(texto); // si no es JSON válido, no se guarda
-          await prefs.setString('cache_$nombre', texto);
-          return (json, true);
+          if (esValido(nombre, json)) {
+            await prefs.setString('cache_$nombre', texto);
+            return (json, true);
+          }
         }
       } catch (_) {
         // sin conexión, tiempo agotado o respuesta rota: seguimos con la copia
@@ -91,7 +127,8 @@ class Repositorio {
     final guardado = prefs.getString('cache_$nombre');
     if (guardado == null) return (null, false);
     try {
-      return (jsonDecode(guardado), false);
+      final json = jsonDecode(guardado);
+      return (esValido(nombre, json) ? json : null, false);
     } catch (_) {
       return (null, false);
     }

@@ -211,5 +211,7 @@ String? textoAviso(String codigo) => switch (codigo) {
       'dato_a_verificar' => 'Este dato puede tener un error. Puede cambiar cuando CARU lo revise.',
       'dato_fuera_de_rango' => 'Llegó un dato con error y no se muestra.',
       'fuente_no_disponible' => 'No llegó información nueva de CARU. Se muestra el último dato que hay.',
+      'umbrales_invalidos' =>
+        'Los niveles de referencia que llegaron tienen un error; no se usan para calcular el nivel.',
       _ => null,
     };

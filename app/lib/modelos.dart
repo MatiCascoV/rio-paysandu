@@ -2,6 +2,11 @@
 /// La lectura es tolerante: si falta un campo queda en null, nunca se inventa.
 library;
 
+import 'enlaces.dart';
+
+// Inicio decide con esto si muestra el botón del enlace.
+export 'enlaces.dart' show enlacePermitido;
+
 enum Nivel { normal, atencion, alerta, evacuacion, sinDato }
 
 Nivel nivelDesdeTexto(String? texto) => switch (texto) {
@@ -20,9 +25,43 @@ String nivelATexto(Nivel n) => switch (n) {
       Nivel.sinDato => 'sin_dato',
     };
 
-double? _numero(Object? v) => v is num ? v.toDouble() : null;
+/// Solo números de verdad: nada de infinito ni NaN.
+double? _numero(Object? v) => v is num && v.isFinite ? v.toDouble() : null;
 DateTime? _fecha(Object? v) => v is String ? DateTime.tryParse(v) : null;
 String? _texto(Object? v) => v is String ? v : null;
+
+/// Altura o umbral en metros: fuera de 0 a 20 m es un error, no un dato.
+double? _altura(Object? v) {
+  final n = _numero(v);
+  return n != null && n >= 0 && n <= 20 ? n : null;
+}
+
+/// Variación de altura: como mucho lo que mide la escala, para arriba o abajo.
+double? _variacion(Object? v) {
+  final n = _numero(v);
+  return n != null && n.abs() <= 20 ? n : null;
+}
+
+/// Enlace a CARU: solo si es de un sitio permitido (ver enlaces.dart).
+String? _enlace(Object? v) {
+  final t = _texto(v);
+  return enlacePermitido(t) ? t : null;
+}
+
+/// Tope del caudal: el río Uruguay nunca pasó de unos 40.000 m³/s.
+const _caudalMaximo = 200000;
+
+/// Tope del texto del pronóstico, para que un texto raro no ocupe la pantalla.
+const largoMaximoTexto = 600;
+
+String? _textoCorto(Object? v) {
+  final t = _texto(v);
+  if (t == null || t.runes.length <= largoMaximoTexto) return t;
+  return '${String.fromCharCodes(t.runes.take(largoMaximoTexto - 1))}…';
+}
+
+/// Margen para relojes un poco adelantados: más allá, una fecha futura es un error.
+const _margenFuturo = Duration(hours: 1);
 
 class Lectura {
   final double valorM;
@@ -45,17 +84,17 @@ class Lectura {
 
   static Lectura? desdeJson(Object? j) {
     if (j is! Map) return null;
-    final valor = _numero(j['valor_m']);
+    final valor = _altura(j['valor_m']);
     final fecha = _fecha(j['fecha']);
     if (valor == null || fecha == null) return null;
     return Lectura(
       valorM: valor,
       fecha: fecha,
-      variacionM: _numero(j['variacion_m']),
+      variacionM: _variacion(j['variacion_m']),
       periodo: _texto(j['periodo']),
       estado: _texto(j['estado']),
       fuente: _texto(j['fuente']),
-      url: _texto(j['url']),
+      url: _enlace(j['url']),
     );
   }
 }
@@ -82,12 +121,17 @@ class Pronostico {
     return Pronostico(
       vigente: j['vigente'] == true,
       informeFecha: _fecha(j['informe_fecha']),
-      alturaEsperadaM: _numero(j['altura_esperada_m']),
-      texto: _texto(j['texto']),
-      caudalM3s: _numero(j['caudal_salto_grande_m3s'])?.round(),
-      urlInforme: _texto(j['url_informe']),
+      alturaEsperadaM: _altura(j['altura_esperada_m']),
+      texto: _textoCorto(j['texto']),
+      caudalM3s: _caudal(j['caudal_salto_grande_m3s']),
+      urlInforme: _enlace(j['url_informe']),
     );
   }
+}
+
+int? _caudal(Object? v) {
+  final n = _numero(v);
+  return n != null && n >= 0 && n <= _caudalMaximo ? n.round() : null;
 }
 
 class Actual {
@@ -121,10 +165,12 @@ class Actual {
   }
 
   /// Nivel que la app puede mostrar: si no hay altura, o es demasiado vieja
-  /// (por ejemplo porque el lector dejó de correr), es "sin dato".
+  /// (por ejemplo porque el lector dejó de correr), es "sin dato". Una fecha
+  /// en el futuro también: el dato está mal.
   Nivel nivelVigente(DateTime ahora, int horasSinDato) {
     final a = altura;
     if (a == null) return Nivel.sinDato;
+    if (a.fecha.difference(ahora) > _margenFuturo) return Nivel.sinDato;
     if (ahora.difference(a.fecha).inMinutes > horasSinDato * 60) return Nivel.sinDato;
     return nivel;
   }
@@ -142,9 +188,9 @@ class Umbrales {
     if (j is! Map) return null;
     return Umbrales(
       validado: j['validado'] == true,
-      atencionM: _numero(j['atencion_m']),
-      alertaM: _numero(j['alerta_m']),
-      evacuacionM: _numero(j['evacuacion_m']),
+      atencionM: _altura(j['atencion_m']),
+      alertaM: _altura(j['alerta_m']),
+      evacuacionM: _altura(j['evacuacion_m']),
     );
   }
 
@@ -163,14 +209,16 @@ class PuntoHistorial {
 
   const PuntoHistorial(this.fecha, this.valorM, this.fuente);
 
-  static List<PuntoHistorial> listaDesdeJson(Object? j) {
+  /// Se descartan los puntos sin fecha, con alturas imposibles o en el futuro.
+  static List<PuntoHistorial> listaDesdeJson(Object? j, {DateTime? ahora}) {
     if (j is! List) return const [];
+    final limite = (ahora ?? DateTime.now()).add(_margenFuturo);
     final puntos = <PuntoHistorial>[];
     for (final e in j) {
       if (e is! Map) continue;
       final fecha = _fecha(e['fecha']);
-      final valor = _numero(e['valor_m']);
-      if (fecha != null && valor != null) {
+      final valor = _altura(e['valor_m']);
+      if (fecha != null && valor != null && !fecha.isAfter(limite)) {
         puntos.add(PuntoHistorial(fecha, valor, _texto(e['fuente']) ?? ''));
       }
     }

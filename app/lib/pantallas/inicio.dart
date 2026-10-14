@@ -266,7 +266,7 @@ class PantallaInicio extends StatelessWidget {
           'Prefectura midió ${formatoAltura(prefectura.valorM)} m ${formatoFecha(prefectura.fecha, ahora)}.',
           style: apoyo,
         ),
-      if (altura.url != null)
+      if (enlacePermitido(altura.url))
         Align(
           alignment: Alignment.centerLeft,
           child: TextButton(

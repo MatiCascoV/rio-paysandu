@@ -6,6 +6,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'datos.dart';
+import 'enlaces.dart';
 import 'notificaciones.dart';
 import 'pantallas/ajustes.dart';
 import 'pantallas/grafico.dart';
@@ -16,6 +17,7 @@ import 'tema.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final config = await Config.cargar();
+  permitirOrigenes(config.enlacesPermitidos);
   final prefs = await SharedPreferences.getInstance();
   try {
     await Notificaciones.iniciar(config, prefs);

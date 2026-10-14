@@ -64,6 +64,9 @@ Future<void> _iniciarPlugin() => _plugin.initialize(
 /// Compara el nivel con el último conocido y, si corresponde, muestra el aviso.
 Future<void> revisarNivel(Actual? actual, SharedPreferences prefs, {DateTime? ahora}) async {
   if (kIsWeb || actual == null) return;
+  // Un dato que CARU todavía tiene que verificar no dispara avisos (ni se
+  // recuerda: el próximo dato bueno se compara con el último bueno).
+  if (actual.avisos.contains('dato_a_verificar')) return;
   ahora ??= DateTime.now();
   await prefs.reload(); // la app y la tarea en segundo plano comparten estos datos
   final nuevo = actual.nivelVigente(ahora, prefs.getInt(_claveHorasSinDato) ?? 48);
