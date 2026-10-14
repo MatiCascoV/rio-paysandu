@@ -21,8 +21,12 @@ app/android/app/release/
 # --- Secretos: nunca al repositorio ---
 .env
 .env.*
+!.env.example
 *.jks
 *.keystore
+*.p12
+*.pem
+*.key
 key.properties
 google-services.json
 *service-account*.json
