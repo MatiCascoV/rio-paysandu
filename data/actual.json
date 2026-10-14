@@ -1,9 +1,9 @@
 {
-  "generado": "2026-10-14T13:16:45-03:00",
+  "generado": "2026-10-14T14:17:56-03:00",
   "cero": "Local",
   "altura_actual": {
-    "valor_m": 6.06,
-    "fecha": "2026-10-14T13:00:00-03:00",
+    "valor_m": 6.05,
+    "fecha": "2026-10-14T14:00:00-03:00",
     "variacion_m": 0.0,
     "periodo": "30 min",
     "estado": "estacionado",
@@ -20,11 +20,11 @@
   },
   "pronostico": {
     "vigente": true,
-    "informe_fecha": "2026-10-13",
-    "altura_esperada_m": 6.5,
-    "texto": "Debido al descenso pronosticado en la erogación, se espera que durante los próximos días continúen descendiendo los niveles observados.",
-    "caudal_salto_grande_m3s": 17000,
-    "url_informe": "https://caru.org.uy/nuevositio/wp-content/uploads/2026/10/20261013-Crecida-1.pdf"
+    "informe_fecha": "2026-10-14",
+    "altura_esperada_m": 6.06,
+    "texto": "Debido al caudal de erogación pronosticados, se espera un descenso leve y lento de los niveles.",
+    "caudal_salto_grande_m3s": 16800,
+    "url_informe": "https://caru.org.uy/nuevositio/wp-content/uploads/2026/10/20261014-Crecida.pdf"
   },
   "nivel": "alerta",
   "avisos": []
