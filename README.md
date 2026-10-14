@@ -83,8 +83,6 @@ flutter run                  # con un celular conectado por USB
 flutter build apk --release  # genera build/app/outputs/flutter-apk/app-release.apk
 ```
 
-Para instalar por USB en un Xiaomi/Redmi hay que activar, en *Opciones de desarrollador*,
-"Depuración USB" e "Instalar vía USB", y aceptar el cartel que aparece en el teléfono.
 
 ## Estado
 
