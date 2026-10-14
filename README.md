@@ -75,6 +75,11 @@ antes de terminar, lanza la corrida siguiente. El horario programado queda solo 
   `in_progress`. Los commits "Datos de CARU …" aparecen cada vez que CARU publica algo nuevo.
 - **Si la cadena se cortó** (ninguna corrida en curso): `gh workflow run lector.yml`, o pestaña
   **Actions → Lector CARU → Run workflow**.
+- **Si CARU no responde:** cada lectura tiene un tope de 3 minutos. Si el lector falla 12 pasadas
+  seguidas (unas 2 horas), la corrida termina en error y GitHub manda un correo; la cadena sigue igual.
+- **Arranque a mano con otros tiempos:** `minutos_entre_lecturas` tiene que ser al menos 5 y
+  `minutos_de_trabajo + minutos_entre_lecturas` como mucho 330; si no, la corrida falla y la
+  siguiente arranca con los valores normales.
 - **Para detenerla:** `gh workflow disable lector.yml`. Cancelar una corrida no alcanza, porque al
   cancelarse lanza la siguiente. Para reanudar: `gh workflow enable lector.yml` y lanzarla.
 

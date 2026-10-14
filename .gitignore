@@ -4,6 +4,8 @@ __pycache__/
 .venv/
 venv/
 .pytest_cache/
+# temporales del lector si una escritura se corta (no se publican)
+data/*.tmp
 
 # --- Flutter / Dart (app) ---
 app/.dart_tool/

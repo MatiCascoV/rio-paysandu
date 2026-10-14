@@ -51,22 +51,63 @@ jobs:
 
       - name: Leer CARU cada 10 minutos y guardar data/ cuando cambia
         run: |
+          # Las entradas del arranque a mano llegan como texto: solo se aceptan números
+          # razonables (si no, este trabajo falla y "relanzar" arranca uno con los valores normales).
+          for v in "$MINUTOS_ENTRE_LECTURAS" "$MINUTOS_DE_TRABAJO"; do
+            if ! [[ "$v" =~ ^[0-9]{1,3}$ ]]; then
+              echo "::error::Entrada inválida: '$v' (se esperan de 1 a 3 cifras)"; exit 1
+            fi
+          done
+          entre=$(( 10#$MINUTOS_ENTRE_LECTURAS )); trabajo=$(( 10#$MINUTOS_DE_TRABAJO ))
+          if [ "$entre" -lt 5 ]; then
+            echo "::error::minutos_entre_lecturas debe ser al menos 5 (vino $entre)"; exit 1
+          fi
+          if [ "$trabajo" -lt 1 ] || [ $(( trabajo + entre )) -gt 330 ]; then
+            # Tiene que entrar en timeout-minutes (350) contando la última espera y lectura.
+            echo "::error::minutos_de_trabajo debe ser al menos 1 y, sumado a minutos_entre_lecturas, como mucho 330 (vino $trabajo + $entre)"; exit 1
+          fi
+
           git config user.name "lector-caru[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          fin=$(( $(date +%s) + MINUTOS_DE_TRABAJO * 60 ))
+          fin=$(( $(date +%s) + trabajo * 60 ))
+          fallos=0 # pasadas seguidas en las que el lector terminó con error
           while :; do
-            # Traer cambios del repositorio (por ejemplo, umbrales editados a mano).
-            git pull --rebase --quiet || echo "::warning::No se pudo traer el repositorio"
+            # Partir siempre de lo publicado en main (por ejemplo, umbrales editados a mano).
+            # Si quedó un commit sin subir de la pasada anterior, se descarta: el lector
+            # vuelve a generar data/ con lo que haya en CARU.
+            if ! { git fetch --quiet origin main && git reset --quiet --hard origin/main; }; then
+              echo "::warning::No se pudo traer el repositorio"
+            fi
+
             # Si una lectura falla, se sigue: la próxima pasada lo vuelve a intentar.
-            python lector/lector.py || echo "::warning::El lector falló en esta pasada"
+            codigo=0
+            timeout 180 python lector/lector.py || codigo=$?
+            if [ "$codigo" -ne 0 ]; then
+              fallos=$(( fallos + 1 ))
+              echo "::warning::El lector falló en esta pasada (código $codigo; $fallos seguidas)"
+            else
+              fallos=0
+            fi
+
+            rm -f data/*.tmp # restos de una escritura cortada por timeout
             git add data
             if ! git diff --cached --quiet; then
               git commit --quiet -m "Datos de CARU $(TZ=America/Montevideo date '+%d/%m/%Y %H:%M')"
-              git push --quiet || { git pull --rebase --quiet && git push --quiet; } \
-                || echo "::warning::No se pudieron subir los datos"
+              if ! git push --quiet; then
+                if ! { git pull --rebase --quiet && git push --quiet; }; then
+                  git rebase --abort 2>/dev/null || true
+                  echo "::warning::No se pudieron subir los datos"
+                fi
+              fi
+            fi
+
+            # Unas 2 horas seguidas sin poder leer CARU: el trabajo termina en error para
+            # que GitHub mande el correo de falla. "relanzar" arranca la corrida siguiente igual.
+            if [ "$fallos" -ge 12 ]; then
+              echo "::error::El lector falló $fallos pasadas seguidas"; exit 1
             fi
             [ "$(date +%s)" -ge "$fin" ] && break
-            sleep $(( MINUTOS_ENTRE_LECTURAS * 60 ))
+            sleep $(( entre * 60 ))
           done
 
   # Trabajo aparte para que el token que puede lanzar workflows no conviva con
