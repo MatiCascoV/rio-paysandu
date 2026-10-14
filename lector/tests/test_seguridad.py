@@ -87,6 +87,65 @@ def test_descargar_rechaza_url_fuera_de_la_lista():
         red.descargar("https://evil.example/x.pdf", intentos=1)
 
 
+@pytest.mark.parametrize("url, proposito, esperado", [
+    ("https://caru.org.uy:443/x.pdf", "informes", True),     # puerto por defecto explícito
+    ("http://190.0.152.194:8080/x", "registro", True),
+    ("https://caru.org.uy/x.pdf", "registro", False),          # cada lista para lo suyo
+    ("http://190.0.152.194:8080/x.pdf", "informes", False),
+    ("http://caru.org.uy:80/x.pdf", "informes", False),
+    ("https://caru.org.uy:8443/x.pdf", "informes", False),
+    ("https://caru.org.uy:99999/x.pdf", "informes", False),    # puerto inválido
+])
+def test_url_permitida_por_proposito(url, proposito, esperado):
+    assert red.url_permitida(url, proposito) is esperado
+
+
+def test_indice_no_toma_pdf_del_servidor_del_registro():
+    html = '<a href="http://190.0.152.194:8080/20261009-crecida.pdf">INFORME 9/10/2026</a>'
+    assert caru_informes.listar_informes(html, URL_INDICE) == []
+
+
+class _Respuesta:
+    def __init__(self, location):
+        self.is_redirect = True
+        self.headers = {"Location": location}
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+def test_redireccion_de_https_a_http_se_rechaza(monkeypatch):
+    monkeypatch.setattr(red.requests, "get", lambda *a, **k: _Respuesta("http://caru.org.uy/x.pdf"))
+    with pytest.raises(ValueError, match="https"):
+        red.descargar("https://caru.org.uy/x.pdf", intentos=1, proposito="informes")
+
+
+def test_redireccion_a_otro_sitio_se_rechaza(monkeypatch):
+    monkeypatch.setattr(red.requests, "get", lambda *a, **k: _Respuesta("https://evil.example/x.pdf"))
+    with pytest.raises(ValueError, match="no permitida"):
+        red.descargar("https://caru.org.uy/x.pdf", intentos=1, proposito="informes")
+
+
+def test_descargar_respeta_el_limite_total(monkeypatch):
+    llamadas = []
+
+    def caido(*a, **k):
+        llamadas.append(k["timeout"])
+        raise red.requests.ConnectionError("caído")
+    monkeypatch.setattr(red.requests, "get", caido)
+    monkeypatch.setattr(red.time, "sleep", lambda s: None)
+    with pytest.raises(TimeoutError):
+        red.descargar("https://caru.org.uy/x.pdf", intentos=3, proposito="informes", hasta=red.time.monotonic() - 1)
+    assert llamadas == []
+    with pytest.raises(red.requests.ConnectionError):
+        red.descargar("https://caru.org.uy/x.pdf", intentos=3, espera_s=0, proposito="informes",
+                      hasta=red.time.monotonic() + 5)
+    assert len(llamadas) == 3 and all(t[1] <= 5 for t in llamadas)
+
+
 # ----- texto y números de la página -----
 
 def test_texto_inyectado_en_el_periodo_se_descarta():

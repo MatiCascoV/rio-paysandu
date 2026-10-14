@@ -281,8 +281,8 @@ def main():
     if cfg["cero"] != "Local":
         print(f"ERROR: el cero '{cfg['cero']}' todavía no está soportado; usá 'Local'.")
         return 1
-    red.permitir_origen_de(cfg["registro_url"])
-    red.permitir_origen_de(cfg["informes_indice_url"])
+    red.permitir_origen_de(cfg["registro_url"], "registro")
+    red.permitir_origen_de(cfg["informes_indice_url"], "informes")
     bajar = lambda url: red.descargar(url, cfg["red_intentos"], cfg["red_espera_s"], cfg["red_timeout_s"])
     ahora = datetime.now(TZ_UY)
 

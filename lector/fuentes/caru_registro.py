@@ -59,7 +59,7 @@ def _enlace(base_url, href):
     """El enlace de detalle se publica y la app lo abre: solo vale si apunta
     al mismo sitio de CARU. Si no, se usa la página general."""
     url = urljoin(base_url, href or "")
-    return url if url_permitida(url) else base_url
+    return url if url_permitida(url, "registro") else base_url
 
 
 def _fecha(txt):

@@ -39,7 +39,7 @@ def listar_informes(html, base_url, hoy=None):
         if not url.lower().split("?")[0].endswith(".pdf"):
             continue
         # El PDF se descarga y su dirección se publica: solo desde el sitio de CARU.
-        if not url_permitida(url):
+        if not url_permitida(url, "informes"):
             continue
         texto = a.get_text(" ", strip=True)
         if "informe" not in texto.lower() and "crecida" not in url.lower():
