@@ -42,8 +42,8 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
-          # El token no queda guardado en .git/config, donde el lector (que procesa
-          # contenido ajeno) podría leerlo. Se pasa solo al comando que sube.
+          # El token no queda guardado en .git/config. Es una reducción de exposición,
+          # no aislamiento: ver el comentario del paso de lectura.
           persist-credentials: false
 
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
@@ -61,12 +61,26 @@ jobs:
           TOKEN_PARA_SUBIR: ${{ github.token }}
           GIT_TERMINAL_PROMPT: "0"
         run: |
-          # El token se convierte en el encabezado que usa git y se saca del entorno:
-          # ni el lector ni git fetch lo reciben; solo el push (ver subir()).
+          # El token se convierte en el encabezado que usa git y se saca del entorno
+          # que heredan los procesos: el lector y git fetch no lo reciben; solo el push
+          # (ver subir()). Esto REDUCE la exposición, no aísla: el lector corre con el
+          # mismo usuario, que puede leer /proc/<pid de este bash>/environ (todavía
+          # tiene el token) y además tiene sudo en el runner. Correr el lector con un
+          # usuario sin privilegios queda para una tanda siguiente.
           auth=$(printf 'x-access-token:%s' "$TOKEN_PARA_SUBIR" | base64 -w0)
           echo "::add-mask::$auth"
           unset TOKEN_PARA_SUBIR
           subir() {
+            # Guarda barata: el commit a subir solo puede tocar data/. Si trae otra
+            # cosa (algo raro pasó en el checkout o en el lector), no se sube.
+            local cambios fuera
+            cambios=$(git diff --name-only origin/main HEAD) || {
+              echo "::error::No se pudo comparar con origin/main; no se sube"; return 1; }
+            fuera=$(printf '%s\n' "$cambios" | grep -v -e '^data/' -e '^$' || true)
+            if [ -n "$fuera" ]; then
+              echo "::error::El commit a subir toca archivos fuera de data/; no se sube: $(echo "$fuera" | tr '\n' ' ')"
+              return 1
+            fi
             GIT_CONFIG_COUNT=1 \
             GIT_CONFIG_KEY_0="http.https://github.com/.extraheader" \
             GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $auth" \

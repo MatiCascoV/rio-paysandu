@@ -248,14 +248,21 @@ def test_historial_descarta_viejas_y_fuera_de_rango():
 
 
 def test_historial_no_reescribe_ni_acepta_lecturas_fuera_de_la_semana():
-    t = AHORA - timedelta(hours=2)
+    t = AHORA - timedelta(days=3)
     previo = [entrada(t, 5.5, "estacion")]
-    nuevas = {"estacion": [(t, 9.9),                                  # misma clave: no se pisa
+    nuevas = {"estacion": [(t, 9.9),                                  # más de 48 h: no se pisa
                            (AHORA - timedelta(days=8), 1.0),           # más vieja que la semana
                            (AHORA - timedelta(days=6), 5.0)]}
     h = lector.actualizar_historial(previo, nuevas, AHORA, CFG)
     assert [(e["fecha"], e["valor_m"]) for e in h] == [
         ((AHORA - timedelta(days=6)).isoformat(), 5.0), (t.isoformat(), 5.5)]
+
+
+def test_historial_corrige_un_pico_falso_reciente():
+    # CARU corrige una lectura de hace 2 h (un pico falso): el historial lo toma.
+    t = AHORA - timedelta(hours=2)
+    h = lector.actualizar_historial([entrada(t, 9.9, "estacion")], {"estacion": [(t, 5.9)]}, AHORA, CFG)
+    assert [e["valor_m"] for e in h] == [5.9]
 
 
 def test_historial_aligera_lecturas_viejas_de_la_estacion():

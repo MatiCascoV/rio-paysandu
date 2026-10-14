@@ -138,3 +138,47 @@ def test_fecha_futura_se_descarta_sin_retener():
     assert a["altura_actual"]["valor_m"] == 7.00  # se usa Prefectura
     assert a["nivel"] == "evacuacion"
     assert "nivel_retenido" not in a
+
+
+def test_corte_de_la_fuente_despues_de_un_salto_no_libera_la_retencion():
+    # Pasada 1: salto 6,10 -> 7,50 (retenido en alerta). Después CARU no responde:
+    # la altura publicada sigue siendo la lectura dudosa. Se mantiene la retención
+    # con el mismo tope (30 min) y el aviso, y después se publica con aviso.
+    t0 = datetime(2026, 10, 9, 7, 0, tzinfo=TZ_UY)
+    anterior = pasada(registro(6.10, t0, 6.10, 6.05, t0 - timedelta(hours=1)), None, t0)
+    t1 = t0 + timedelta(minutes=30)
+    anterior = pasada(registro(7.50, t1, 6.10, 6.05, t0 - timedelta(hours=1)), anterior, t1)
+    assert anterior["nivel"] == "alerta" and "nivel_retenido" in anterior
+    resultados = []
+    for minutos in (10, 20, 30, 40, 50):
+        anterior = pasada(None, anterior, t1 + timedelta(minutes=minutos))
+        resultados.append((anterior["nivel"], anterior["avisos"], "nivel_retenido" in anterior))
+    av = ["dato_a_verificar", "fuente_no_disponible"]
+    assert resultados == [("alerta", av, True), ("alerta", av, True), ("evacuacion", av, False),
+                          ("evacuacion", av, False), ("evacuacion", av, False)]
+
+
+def test_corte_de_la_fuente_no_arrastra_aviso_por_otra_causa():
+    # El aviso venía de la diferencia entre fuentes (no de un salto): no dura todo el corte.
+    t0 = datetime(2026, 10, 9, 8, 0, tzinfo=TZ_UY)
+    anterior = pasada(registro(7.00, t0 - timedelta(minutes=30), 6.97, 5.50, t0 - timedelta(hours=2)), None, t0)
+    assert "dato_a_verificar" in anterior["avisos"]
+    a = pasada(None, anterior, t0 + timedelta(minutes=10))
+    assert a["avisos"] == ["fuente_no_disponible"]
+
+
+def pronostico(dias_atras, esperada, ahora):
+    return {"vigente": True, "informe_fecha": (ahora.date() - timedelta(days=dias_atras)).isoformat(),
+            "altura_esperada_m": esperada}
+
+
+def test_contraste_con_pronostico_reciente_avisa_sin_retener():
+    ahora = datetime(2026, 10, 9, 8, 0, tzinfo=TZ_UY)
+    reg = registro(7.50, ahora - timedelta(minutes=30), 7.48, 7.40, ahora - timedelta(hours=2))
+    anterior = {"nivel": "evacuacion", "avisos": [],
+                "altura_actual": {"valor_m": 7.48, "fecha": (ahora - timedelta(hours=1)).isoformat()}}
+    a = lector.armar_actual(reg, pronostico(0, 5.5, ahora), UMBRALES, anterior, ahora, CFG)
+    assert "dato_a_verificar" in a["avisos"] and a["nivel"] == "evacuacion" and "nivel_retenido" not in a
+    # Diferencia chica, pronóstico viejo (2 días, aunque siga vigente) o no vigente: sin aviso.
+    for p in (pronostico(0, 6.5, ahora), pronostico(2, 5.5, ahora), dict(pronostico(0, 5.5, ahora), vigente=False)):
+        assert lector.armar_actual(reg, p, UMBRALES, anterior, ahora, CFG)["avisos"] == []

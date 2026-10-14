@@ -51,7 +51,7 @@ Los umbrales de nivel están en `data/umbrales.json` y son **provisorios** hasta
 |---|---|
 | `estacion_desactualizada` | La estación automática lleva más de 3 h sin dato; se muestra la lectura de Prefectura. |
 | `dato_desactualizado` | La lectura mostrada es más vieja de lo esperable. |
-| `dato_a_verificar` | El dato se publica, pero puede tener un error: salto de más de 1 m en menos de 6 h contra la lectura anterior, estación y Prefectura que difieren más de 1 m con lecturas a menos de 3 h entre sí, o una lectura con fecha futura (que se descarta). Solo el **salto** retiene `nivel`: se mantiene el anterior hasta que llegue una lectura con fecha más nueva o pasen 30 minutos (`retencion_max_min`), lo que ocurra primero; mientras tanto `actual.json` trae `nivel_retenido` (`fecha_lectura` retenida y `desde` cuándo). Las otras causas solo avisan. |
+| `dato_a_verificar` | El dato se publica, pero puede tener un error: salto de más de 1 m en menos de 6 h contra la lectura anterior, estación y Prefectura que difieren más de 1 m con lecturas a menos de 3 h entre sí, una lectura con fecha futura (que se descarta), o una altura que difiere más de 1,5 m de la esperada por un informe de crecida de hasta 1 día (`contraste_pronostico_m`, `contraste_pronostico_dias`). Solo el **salto** retiene `nivel`: se mantiene el anterior hasta que llegue una lectura con fecha más nueva o pasen 30 minutos (`retencion_max_min`), lo que ocurra primero; mientras tanto `actual.json` trae `nivel_retenido` (`fecha_lectura` retenida y `desde` cuándo). Si CARU deja de responder justo después de un salto, el tope de 30 minutos sigue corriendo igual y el aviso se mantiene mientras se muestre esa lectura. Las otras causas solo avisan. |
 | `umbrales_invalidos` | `data/umbrales.json` está mal cargado (alturas fuera de 0–20 m o fuera de orden: debe ser atención < alerta < evacuación; atención puede faltar). `nivel` queda en `sin_dato` hasta corregirlo. |
 | `dato_fuera_de_rango` | Se descartó una lectura fuera de 0–20 m. |
 | `fuente_no_disponible` | No se pudo leer CARU; se conserva el último dato válido con su fecha. |
@@ -67,7 +67,9 @@ Los umbrales de nivel están en `data/umbrales.json` y son **provisorios** hasta
 2. Revisa el índice de informes de crecida y, si hay uno nuevo, baja el PDF y lo lee en un proceso aparte
    (`lector/pdf_aislado.py`: 60 s como máximo y, en Linux, 1,5 GB de memoria). Si el PDF no se puede leer,
    se anota en `data/estado_lector.json` y no se reintenta hasta 6 h después (`pdf_reintento_horas`).
-3. Completa el historial con las páginas de detalle.
+3. Completa el historial con las páginas de detalle (última semana). Un punto ya guardado solo se corrige
+   si es de las últimas 48 h (`historial_correccion_horas`), para que una corrección de CARU borre un pico
+   falso; lo más viejo no se reescribe.
 
 Lo de los pasos 2 y 3 se pide con un solo intento, solo si pasaron menos de 90 s desde el arranque
 (`presupuesto_secundarias_s`) y nunca después de los 150 s (`limite_descargas_s`). Los tiempos están en
@@ -75,7 +77,12 @@ Lo de los pasos 2 y 3 se pide con un solo intento, solo si pasaron menos de 90 s
 
 Código de salida de `lector.py`: `0` bien; `3` no se pudo leer el registro de CARU o vino sin el dato de
 Paysandú (se publicó el último dato con `fuente_no_disponible`); `4` `data/umbrales.json` inválido (además
-imprime `::error::`); `1` configuración o archivo de `data/` con JSON mal escrito (no se modifica nada).
+imprime `::error::`); `1` `lector/config.json` mal escrito o con un cero no soportado.
+
+Un archivo de `data/` ilegible no frena la pasada (se avisa con `::error::` en el registro):
+`umbrales.json` cuenta como umbrales inválidos (altura publicada, `nivel` en `sin_dato`, código 4, y el
+archivo no se pisa); `historial.json` no se toca en esa pasada; `actual.json` se trata como si no hubiera
+dato anterior; `estado_lector.json` se empieza de cero.
 
 ## Datos publicados
 
@@ -106,7 +113,10 @@ antes de terminar, lanza la corrida siguiente. El horario programado queda solo 
   siguiente se lanza 10 minutos después (para no encadenar corridas que fallan al instante).
 - **Permisos:** cada trabajo tiene solo el permiso que usa (`leer`: escribir contenido; `avisar`:
   issues; `relanzar`: lanzar workflows). En `leer`, el token no queda en `.git/config` ni en el entorno
-  del lector: el repositorio se trae sin token (es público) y el token se pasa solo al `git push`.
+  que hereda el lector: el repositorio se trae sin token (es público) y el token se pasa solo al
+  `git push`, que además se niega a subir un commit que toque algo fuera de `data/`. Es una **reducción**
+  de exposición, no aislamiento: el lector corre con el mismo usuario (que puede leer el entorno inicial
+  del proceso del bucle y tiene sudo en el runner). Correrlo con un usuario sin privilegios queda pendiente.
 - **Arranque a mano con otros tiempos:** `minutos_entre_lecturas` tiene que ser al menos 5 y
   `minutos_de_trabajo + minutos_entre_lecturas` como mucho 330; si no, la corrida falla y la
   siguiente arranca con los valores normales.
