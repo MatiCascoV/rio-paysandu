@@ -18,7 +18,7 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: |
-            lector/requirements.lock
+            lector/requirements.txt
             lector/requirements-dev.txt
-      - run: pip install --require-hashes -r lector/requirements.lock -r lector/requirements-dev.txt
+      - run: pip install --require-hashes --only-binary=:all: -r lector/requirements.txt -r lector/requirements-dev.txt
       - run: python -m pytest -q

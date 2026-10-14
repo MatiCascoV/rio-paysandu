@@ -1,0 +1,5 @@
+# Dependencias directas del lector. Se compilan con hashes a requirements.txt
+# (pip-compile, ver README); lo que se instala es requirements.txt.
+requests>=2.32
+beautifulsoup4>=4.12
+pdfplumber>=0.11

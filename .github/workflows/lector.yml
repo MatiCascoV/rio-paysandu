@@ -44,10 +44,11 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: lector/requirements.lock
+          cache-dependency-path: lector/requirements.txt
 
-      # Versiones fijas y verificadas por hash: un paquete alterado en PyPI no se instala.
-      - run: pip install --require-hashes -r lector/requirements.lock
+      # Versiones fijas y verificadas por hash, y solo wheels (sin compilar nada al instalar):
+      # un paquete alterado en PyPI no se instala.
+      - run: pip install --require-hashes --only-binary=:all: -r lector/requirements.txt
 
       - name: Leer CARU cada 10 minutos y guardar data/ cuando cambia
         run: |

@@ -6,7 +6,7 @@ updates:
     schedule:
       interval: weekly
 
-  - package-ecosystem: pip # requirements.txt / requirements.lock (pip-compile con hashes)
+  - package-ecosystem: pip # requirements.in -> requirements.txt y requirements-dev.in -> requirements-dev.txt (pip-compile con hashes)
     directory: /lector
     schedule:
       interval: weekly
