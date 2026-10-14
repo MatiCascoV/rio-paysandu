@@ -50,7 +50,7 @@ Los umbrales de nivel están en `data/umbrales.json` y son **provisorios** hasta
 |---|---|
 | `estacion_desactualizada` | La estación automática lleva más de 3 h sin dato; se muestra la lectura de Prefectura. |
 | `dato_desactualizado` | La lectura mostrada es más vieja de lo esperable. |
-| `dato_a_verificar` | Salto de más de 1 m en menos de 6 h, fuentes que no coinciden o fecha imposible. Mientras dure, `nivel` se mantiene en el anterior (no sube ni baja por un dato dudoso) hasta que otra lectura lo confirme. |
+| `dato_a_verificar` | El dato se publica, pero puede tener un error: salto de más de 1 m en menos de 6 h contra la lectura anterior, estación y Prefectura que difieren más de 1 m con lecturas a menos de 3 h entre sí, o una lectura con fecha futura (que se descarta). Solo el **salto** retiene `nivel`: se mantiene el anterior hasta que llegue una lectura con fecha más nueva o pasen 30 minutos (`retencion_max_min`), lo que ocurra primero; mientras tanto `actual.json` trae `nivel_retenido` (`fecha_lectura` retenida y `desde` cuándo). Las otras causas solo avisan. |
 | `umbrales_invalidos` | `data/umbrales.json` está mal cargado (alturas fuera de 0–20 m o fuera de orden: debe ser atención < alerta < evacuación; atención puede faltar). `nivel` queda en `sin_dato` hasta corregirlo. |
 | `dato_fuera_de_rango` | Se descartó una lectura fuera de 0–20 m. |
 | `fuente_no_disponible` | No se pudo leer CARU; se conserva el último dato válido con su fecha. |

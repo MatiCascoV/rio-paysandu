@@ -5,6 +5,8 @@
   "informes_indice_url": "https://caru.org.uy/nuevositio/2026/10/05/informes-crecida-rio-uruguay-2026/",
   "estacion_max_horas": 3,
   "prefectura_max_horas": 30,
+  "discrepancia_max_horas": 3,
+  "retencion_max_min": 30,
   "sin_dato_horas": 48,
   "informe_vigente_dias": 2,
   "historial_dias": 365,

@@ -81,10 +81,12 @@ def elegir_principal(estacion, prefectura, ahora, cfg):
 
     estacion, prefectura = depurar(estacion), depurar(prefectura)
 
-    # Si las dos fuentes son de fechas cercanas y difieren mucho, alguna está mal.
+    # Si las dos fuentes son de horas cercanas y difieren mucho, alguna está mal.
+    # Solo se avisa: no retiene el nivel (en una crecida rápida, la lectura diaria
+    # de Prefectura queda atrás de la estación y eso no es un error).
     if estacion and prefectura:
         horas = abs(validar.horas_de_antiguedad(estacion["fecha"], prefectura["fecha"]))
-        if horas <= cfg["prefectura_max_horas"] and abs(estacion["valor_m"] - prefectura["valor_m"]) > validar.SALTO_MAX_M:
+        if horas <= cfg["discrepancia_max_horas"] and abs(estacion["valor_m"] - prefectura["valor_m"]) > validar.SALTO_MAX_M:
             avisos.append("dato_a_verificar")
 
     def al_dia(lectura, max_horas):
@@ -126,6 +128,7 @@ def armar_actual(registro, pronostico, umbrales, anterior, ahora, cfg):
     fecha_principal = None
 
     principal = None
+    salto = False  # la lectura principal saltó más de 1 m contra la anterior
     if registro is not None:
         estacion, prefectura = registro["estacion"], registro["prefectura"]
         principal, fuente, _, avisos = elegir_principal(estacion, prefectura, ahora, cfg)
@@ -142,14 +145,15 @@ def armar_actual(registro, pronostico, umbrales, anterior, ahora, cfg):
                        (previa.get("valor_m"), _fecha_iso(previa.get("fecha")))]
         if validar.salto_sospechoso(principal["valor_m"], principal["fecha"], referencias):
             avisos.append("dato_a_verificar")
+            salto = True
         cero = registro["cero"] or cfg["cero"]
     else:
         # La fuente falló, o respondió sin una lectura utilizable de Paysandú (por
         # ejemplo, si cambió el formato): conservamos el último dato válido, con su
-        # fecha original y los avisos que ya tenía.
+        # fecha original. "dato_a_verificar" no se arrastra: sin lectura nueva no hay
+        # nada que verificar, y el nivel no queda retenido.
         avisos.append("fuente_no_disponible")
-        avisos += [a for a in anterior.get("avisos", [])
-                   if a in ("dato_a_verificar", "estacion_desactualizada")]
+        avisos += [a for a in anterior.get("avisos", []) if a == "estacion_desactualizada"]
         altura = anterior.get("altura_actual")
         prefectura_json = anterior.get("lectura_prefectura")
         cero = anterior.get("cero", cfg["cero"])
@@ -171,12 +175,11 @@ def armar_actual(registro, pronostico, umbrales, anterior, ahora, cfg):
         avisos.append("umbrales_invalidos")
     else:
         nivel = calcular_nivel(altura["valor_m"], umbrales)
-    if nivel != "sin_dato" and "dato_a_verificar" in avisos and anterior.get("nivel") in NIVELES_CON_DATO:
-        # Un dato dudoso (salto brusco, fuentes que no coinciden) no cambia el nivel
-        # ni dispara avisos: se mantiene el anterior hasta que una lectura lo confirme.
-        nivel = anterior["nivel"]
+    retenido = None
+    if salto and nivel != "sin_dato" and anterior.get("nivel") in NIVELES_CON_DATO and nivel != anterior["nivel"]:
+        nivel, retenido = retener_nivel(nivel, principal["fecha"], anterior, ahora, cfg)
 
-    return {
+    actual = {
         "generado": ahora.replace(microsecond=0).isoformat(),
         "cero": cero,
         "altura_actual": altura,
@@ -185,6 +188,31 @@ def armar_actual(registro, pronostico, umbrales, anterior, ahora, cfg):
         "nivel": nivel,
         "avisos": sorted(set(avisos)),
     }
+    if retenido:
+        actual["nivel_retenido"] = retenido
+    return actual
+
+
+def retener_nivel(calculado, fecha_lectura, anterior, ahora, cfg):
+    """Un salto de más de 1 m contra la lectura anterior puede ser un error del
+    sensor. Ese dato se publica (con "dato_a_verificar"), pero el nivel no cambia
+    en esa pasada: se mantiene el anterior hasta que llegue una lectura MÁS NUEVA
+    (otra fecha) o pasen `retencion_max_min` minutos, lo que ocurra primero. Así
+    un pico falso no dispara una evacuación, y una crecida real se publica a más
+    tardar media hora después (la estación informa cada 30 min).
+    Devuelve (nivel, estado de retención o None)."""
+    previa = anterior.get("nivel_retenido") or {}
+    desde = _fecha_iso(previa.get("desde"))
+    fecha_retenida = _fecha_iso(previa.get("fecha_lectura"))
+    if not desde or not fecha_retenida:
+        # Primera vez que se ve este salto: se retiene una pasada.
+        return anterior["nivel"], {"fecha_lectura": fecha_lectura.isoformat(),
+                                   "desde": ahora.replace(microsecond=0).isoformat()}
+    if fecha_lectura > fecha_retenida:
+        return calculado, None  # una lectura nueva lo confirma
+    if ahora - desde >= timedelta(minutes=cfg["retencion_max_min"]):
+        return calculado, None  # la misma lectura, pero ya pasó el tope: se publica
+    return anterior["nivel"], previa
 
 
 # ---------- pronóstico ----------

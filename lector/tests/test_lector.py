@@ -140,12 +140,14 @@ def test_pagina_sin_filas_conserva_ultimo_dato():
     assert a["avisos"] == ["fuente_no_disponible"]
 
 
-def test_fuente_caida_conserva_avisos_del_dato():
+def test_fuente_caida_no_arrastra_dato_a_verificar():
     r = registro_real()
     r["estacion"]["valor_m"] = 7.2
     anterior = armar(r)
+    assert "dato_a_verificar" in anterior["avisos"]
     a = armar(None, anterior, ahora=AHORA + timedelta(minutes=30))
-    assert a["avisos"] == ["dato_a_verificar", "fuente_no_disponible"]
+    assert a["avisos"] == ["fuente_no_disponible"]
+    assert "nivel_retenido" not in a
 
 
 def test_fuentes_que_no_coinciden_avisan_mientras_dure():
