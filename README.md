@@ -22,7 +22,16 @@ Desde la raíz del repositorio, en PowerShell (la primera vez):
 
 ```powershell
 py -3.12 -m venv lector\.venv
-.\lector\.venv\Scripts\python.exe -m pip install -r lector\requirements.txt
+.\lector\.venv\Scripts\python.exe -m pip install --require-hashes -r lector\requirements.lock -r lector\requirements-dev.txt
+```
+
+Las dependencias directas están en `lector/requirements.txt` (y pytest en `lector/requirements-dev.in`).
+GitHub Actions instala `lector/requirements.lock`, con versiones fijas y hashes. Al cambiar una
+dependencia, regenerar los dos archivos con pip-tools (desde `lector/`, con Python 3.12):
+
+```powershell
+pip-compile --generate-hashes --strip-extras --allow-unsafe --no-emit-index-url --output-file requirements.lock requirements.txt
+pip-compile --generate-hashes --strip-extras --allow-unsafe --no-emit-index-url --output-file requirements-dev.txt requirements-dev.in
 ```
 
 Después, cada vez:

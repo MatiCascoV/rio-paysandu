@@ -44,9 +44,10 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: lector/requirements.txt
+          cache-dependency-path: lector/requirements.lock
 
-      - run: pip install -r lector/requirements.txt
+      # Versiones fijas y verificadas por hash: un paquete alterado en PyPI no se instala.
+      - run: pip install --require-hashes -r lector/requirements.lock
 
       - name: Leer CARU cada 10 minutos y guardar data/ cuando cambia
         run: |

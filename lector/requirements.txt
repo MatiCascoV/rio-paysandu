@@ -1,4 +1,5 @@
+# Dependencias directas del lector. No se instalan desde acá en GitHub Actions:
+# se compilan con hashes a requirements.lock (ver README) y se instala el lock.
 requests>=2.32
 beautifulsoup4>=4.12
 pdfplumber>=0.11
-pytest>=8.0
