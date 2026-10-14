@@ -98,7 +98,8 @@ antes de terminar, lanza la corrida siguiente. El horario programado queda solo 
   **Actions → Lector CARU → Run workflow**.
 - **Si algo falla seguido:** cada lectura tiene un corte duro de 7 minutos (el lector se acota solo a
   unos 4). Si el lector termina con error 12 pasadas seguidas (unas 2 horas: CARU caído, umbrales
-  inválidos...), la corrida termina en error y el trabajo "avisar" abre un issue **"El lector falló"**
+  inválidos...), o si durante 6 pasadas (una hora) no se pueden subir los datos nuevos (token,
+  permisos, GitHub caído), la corrida termina en error y el trabajo "avisar" abre un issue **"El lector falló"**
   (etiqueta `lector-falla`), o comenta el que ya esté abierto. Llega como notificación a quien sigue el
   repositorio; el correo de falla de GitHub no sirve, porque las corridas las lanza github-actions[bot].
   Cerrar el issue cuando esté resuelto. La cadena sigue igual: si una corrida no termina bien, la

@@ -92,7 +92,8 @@ jobs:
           git config user.name "lector-caru[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           fin=$(( $(date +%s) + trabajo * 60 ))
-          fallos=0 # pasadas seguidas en las que el lector terminó con error
+          fallos=0     # pasadas seguidas en las que el lector terminó con error
+          sin_subir=0  # pasadas seguidas con datos nuevos que no se pudieron subir
           while :; do
             # Partir siempre de lo publicado en main (por ejemplo, umbrales editados a mano).
             # El repositorio es público: se trae sin token. Si quedó un commit sin subir
@@ -116,19 +117,24 @@ jobs:
             git add data
             if ! git diff --cached --quiet; then
               git commit --quiet -m "Datos de CARU $(TZ=America/Montevideo date '+%d/%m/%Y %H:%M')"
-              if ! subir; then
-                if ! { timeout 60 git pull --rebase --quiet origin main && subir; }; then
-                  git rebase --abort 2>/dev/null || true
-                  echo "::warning::No se pudieron subir los datos"
-                fi
+              if subir || { timeout 60 git pull --rebase --quiet origin main && subir; }; then
+                sin_subir=0
+              else
+                git rebase --abort 2>/dev/null || true
+                sin_subir=$(( sin_subir + 1 ))
+                echo "::warning::No se pudieron subir los datos ($sin_subir pasadas seguidas)"
               fi
             fi
 
             # Unas 2 horas seguidas con el lector en error (CARU caído, umbrales mal
-            # cargados...): el trabajo termina en error y el trabajo "avisar" abre un issue.
+            # cargados...), o 1 hora sin poder publicar (token, permisos, GitHub caído):
+            # el trabajo termina en error y el trabajo "avisar" abre un issue.
             # "relanzar" arranca la corrida siguiente igual.
             if [ "$fallos" -ge 12 ]; then
               echo "::error::El lector falló $fallos pasadas seguidas"; exit 1
+            fi
+            if [ "$sin_subir" -ge 6 ]; then
+              echo "::error::Hace $sin_subir pasadas que no se pueden subir los datos"; exit 1
             fi
             [ "$(date +%s)" -ge "$fin" ] && break
             sleep $(( entre * 60 ))
