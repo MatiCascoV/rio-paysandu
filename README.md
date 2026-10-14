@@ -113,7 +113,10 @@ antes de terminar, lanza la corrida siguiente. El horario programado queda solo 
   siguiente se lanza 10 minutos después (para no encadenar corridas que fallan al instante).
 - **Permisos:** cada trabajo tiene solo el permiso que usa (`leer`: escribir contenido; `avisar`:
   issues; `relanzar`: lanzar workflows). En `leer`, el token no queda en `.git/config` ni en el entorno
-  del lector: el repositorio se trae sin token (es público) y el token se pasa solo al `git push`.
+  que hereda el lector: el repositorio se trae sin token (es público) y el token se pasa solo al
+  `git push`, que además se niega a subir un commit que toque algo fuera de `data/`. Es una **reducción**
+  de exposición, no aislamiento: el lector corre con el mismo usuario (que puede leer el entorno inicial
+  del proceso del bucle y tiene sudo en el runner). Correrlo con un usuario sin privilegios queda pendiente.
 - **Arranque a mano con otros tiempos:** `minutos_entre_lecturas` tiene que ser al menos 5 y
   `minutos_de_trabajo + minutos_entre_lecturas` como mucho 330; si no, la corrida falla y la
   siguiente arranca con los valores normales.
