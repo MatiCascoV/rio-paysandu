@@ -99,8 +99,8 @@ class EstiloNivel {
   /// Relleno de la franja de nivel.
   Color get fondo => Colores.oscuro ? _fondoOscuro : _fondoClaro;
 
-  /// Color del nivel para trazos sobre el fondo de la app: marcas de la escalera
-  /// y líneas del gráfico. Tono oscuro en modo claro y claro en modo oscuro.
+  /// Color del nivel para trazos sobre el fondo de la app, como las líneas del
+  /// gráfico. Tono oscuro en modo claro y claro en modo oscuro.
   Color get oscuro => Colores.oscuro ? _trazoOscuro : _trazoClaro;
 }
 
@@ -119,29 +119,12 @@ EstiloNivel estiloNivel(Nivel n) => switch (n) {
           Color(0xFF424242), Color(0xFFBDBDBD), Icons.help),
     };
 
-/// Lo que el lector de pantalla dice de la escala de niveles de Inicio.
-String descripcionEscala(double alturaM, String cuando, bool viejo, Umbrales u) {
-  String metros(double m) => '${formatoAltura(m)} metros';
-  final partes = <String>[
-    viejo
-        ? 'Escala de niveles. La última medición fue de ${metros(alturaM)}, $cuando.'
-        : 'Escala de niveles. El río está en ${metros(alturaM)}, medido $cuando.',
-  ];
-  for (final (nombre, umbral) in [('atención', u.atencionM), ('alerta', u.alertaM), ('evacuación', u.evacuacionM)]) {
-    if (umbral == null) continue;
-    final falta = umbral - alturaM;
-    partes.add(falta <= 0
-        ? 'Nivel de $nombre: ${metros(umbral)}, ya superado.'
-        : 'Nivel de $nombre: ${metros(umbral)}, faltan '
-            '${falta < 1 ? '${(falta * 100).round()} centímetros' : metros(falta)}.');
-  }
-  return partes.join(' ');
-}
-
-/// Frase que acompaña al nivel: una oración corta. Cuánto falta para el nivel
-/// siguiente se dice en la escalera de niveles. Con [viejo] (dato de hace más de
-/// unas horas) se habla en pasado.
-String descripcionNivel(Nivel n, Umbrales? u, {bool viejo = false}) {
+/// Frase que acompaña al nivel: qué umbral pasó el río y cuánto falta para el
+/// siguiente, con las alturas publicadas. Sin [alturaM] o sin umbrales queda la
+/// frase sin cifras. Con [viejo] (dato de hace más de unas horas) se habla en pasado.
+String descripcionNivel(Nivel n, Umbrales? u, {double? alturaM, bool viejo = false}) {
+  final cifras = u == null || alturaM == null ? null : _fraseConCifras(n, u, alturaM, viejo);
+  if (cifras != null) return cifras;
   final siguiente = u?.atencionM != null ? 'atención' : 'alerta';
   if (viejo) {
     return switch (n) {
@@ -162,6 +145,55 @@ String descripcionNivel(Nivel n, Umbrales? u, {bool viejo = false}) {
     Nivel.sinDato => 'No hay un dato reciente. Esto no quiere decir que el río esté bajo.',
   };
 }
+
+/// La frase con umbrales y cifras, o null si falta el umbral que nombra.
+String? _fraseConCifras(Nivel n, Umbrales u, double alturaM, bool viejo) {
+  String umbral(Nivel x, double valor) => '${estiloNivel(x).nombre.toLowerCase()} (${formatoAltura(valor)} m)';
+  final antes = viejo ? 'Con el último dato, el río estaba' : 'El río';
+  final siguiente = _siguienteUmbral(alturaM, u);
+  switch (n) {
+    case Nivel.normal:
+      if (siguiente == null) return null;
+      final (nivel, valor) = siguiente;
+      return '$antes${viejo ? '' : ' está'} por debajo del nivel de ${umbral(nivel, valor)}. '
+          '${_verboFalta(valor - alturaM, viejo)} ${formatoDiferencia(valor - alturaM)}.';
+    case Nivel.atencion || Nivel.alerta:
+      final pasado = n == Nivel.atencion ? u.atencionM : u.alertaM;
+      if (pasado == null) return null;
+      final frase = '$antes ${viejo ? 'sobre' : 'pasó'} el nivel de ${umbral(n, pasado)}.';
+      // El siguiente solo si queda por encima del que pasó (el dato puede venir desparejo).
+      if (siguiente == null || _cm(siguiente.$2) <= _cm(pasado)) return frase;
+      return '$frase ${textoFalta(alturaM, u, viejo: viejo)} (${formatoAltura(siguiente.$2)} m).';
+    case Nivel.evacuacion:
+      final valor = u.evacuacionM;
+      if (valor == null) return null;
+      final exceso = _cm(alturaM) - _cm(valor);
+      final donde = umbral(Nivel.evacuacion, valor);
+      final cuanto = formatoDiferencia(alturaM - valor);
+      if (viejo) {
+        final frase = exceso > 0
+            ? '$antes $cuanto por encima del nivel de $donde.'
+            : exceso == 0
+                ? '$antes en el nivel de $donde.'
+                : '$antes sobre el nivel de $donde.';
+        return '$frase Si hay personas en peligro, llamá al 911.';
+      }
+      final frase = exceso > 0
+          ? 'El río pasó el nivel de $donde por $cuanto.'
+          : exceso == 0
+              ? 'El río llegó al nivel de $donde.'
+              : 'El río pasó el nivel de $donde.';
+      return '$frase La orden de evacuar la da el Cecoed. Si hay personas en peligro, llamá al 911.';
+    case Nivel.sinDato:
+      return null;
+  }
+}
+
+/// El mismo texto con las unidades en palabras, para el lector de pantalla:
+/// "4,39 m" -> "4,39 metros", "81 cm" -> "81 centímetros".
+String unidadesEnPalabras(String texto) => texto
+    .replaceAllMapped(RegExp(r'(\d+,\d+) m\b'), (m) => '${m[1]} metros')
+    .replaceAllMapped(RegExp(r'(\d+) cm\b'), (m) => m[1] == '1' ? '1 centímetro' : '${m[1]} centímetros');
 
 /// "hoy 13:32" -> "Hoy 13:32"
 String conMayuscula(String s) => s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
@@ -187,20 +219,31 @@ List<(Nivel, double)> umbralesOrdenados(Umbrales u) => [
 String? textoFalta(double alturaM, Umbrales u, {bool viejo = false}) {
   final lista = umbralesOrdenados(u);
   if (lista.isEmpty) return null;
-  int cm(double m) => (m * 100).round();
   String nombre(Nivel n) => estiloNivel(n).nombre.toLowerCase();
-  // El umbral más bajo que todavía está por encima del río.
-  final arriba = lista.where((x) => cm(x.$2) > cm(alturaM)).toList();
-  if (arriba.isNotEmpty) {
-    final (nivel, valor) = arriba.last;
-    final uno = cm(valor - alturaM) == 1;
-    final verbo = viejo ? (uno ? 'Faltaba' : 'Faltaban') : (uno ? 'Falta' : 'Faltan');
-    return '$verbo ${formatoDiferencia(valor - alturaM)} para ${nombre(nivel)}';
+  final siguiente = _siguienteUmbral(alturaM, u);
+  if (siguiente != null) {
+    final (nivel, valor) = siguiente;
+    return '${_verboFalta(valor - alturaM, viejo)} ${formatoDiferencia(valor - alturaM)} para ${nombre(nivel)}';
   }
   final (nivel, valor) = lista.first;
-  if (cm(alturaM - valor) == 0) return '${viejo ? 'Estaba en' : 'En'} el nivel de ${nombre(nivel)}';
+  if (_cm(alturaM - valor) == 0) return '${viejo ? 'Estaba en' : 'En'} el nivel de ${nombre(nivel)}';
   final cuanto = formatoDiferencia(alturaM - valor);
   return viejo ? 'Estaba $cuanto por encima de ${nombre(nivel)}' : '$cuanto por encima de ${nombre(nivel)}';
+}
+
+/// Las comparaciones con los umbrales se hacen en centímetros enteros.
+int _cm(double m) => (m * 100).round();
+
+/// El umbral más bajo que todavía está por encima del río, o null.
+(Nivel, double)? _siguienteUmbral(double alturaM, Umbrales u) {
+  final arriba = umbralesOrdenados(u).where((x) => _cm(x.$2) > _cm(alturaM));
+  return arriba.isEmpty ? null : arriba.last;
+}
+
+/// "Falta" o "Faltan" ("Faltaba", "Faltaban" en pasado) según la diferencia.
+String _verboFalta(double metros, bool viejo) {
+  final uno = _cm(metros) == 1;
+  return viejo ? (uno ? 'Faltaba' : 'Faltaban') : (uno ? 'Falta' : 'Faltan');
 }
 
 /// Explicación de cada aviso que manda el lector. Los que no conocemos no se muestran.

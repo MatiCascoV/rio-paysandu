@@ -6,9 +6,9 @@ import '../tema.dart';
 import '../textos.dart';
 import 'comunes.dart';
 
-/// Pantalla principal. Solo dos superficies: la franja de color con el nivel y
-/// la escalera de niveles. Todo lo demás va suelto sobre el fondo, separado con
-/// aire o una línea fina. Los bloques van siempre en el mismo orden; según el
+/// Pantalla principal. Una sola superficie de color: la franja con el nivel y
+/// los umbrales. Todo lo demás va suelto sobre el fondo, separado con aire o
+/// una línea fina. Los bloques van siempre en el mismo orden; según el
 /// estado algunos aparecen y otros no.
 class PantallaInicio extends StatelessWidget {
   final Datos? datos;
@@ -120,7 +120,10 @@ class PantallaInicio extends StatelessWidget {
     final prefectura = actual.prefectura;
     final umbrales = datos.umbrales;
     final hayNivel = nivel != Nivel.sinDato;
-    final conEscalera = hayNivel && umbrales != null && umbralesOrdenados(umbrales).isNotEmpty;
+    final nota = [
+      'Medido en el puerto de Paysandú: no es la altura del agua en tu calle.',
+      if (umbrales != null && !umbrales.validado) 'Los niveles son de referencia; el Cecoed todavía los está revisando.',
+    ].join(' ');
     final esGrave = nivel == Nivel.alerta || nivel == Nivel.evacuacion;
     // El dato pierde protagonismo cuando ya no se puede tomar como actual.
     final colorDato = viejo ? Colores.tintaSecundaria : Colores.tinta;
@@ -140,7 +143,7 @@ class PantallaInicio extends StatelessWidget {
       // ----- Nivel: el único color fuerte de la pantalla -----
       _FranjaNivel(
         estilo: estilo,
-        frase: descripcionNivel(nivel, umbrales, viejo: viejo),
+        frase: descripcionNivel(nivel, umbrales, alturaM: altura.valorM, viejo: viejo),
         alVerQueHacer: esGrave ? alVerQueHacer : null,
       ),
 
@@ -214,24 +217,10 @@ class PantallaInicio extends StatelessWidget {
           ),
         ],
       ),
+      const SizedBox(height: 8),
+      Text(nota, style: apoyo, textAlign: TextAlign.center),
 
       for (final texto in avisos) ...[const SizedBox(height: 16), Recuadro(icono: Icons.warning_amber, texto: texto)],
-      const SizedBox(height: 24),
-
-      // ----- Dónde está el río respecto de los niveles -----
-      if (conEscalera)
-        EscaleraNiveles(
-          alturaM: altura.valorM,
-          umbrales: umbrales,
-          viejo: viejo,
-          descripcion: descripcionEscala(altura.valorM, cuando, viejo, umbrales),
-        )
-      else
-        Text(
-          'Medido en el puerto de Paysandú: no es la altura del agua en tu calle.',
-          style: apoyo,
-          textAlign: TextAlign.center,
-        ),
       const Separador(arriba: 24, abajo: 0),
 
       if (hayPronostico) ...[
@@ -306,7 +295,7 @@ class _FranjaNivel extends StatelessWidget {
         children: [
           Semantics(
             container: true,
-            label: 'Nivel: ${estilo.nombre}. $frase',
+            label: 'Nivel: ${estilo.nombre}. ${unidadesEnPalabras(frase)}',
             excludeSemantics: true,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
