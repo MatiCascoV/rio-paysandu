@@ -34,11 +34,17 @@ env:
 jobs:
   leer:
     runs-on: ubuntu-latest
-    timeout-minutes: 350
+    # Cuentas: trabajo + espera <= 330 min (se valida abajo), más la última pasada
+    # (fetch 1 min + lector 7 min + push con reintento 3 min) y ~2 min de preparación.
+    timeout-minutes: 355
     permissions:
       contents: write # guardar data/ en el repositorio
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          # El token no queda guardado en .git/config, donde el lector (que procesa
+          # contenido ajeno) podría leerlo. Se pasa solo al comando que sube.
+          persist-credentials: false
 
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
@@ -48,10 +54,25 @@ jobs:
 
       # Versiones fijas y verificadas por hash, y solo wheels (sin compilar nada al instalar):
       # un paquete alterado en PyPI no se instala.
-      - run: pip install --require-hashes --only-binary=:all: -r lector/requirements.txt
+      - run: "pip install --require-hashes --only-binary=:all: -r lector/requirements.txt" # entre comillas: ":all: " confundiría a YAML
 
       - name: Leer CARU cada 10 minutos y guardar data/ cuando cambia
+        env:
+          TOKEN_PARA_SUBIR: ${{ github.token }}
+          GIT_TERMINAL_PROMPT: "0"
         run: |
+          # El token se convierte en el encabezado que usa git y se saca del entorno:
+          # ni el lector ni git fetch lo reciben; solo el push (ver subir()).
+          auth=$(printf 'x-access-token:%s' "$TOKEN_PARA_SUBIR" | base64 -w0)
+          echo "::add-mask::$auth"
+          unset TOKEN_PARA_SUBIR
+          subir() {
+            GIT_CONFIG_COUNT=1 \
+            GIT_CONFIG_KEY_0="http.https://github.com/.extraheader" \
+            GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $auth" \
+              timeout 60 git push --quiet origin HEAD:main
+          }
+
           # Las entradas del arranque a mano llegan como texto: solo se aceptan números
           # razonables (si no, este trabajo falla y "relanzar" arranca uno con los valores normales).
           for v in "$MINUTOS_ENTRE_LECTURAS" "$MINUTOS_DE_TRABAJO"; do
@@ -64,7 +85,7 @@ jobs:
             echo "::error::minutos_entre_lecturas debe ser al menos 5 (vino $entre)"; exit 1
           fi
           if [ "$trabajo" -lt 1 ] || [ $(( trabajo + entre )) -gt 330 ]; then
-            # Tiene que entrar en timeout-minutes (350) contando la última espera y lectura.
+            # Tiene que entrar en timeout-minutes (355) contando la última espera y lectura.
             echo "::error::minutos_de_trabajo debe ser al menos 1 y, sumado a minutos_entre_lecturas, como mucho 330 (vino $trabajo + $entre)"; exit 1
           fi
 
@@ -74,15 +95,16 @@ jobs:
           fallos=0 # pasadas seguidas en las que el lector terminó con error
           while :; do
             # Partir siempre de lo publicado en main (por ejemplo, umbrales editados a mano).
-            # Si quedó un commit sin subir de la pasada anterior, se descarta: el lector
-            # vuelve a generar data/ con lo que haya en CARU.
-            if ! { git fetch --quiet origin main && git reset --quiet --hard origin/main; }; then
+            # El repositorio es público: se trae sin token. Si quedó un commit sin subir
+            # de la pasada anterior, se descarta: el lector vuelve a generar data/.
+            if ! { timeout 60 git fetch --quiet origin main && git reset --quiet --hard origin/main; }; then
               echo "::warning::No se pudo traer el repositorio"
             fi
 
             # Si una lectura falla, se sigue: la próxima pasada lo vuelve a intentar.
+            # El lector se acota solo (~250 s en el peor caso); 420 s es el corte duro.
             codigo=0
-            timeout 180 python lector/lector.py || codigo=$?
+            timeout 420 python lector/lector.py || codigo=$?
             if [ "$codigo" -ne 0 ]; then
               fallos=$(( fallos + 1 ))
               echo "::warning::El lector falló en esta pasada (código $codigo; $fallos seguidas)"
@@ -94,16 +116,17 @@ jobs:
             git add data
             if ! git diff --cached --quiet; then
               git commit --quiet -m "Datos de CARU $(TZ=America/Montevideo date '+%d/%m/%Y %H:%M')"
-              if ! git push --quiet; then
-                if ! { git pull --rebase --quiet && git push --quiet; }; then
+              if ! subir; then
+                if ! { timeout 60 git pull --rebase --quiet origin main && subir; }; then
                   git rebase --abort 2>/dev/null || true
                   echo "::warning::No se pudieron subir los datos"
                 fi
               fi
             fi
 
-            # Unas 2 horas seguidas sin poder leer CARU: el trabajo termina en error para
-            # que GitHub mande el correo de falla. "relanzar" arranca la corrida siguiente igual.
+            # Unas 2 horas seguidas con el lector en error (CARU caído, umbrales mal
+            # cargados...): el trabajo termina en error y el trabajo "avisar" abre un issue.
+            # "relanzar" arranca la corrida siguiente igual.
             if [ "$fallos" -ge 12 ]; then
               echo "::error::El lector falló $fallos pasadas seguidas"; exit 1
             fi
@@ -111,16 +134,51 @@ jobs:
             sleep $(( entre * 60 ))
           done
 
+  # Si "leer" termina en error, avisar al dueño con un issue. El correo de falla de
+  # GitHub no sirve acá: las corridas las lanza github-actions[bot] y ese correo no
+  # le llega a nadie. Un issue nuevo o un comentario sí notifican a quien sigue el repo.
+  avisar:
+    needs: leer
+    if: failure()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: Abrir o comentar el issue "El lector falló"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ETIQUETA: lector-falla
+        run: |
+          corrida="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          cuerpo="La corrida $corrida del workflow Lector CARU terminó en error (por ejemplo: CARU sin responder unas 2 horas, \`data/umbrales.json\` inválido, o una falla al preparar el entorno). La cadena sigue: se lanza otra corrida en 10 minutos. Revisá el registro de la corrida; cerrá este issue cuando esté resuelto."
+          gh label create "$ETIQUETA" --repo "$GITHUB_REPOSITORY" --color B60205 \
+            --description "Falla del lector de CARU" 2>/dev/null || true
+          numero=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --label "$ETIQUETA" \
+            --json number --jq '.[0].number // empty')
+          if [ -n "$numero" ]; then
+            gh issue comment "$numero" --repo "$GITHUB_REPOSITORY" --body "$cuerpo"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "El lector falló" \
+              --label "$ETIQUETA" --body "$cuerpo"
+          fi
+
   # Trabajo aparte para que el token que puede lanzar workflows no conviva con
   # el código del lector ni con dependencias de terceros: no hace checkout ni pip.
   relanzar:
     needs: leer
     if: always() # también si la lectura falló o se canceló, para que la cadena no se corte
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     permissions:
       actions: write # lanzar la corrida siguiente
     steps:
+      # Si "leer" falló enseguida (por ejemplo, al instalar), relanzar en el acto
+      # encadenaría corridas fallidas una tras otra: se espera 10 minutos.
+      - name: Esperar antes de relanzar si la lectura no terminó bien
+        if: needs.leer.result != 'success'
+        run: sleep 600
+
       - name: Lanzar la corrida siguiente
         env:
           GH_TOKEN: ${{ github.token }}

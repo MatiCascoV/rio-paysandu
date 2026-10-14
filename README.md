@@ -11,7 +11,7 @@ Ante cualquier duda hay que comunicarse con los canales oficiales (Cecoed Paysan
 
 - `lector/` — programa en Python que lee los datos de CARU, los valida y genera los JSON.
 - `data/` — JSON generados por el lector (se publican con GitHub Pages).
-- `.github/workflows/` — automatización que corre el lector cada 15–30 minutos.
+- `.github/workflows/` — automatización que corre el lector cada unos 10 minutos (bucle que se relanza solo).
 - `app/` — app Flutter que lee los JSON publicados.
 
 El detalle del proyecto y sus fases está en [PROMPT_MAESTRO.md](PROMPT_MAESTRO.md).
@@ -79,7 +79,8 @@ imprime `::error::`); `1` configuración o archivo de `data/` con JSON mal escri
 
 ## Datos publicados
 
-GitHub Actions corre el lector cada 30 minutos (workflow "Lector CARU") y GitHub Pages publica el resultado:
+GitHub Actions corre el lector **cada unos 10 minutos**, en un bucle que se relanza solo (workflow
+"Lector CARU", ver abajo), y GitHub Pages publica el resultado:
 
 - https://maticascov.github.io/rio-paysandu/data/actual.json
 - https://maticascov.github.io/rio-paysandu/data/historial.json
@@ -95,8 +96,16 @@ antes de terminar, lanza la corrida siguiente. El horario programado queda solo 
   `in_progress`. Los commits "Datos de CARU …" aparecen cada vez que CARU publica algo nuevo.
 - **Si la cadena se cortó** (ninguna corrida en curso): `gh workflow run lector.yml`, o pestaña
   **Actions → Lector CARU → Run workflow**.
-- **Si CARU no responde:** cada lectura tiene un tope de 3 minutos. Si el lector falla 12 pasadas
-  seguidas (unas 2 horas), la corrida termina en error y GitHub manda un correo; la cadena sigue igual.
+- **Si algo falla seguido:** cada lectura tiene un corte duro de 7 minutos (el lector se acota solo a
+  unos 4). Si el lector termina con error 12 pasadas seguidas (unas 2 horas: CARU caído, umbrales
+  inválidos...), la corrida termina en error y el trabajo "avisar" abre un issue **"El lector falló"**
+  (etiqueta `lector-falla`), o comenta el que ya esté abierto. Llega como notificación a quien sigue el
+  repositorio; el correo de falla de GitHub no sirve, porque las corridas las lanza github-actions[bot].
+  Cerrar el issue cuando esté resuelto. La cadena sigue igual: si una corrida no termina bien, la
+  siguiente se lanza 10 minutos después (para no encadenar corridas que fallan al instante).
+- **Permisos:** cada trabajo tiene solo el permiso que usa (`leer`: escribir contenido; `avisar`:
+  issues; `relanzar`: lanzar workflows). En `leer`, el token no queda en `.git/config` ni en el entorno
+  del lector: el repositorio se trae sin token (es público) y el token se pasa solo al `git push`.
 - **Arranque a mano con otros tiempos:** `minutos_entre_lecturas` tiene que ser al menos 5 y
   `minutos_de_trabajo + minutos_entre_lecturas` como mucho 330; si no, la corrida falla y la
   siguiente arranca con los valores normales.
