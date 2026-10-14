@@ -13,5 +13,10 @@
   "historial_detalle_dias": 7,
   "red_intentos": 3,
   "red_espera_s": 5,
-  "red_timeout_s": 30
+  "red_timeout_s": 30,
+  "limite_registro_s": 120,
+  "presupuesto_secundarias_s": 90,
+  "limite_descargas_s": 150,
+  "pdf_timeout_s": 60,
+  "pdf_reintento_horas": 6
 }

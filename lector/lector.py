@@ -6,9 +6,11 @@ Uso (desde la raíz del repositorio):
 import json
 import os
 import sys
+import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+import pdf_aislado
 import red
 import validar
 from fuentes import caru_informes, caru_registro
@@ -276,20 +278,119 @@ def historial_a_texto(historial):
 
 # ---------- programa ----------
 
+def guardar_actual(actual, ultimo):
+    """Escribe actual.json si cambió algo más que la hora de generación (para que
+    el repositorio no acumule commits vacíos). Devuelve lo que quedó en disco."""
+    sin_hora = lambda d: {k: v for k, v in (d or {}).items() if k != "generado"}
+    if sin_hora(actual) == sin_hora(ultimo):
+        return ultimo
+    escribir_texto(DATA / "actual.json", json.dumps(actual, ensure_ascii=False, indent=2, allow_nan=False) + "\n")
+    print("Actualicé data/actual.json")
+    return actual
+
+
+def guardar_historial(historial, ultimo):
+    if historial == ultimo:
+        return ultimo
+    escribir_texto(DATA / "historial.json", historial_a_texto(historial))
+    print(f"Actualicé data/historial.json ({len(historial)} lecturas)")
+    return historial
+
+
+def con_aviso(actual, aviso, poner):
+    if poner:
+        actual["avisos"] = sorted(set(actual["avisos"]) | {aviso})
+    return actual
+
+
+def _marcar_pdf_fallido(estado, url, ahora):
+    estado["pdf_fallido"] = {"url": url, "fecha": ahora.replace(microsecond=0).isoformat()}
+
+
+def leer_informe(cfg, anterior, estado, ahora, bajar, hay_tiempo):
+    """Busca el informe de crecida más reciente. Devuelve (informe, url, falla):
+    falla=True si no se pudo saber o leer el informe vigente (se avisa con
+    "pronostico_no_disponible"). Anota en `estado` el PDF que no se pudo leer,
+    para no volver a intentarlo en cada pasada."""
+    if not hay_tiempo():
+        print("AVISO: sin tiempo para revisar los informes de crecida en esta pasada")
+        return None, None, True
+    try:
+        indice = bajar(cfg["informes_indice_url"], "informes").decode("utf-8", errors="replace")
+        informes = caru_informes.listar_informes(indice, cfg["informes_indice_url"], ahora.date())
+    except Exception as e:
+        print(f"AVISO: no pude leer el índice de informes de crecida: {e}")
+        return None, None, True
+    previo = (anterior or {}).get("pronostico") or {}
+    if not informes or informes[0]["url"] == previo.get("url_informe"):
+        return None, None, False  # no hay informes, o ya tenemos leído el último
+
+    url = informes[0]["url"]
+    fallido = estado.get("pdf_fallido") or {}
+    desde = _fecha_iso(fallido.get("fecha"))
+    if fallido.get("url") == url and desde and ahora - desde < timedelta(hours=cfg["pdf_reintento_horas"]):
+        print(f"AVISO: {url} falló hace poco; se reintenta cada {cfg['pdf_reintento_horas']} h")
+        return None, None, True
+    if not hay_tiempo():
+        print("AVISO: sin tiempo para bajar el PDF del informe en esta pasada")
+        return None, None, True
+
+    try:
+        pdf = bajar(url, "informes")
+    except ValueError as e:  # PDF desmedido o redirección rara: no se reintenta enseguida
+        print(f"AVISO: no pude bajar {url}: {e}")
+        _marcar_pdf_fallido(estado, url, ahora)
+        return None, None, True
+    except Exception as e:  # error de red: se reintenta en la próxima pasada
+        print(f"AVISO: no pude bajar {url}: {e}")
+        return None, None, True
+    try:
+        informe = pdf_aislado.parsear_aislado(pdf, cfg["puerto"], cfg["pdf_timeout_s"])
+    except pdf_aislado.PdfIlegible as e:
+        print(f"AVISO: {e} ({url})")
+        _marcar_pdf_fallido(estado, url, ahora)
+        return None, None, True
+    if informe["altura_esperada_m"] is None:
+        print(f"AVISO: no encontré la fila de {cfg['puerto']} en {url}")
+        _marcar_pdf_fallido(estado, url, ahora)
+        return None, None, True
+    estado.pop("pdf_fallido", None)
+    # Si la fecha del PDF y la del índice no coinciden, nos quedamos con la
+    # más vieja: así, ante la duda, el informe deja de ser vigente antes.
+    informe["informe_fecha"] = min(informe["informe_fecha"] or informes[0]["fecha"], informes[0]["fecha"])
+    return informe, url, False
+
+
 def main():
+    inicio = time.monotonic()
     cfg = leer_json(Path(__file__).parent / "config.json")
     if cfg["cero"] != "Local":
         print(f"ERROR: el cero '{cfg['cero']}' todavía no está soportado; usá 'Local'.")
         return 1
     red.permitir_origen_de(cfg["registro_url"], "registro")
     red.permitir_origen_de(cfg["informes_indice_url"], "informes")
-    bajar = lambda url: red.descargar(url, cfg["red_intentos"], cfg["red_espera_s"], cfg["red_timeout_s"])
     ahora = datetime.now(TZ_UY)
+
+    # Tiempos: el workflow corta al lector a los 420 s. El registro (lo principal)
+    # tiene reintentos hasta `limite_registro_s`; lo demás (informes, páginas de
+    # detalle) se pide con un solo intento, solo si no pasaron
+    # `presupuesto_secundarias_s`, y nunca después de `limite_descargas_s`.
+    def bajar_registro(url):
+        return red.descargar(url, cfg["red_intentos"], cfg["red_espera_s"], cfg["red_timeout_s"],
+                             "registro", hasta=inicio + cfg["limite_registro_s"])
+
+    def bajar_secundaria(url, proposito):
+        return red.descargar(url, 1, cfg["red_espera_s"], cfg["red_timeout_s"],
+                             proposito, hasta=inicio + cfg["limite_descargas_s"])
+
+    def hay_tiempo():
+        return time.monotonic() - inicio < cfg["presupuesto_secundarias_s"]
 
     try:
         umbrales = leer_json(DATA / "umbrales.json")
         anterior = leer_json(DATA / "actual.json")
         historial_previo = leer_json(DATA / "historial.json", [])
+        estado = leer_json(DATA / "estado_lector.json", {})
     except ValueError as e:
         print(f"ERROR: {e}. No modifiqué nada; corregí ese archivo y volvé a correr.")
         return 1
@@ -297,11 +398,14 @@ def main():
         umbrales = UMBRALES_PROVISORIOS
         escribir_texto(DATA / "umbrales.json", json.dumps(umbrales, ensure_ascii=False, indent=2) + "\n")
         print("Creé data/umbrales.json con los valores provisorios (sin validar).")
+    if not isinstance(estado, dict):
+        estado = {}
+    estado_previo = dict(estado)
 
     # 1) Registro de alturas
     registro = None
     try:
-        html = bajar(cfg["registro_url"]).decode("utf-8", errors="replace")
+        html = bajar_registro(cfg["registro_url"]).decode("utf-8", errors="replace")
         registro = caru_registro.parsear_registro(html, cfg["registro_url"], cfg["puerto"])
         if registro["cero"] and registro["cero"] != cfg["cero"]:
             print(f"AVISO: la página vino en cero '{registro['cero']}' y no en '{cfg['cero']}'; la descarto.")
@@ -309,64 +413,68 @@ def main():
     except Exception as e:  # una fuente caída no debe tirar abajo el resto
         print(f"AVISO: no pude leer el registro de alturas: {e}")
 
-    # 2) Historial (páginas de detalle de la estación y de Prefectura)
-    nuevas = {}
+    # actual.json se escribe ya, con el pronóstico que había: si después algo
+    # cuelga y el workflow corta al lector, la altura nueva igual queda publicada.
+    pronostico_previo = (anterior or {}).get("pronostico")
+    falla_previa = "pronostico_no_disponible" in (anterior or {}).get("avisos", [])
+    pronostico = armar_pronostico(None, None, pronostico_previo, ahora.date(), cfg)
+    actual = con_aviso(armar_actual(registro, pronostico, umbrales, anterior, ahora, cfg),
+                       "pronostico_no_disponible", falla_previa)
+    escrito = guardar_actual(actual, anterior)
+
+    # La lectura actual entra al historial siempre, aunque después no haya
+    # tiempo para las páginas de detalle.
+    actuales = {}
     for fuente in ("estacion", "prefectura"):
         lectura = registro and registro[fuente]
-        if not lectura:
+        if lectura:
+            actuales[fuente] = [(lectura["fecha"], lectura["valor_m"])]
+    historial = guardar_historial(actualizar_historial(historial_previo, actuales, ahora, cfg),
+                                  historial_previo)
+
+    # 2) Informe de crecida más reciente (antes que el historial detallado: en
+    # una crecida importa más el pronóstico que completar el gráfico).
+    informe, url_informe, falla = leer_informe(cfg, anterior, estado, ahora, bajar_secundaria, hay_tiempo)
+    pronostico = armar_pronostico(informe, url_informe, pronostico_previo, ahora.date(), cfg)
+    actual = con_aviso(armar_actual(registro, pronostico, umbrales, anterior, ahora, cfg),
+                       "pronostico_no_disponible", falla)
+    escrito = guardar_actual(actual, escrito)
+    if estado != estado_previo:
+        escribir_texto(DATA / "estado_lector.json", json.dumps(estado, ensure_ascii=False, indent=2) + "\n")
+
+    # 3) Historial (páginas de detalle de la estación y de Prefectura)
+    detalle = {}
+    for fuente in actuales:
+        if not hay_tiempo():
+            print(f"AVISO: sin tiempo para el historial de {fuente} en esta pasada")
             continue
         try:
-            html = bajar(lectura["url"]).decode("utf-8", errors="replace")
-            nuevas[fuente] = caru_registro.parsear_historial(html)
+            html = bajar_secundaria(registro[fuente]["url"], "registro").decode("utf-8", errors="replace")
+            detalle[fuente] = caru_registro.parsear_historial(html)
         except Exception as e:
             print(f"AVISO: no pude leer el historial de {fuente}: {e}")
-        # La lectura actual entra siempre, aunque falle la página de detalle.
-        nuevas.setdefault(fuente, []).append((lectura["fecha"], lectura["valor_m"]))
-
-    # 3) Informe de crecida más reciente
-    informe, url_informe = None, None
-    try:
-        indice = bajar(cfg["informes_indice_url"]).decode("utf-8", errors="replace")
-        informes = caru_informes.listar_informes(indice, cfg["informes_indice_url"], ahora.date())
-        previo = (anterior or {}).get("pronostico") or {}
-        if informes and informes[0]["url"] == previo.get("url_informe"):
-            pass  # ya lo tenemos leído: no hace falta bajar el PDF otra vez
-        elif informes:
-            url_informe = informes[0]["url"]
-            informe = caru_informes.parsear_informe(bajar(url_informe), cfg["puerto"])
-            # Si la fecha del PDF y la del índice no coinciden, nos quedamos con la
-            # más vieja: así, ante la duda, el informe deja de ser vigente antes.
-            informe["informe_fecha"] = min(informe["informe_fecha"] or informes[0]["fecha"], informes[0]["fecha"])
-            if informe["altura_esperada_m"] is None:
-                print(f"AVISO: no encontré la fila de {cfg['puerto']} en {url_informe}")
-    except Exception as e:
-        print(f"AVISO: no pude leer los informes de crecida: {e}")
-
-    pronostico = armar_pronostico(informe, url_informe, (anterior or {}).get("pronostico"), ahora.date(), cfg)
-    actual = armar_actual(registro, pronostico, umbrales, anterior, ahora, cfg)
-
-    # Solo reescribimos si cambió algo más que la hora de generación,
-    # para que el repositorio no acumule commits vacíos.
-    sin_hora = lambda d: {k: v for k, v in (d or {}).items() if k != "generado"}
-    if sin_hora(actual) != sin_hora(anterior):
-        escribir_texto(DATA / "actual.json", json.dumps(actual, ensure_ascii=False, indent=2, allow_nan=False) + "\n")
-        print("Actualicé data/actual.json")
-    else:
-        print("Sin cambios en data/actual.json")
-
-    historial = actualizar_historial(historial_previo, nuevas, ahora, cfg)
-    if historial != historial_previo:
-        escribir_texto(DATA / "historial.json", historial_a_texto(historial))
-        print(f"Actualicé data/historial.json ({len(historial)} lecturas)")
+    if detalle:
+        historial = guardar_historial(actualizar_historial(historial, detalle, ahora, cfg), historial)
 
     a = actual["altura_actual"]
     if a:
         print(f"Altura: {a['valor_m']} m ({a['fecha']}) · nivel: {actual['nivel']} · avisos: {actual['avisos']}")
     else:
         print(f"Sin dato de altura · avisos: {actual['avisos']}")
-    # 3 = se escribió lo que se pudo, pero no se llegó a leer el registro de CARU.
-    # El workflow lo usa para avisar al dueño si se repite muchas veces seguidas.
-    return 0 if registro is not None else 3
+    print(f"Tiempo: {time.monotonic() - inicio:.1f} s")
+
+    # Códigos de salida (el workflow cuenta las pasadas seguidas con error y, si
+    # se repiten, abre un issue para avisar al dueño):
+    #   4 = data/umbrales.json mal cargado: no se puede dar el nivel.
+    #   3 = no se pudo leer el registro de CARU, o respondió sin dato de Paysandú
+    #       (se publicó lo que había, con "fuente_no_disponible").
+    if not umbrales_validos(umbrales):
+        print("::error::data/umbrales.json tiene valores inválidos (alturas de 0 a 20 m y "
+              "atención < alerta < evacuación); el nivel se publica como sin_dato.")
+        return 4
+    if registro is None or "fuente_no_disponible" in actual["avisos"]:
+        return 3
+    return 0
 
 
 if __name__ == "__main__":

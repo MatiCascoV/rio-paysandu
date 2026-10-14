@@ -54,8 +54,27 @@ Los umbrales de nivel están en `data/umbrales.json` y son **provisorios** hasta
 | `umbrales_invalidos` | `data/umbrales.json` está mal cargado (alturas fuera de 0–20 m o fuera de orden: debe ser atención < alerta < evacuación; atención puede faltar). `nivel` queda en `sin_dato` hasta corregirlo. |
 | `dato_fuera_de_rango` | Se descartó una lectura fuera de 0–20 m. |
 | `fuente_no_disponible` | No se pudo leer CARU; se conserva el último dato válido con su fecha. |
+| `pronostico_no_disponible` | No se pudo leer el informe de crecida vigente (índice caído, PDF ilegible, sin la fila de Paysandú, o sin tiempo en esa pasada). `pronostico` conserva el último que se leyó, con su fecha y `vigente` recalculado. |
 
 `generado` indica la última vez que cambió el contenido, no la última vez que corrió el lector.
+
+### Cómo trabaja cada pasada
+
+1. Lee el registro de alturas de CARU (hasta 3 intentos, como mucho 120 s) y escribe **enseguida**
+   `actual.json` y las lecturas actuales en `historial.json`: si algo después se cuelga, la altura nueva
+   ya quedó publicada.
+2. Revisa el índice de informes de crecida y, si hay uno nuevo, baja el PDF y lo lee en un proceso aparte
+   (`lector/pdf_aislado.py`: 60 s como máximo y, en Linux, 1,5 GB de memoria). Si el PDF no se puede leer,
+   se anota en `data/estado_lector.json` y no se reintenta hasta 6 h después (`pdf_reintento_horas`).
+3. Completa el historial con las páginas de detalle.
+
+Lo de los pasos 2 y 3 se pide con un solo intento, solo si pasaron menos de 90 s desde el arranque
+(`presupuesto_secundarias_s`) y nunca después de los 150 s (`limite_descargas_s`). Los tiempos están en
+`lector/config.json`.
+
+Código de salida de `lector.py`: `0` bien; `3` no se pudo leer el registro de CARU o vino sin el dato de
+Paysandú (se publicó el último dato con `fuente_no_disponible`); `4` `data/umbrales.json` inválido (además
+imprime `::error::`); `1` configuración o archivo de `data/` con JSON mal escrito (no se modifica nada).
 
 ## Datos publicados
 
