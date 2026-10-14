@@ -1,15 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../enlaces.dart';
 import '../tema.dart';
 
-/// Abre un enlace (página, PDF o teléfono) fuera de la app. Si no se puede, lo dice.
+/// Abre una página o PDF de un sitio permitido fuera de la app (los teléfonos
+/// van por llamar()). Si no se puede, lo dice.
 Future<void> abrirEnlace(BuildContext context, String url) async {
   final mensajes = ScaffoldMessenger.of(context);
+  final uri = uriPermitida(url);
   var abierto = false;
-  try {
-    abierto = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-  } catch (_) {}
+  if (uri != null) {
+    try {
+      abierto = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {}
+  }
   if (!abierto) {
     mensajes.showSnackBar(const SnackBar(content: Text('No se pudo abrir el enlace desde este teléfono.')));
   }

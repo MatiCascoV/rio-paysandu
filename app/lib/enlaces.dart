@@ -28,10 +28,15 @@ void permitirOrigenes(Iterable<String> origenes) {
 
 /// ¿Se puede mostrar y abrir este enlace? Compara esquema, sitio y puerto
 /// exactos (no alcanza con que el texto empiece igual) y rechaza usuario@sitio.
-bool enlacePermitido(String? url) {
-  if (url == null || url.length > 2000) return false;
-  final o = _origen(Uri.tryParse(url.trim()));
-  return o != null && _origenes.contains(o);
+bool enlacePermitido(String? url) => uriPermitida(url) != null;
+
+/// La dirección ya analizada y recortada, lista para abrir, o null si no está
+/// permitida. Se abre esta, no el texto original.
+Uri? uriPermitida(String? url) {
+  if (url == null || url.length > 2000) return null;
+  final uri = Uri.tryParse(url.trim());
+  final o = _origen(uri);
+  return o != null && _origenes.contains(o) ? uri : null;
 }
 
 /// El número listo para "tel:" (solo dígitos, con un + inicial opcional), o

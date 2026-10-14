@@ -139,6 +139,49 @@ void main() {
           'No hay un dato reciente. Esto no quiere decir que el río esté bajo.');
     });
 
+    test('si las cifras no cuadran con el nivel publicado, frase sin cifras', () {
+      const u = Umbrales(alertaM: 4.39, evacuacionM: 6.89);
+      expect(nivelSegunUmbrales(4.00, u), Nivel.normal);
+      expect(nivelSegunUmbrales(4.39, u), Nivel.alerta);
+      expect(nivelSegunUmbrales(7.20, u), Nivel.evacuacion);
+      expect(descripcionNivel(Nivel.alerta, u, alturaM: 4.00), 'El río pasó el nivel de alerta.');
+      expect(descripcionNivel(Nivel.alerta, u, alturaM: 7.20), 'El río pasó el nivel de alerta.');
+      expect(descripcionNivel(Nivel.alerta, u, alturaM: 4.00, viejo: true),
+          'Con el último dato, el río estaba sobre el nivel de alerta.');
+      expect(descripcionNivel(Nivel.normal, u, alturaM: 5.0), 'El río está por debajo del nivel de alerta.');
+    });
+
+    test('100 cm se dice en metros', () {
+      expect(formatoDiferencia(4.39 - 3.39), '1,00 m');
+      expect(formatoDiferencia(0.995), '1,00 m');
+      expect(formatoDiferencia(0.99), '99 cm');
+      expect(descripcionNivel(Nivel.normal, const Umbrales(alertaM: 4.39), alturaM: 3.39),
+          'El río está por debajo del nivel de alerta (4,39 m). Faltan 1,00 m.');
+    });
+
+    test('justo en el umbral: "llegó"', () {
+      const u = Umbrales(atencionM: 4.0, alertaM: 4.39, evacuacionM: 6.89);
+      expect(descripcionNivel(Nivel.alerta, u, alturaM: 4.39),
+          'El río llegó al nivel de alerta (4,39 m). Faltan 2,50 m para evacuación (6,89 m).');
+      expect(descripcionNivel(Nivel.atencion, u, alturaM: 4.0),
+          'El río llegó al nivel de atención (4,00 m). Faltan 39 cm para alerta (4,39 m).');
+      expect(descripcionNivel(Nivel.alerta, u, alturaM: 4.39, viejo: true),
+          'Con el último dato, el río estaba en el nivel de alerta (4,39 m). '
+          'Faltaban 2,50 m para evacuación (6,89 m).');
+    });
+
+    test('umbrales inválidos con un dato fresco', () {
+      const frase = 'Hay un dato reciente, pero no se puede calcular el nivel: '
+          'los niveles de referencia llegaron con un error.';
+      expect(descripcionNivel(Nivel.sinDato, null, alturaM: 5.95, umbralesInvalidos: true), frase);
+      // Con dato viejo o sin altura no se dice "reciente".
+      expect(descripcionNivel(Nivel.sinDato, null, alturaM: 5.95, viejo: true, umbralesInvalidos: true),
+          isNot(frase));
+      expect(descripcionNivel(Nivel.sinDato, null, umbralesInvalidos: true), isNot(frase));
+      expect(textoAviso('pronostico_no_disponible'),
+          'No se pudo leer el último informe de CARU; el pronóstico puede no estar al día.');
+    });
+
     test('unidades en palabras para el lector de pantalla', () {
       expect(unidadesEnPalabras('Pasó el nivel (6,89 m) por 12 cm. Falta 1 cm. Faltan 1,20 m.'),
           'Pasó el nivel (6,89 metros) por 12 centímetros. Falta 1 centímetro. Faltan 1,20 metros.');

@@ -60,8 +60,13 @@ String? _textoCorto(Object? v) {
   return '${String.fromCharCodes(t.runes.take(largoMaximoTexto - 1))}…';
 }
 
-/// Margen para relojes un poco adelantados: más allá, una fecha futura es un error.
+/// Una lectura más de 1 h posterior a `generado` (del mismo JSON) es un error.
+/// Se compara contra `generado` y no contra el reloj del teléfono: un teléfono
+/// atrasado no puede quedarse sin nivel ni sin avisos.
 const _margenFuturo = Duration(hours: 1);
+
+bool _posteriorA(DateTime fecha, DateTime? generado) =>
+    generado != null && fecha.difference(generado) > _margenFuturo;
 
 class Lectura {
   final double valorM;
@@ -142,6 +147,9 @@ class Actual {
   final List<String> avisos;
   final String? cero;
 
+  /// Cuándo armó el lector este contenido.
+  final DateTime? generado;
+
   const Actual({
     this.altura,
     this.prefectura,
@@ -149,6 +157,7 @@ class Actual {
     this.nivel = Nivel.sinDato,
     this.avisos = const [],
     this.cero,
+    this.generado,
   });
 
   static Actual? desdeJson(Object? j) {
@@ -161,16 +170,17 @@ class Actual {
       nivel: nivelDesdeTexto(_texto(j['nivel'])),
       avisos: avisos is List ? avisos.whereType<String>().toList() : const [],
       cero: _texto(j['cero']),
+      generado: _fecha(j['generado']),
     );
   }
 
   /// Nivel que la app puede mostrar: si no hay altura, o es demasiado vieja
-  /// (por ejemplo porque el lector dejó de correr), es "sin dato". Una fecha
-  /// en el futuro también: el dato está mal.
+  /// (por ejemplo porque el lector dejó de correr), es "sin dato". Una lectura
+  /// posterior a cuando se armó el JSON también: el dato está mal.
   Nivel nivelVigente(DateTime ahora, int horasSinDato) {
     final a = altura;
     if (a == null) return Nivel.sinDato;
-    if (a.fecha.difference(ahora) > _margenFuturo) return Nivel.sinDato;
+    if (_posteriorA(a.fecha, generado)) return Nivel.sinDato;
     if (ahora.difference(a.fecha).inMinutes > horasSinDato * 60) return Nivel.sinDato;
     return nivel;
   }
@@ -209,16 +219,16 @@ class PuntoHistorial {
 
   const PuntoHistorial(this.fecha, this.valorM, this.fuente);
 
-  /// Se descartan los puntos sin fecha, con alturas imposibles o en el futuro.
-  static List<PuntoHistorial> listaDesdeJson(Object? j, {DateTime? ahora}) {
+  /// Se descartan los puntos sin fecha, con alturas imposibles o posteriores
+  /// en más de 1 h a [generado] (el de actual.json; sin él no se descarta por fecha).
+  static List<PuntoHistorial> listaDesdeJson(Object? j, {DateTime? generado}) {
     if (j is! List) return const [];
-    final limite = (ahora ?? DateTime.now()).add(_margenFuturo);
     final puntos = <PuntoHistorial>[];
     for (final e in j) {
       if (e is! Map) continue;
       final fecha = _fecha(e['fecha']);
       final valor = _altura(e['valor_m']);
-      if (fecha != null && valor != null && !fecha.isAfter(limite)) {
+      if (fecha != null && valor != null && !_posteriorA(fecha, generado)) {
         puntos.add(PuntoHistorial(fecha, valor, _texto(e['fuente']) ?? ''));
       }
     }

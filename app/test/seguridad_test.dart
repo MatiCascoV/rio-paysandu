@@ -1,5 +1,6 @@
 // Pruebas del endurecimiento de seguridad: enlaces, teléfonos, datos raros,
 // tope de descarga, avisos y manifiesto.
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -73,6 +74,13 @@ void main() {
       }
     });
 
+    test('se abre la dirección ya analizada y recortada', () {
+      final uri = uriPermitida('  https://caru.org.uy/informe.pdf\n');
+      expect(uri, Uri.parse('https://caru.org.uy/informe.pdf'));
+      expect(uriPermitida('https://caru.org.uy@evil.com/'), isNull);
+      expect(uriPermitida('javascript:alert(1)'), isNull);
+    });
+
     test('sin lista cargada no se abre nada', () {
       permitirOrigenes(const []);
       addTearDown(() => permitirOrigenes(configReal.enlacesPermitidos));
@@ -135,15 +143,34 @@ void main() {
   });
 
   group('notificaciones (12)', () {
-    test('un dato a verificar no avisa ni se recuerda', () async {
-      SharedPreferences.setMockInitialValues({'ultimo_nivel': 'normal'});
+    final ahora = DateTime.parse('2026-10-09T13:00:00-03:00');
+
+    test('un dato a verificar igual avisa, lo aclara y se recuerda', () async {
+      SharedPreferences.setMockInitialValues({'ultimo_nivel': 'normal', claveActivos: true});
       final prefs = await SharedPreferences.getInstance();
-      final ahora = DateTime.parse('2026-10-09T13:00:00-03:00');
-      final dudoso = Actual.desdeJson(actualCon((j) => j['avisos'] = ['dato_a_verificar']));
-      await revisarNivel(dudoso, prefs, ahora: ahora);
-      expect(prefs.getString('ultimo_nivel'), 'normal');
-      // El mismo dato sin el aviso sí se tiene en cuenta.
-      await revisarNivel(Actual.desdeJson(jsonDecode(actualReal)), prefs, ahora: ahora);
+      final dudoso = Actual.desdeJson(actualCon((j) => j['avisos'] = ['dato_a_verificar']))!;
+      final aviso = await avisoPendiente(dudoso, prefs, ahora);
+      expect(aviso, isNotNull);
+      expect(aviso!.$1, 'Río Uruguay: nivel de ALERTA');
+      expect(aviso.$2, contains('Dato a verificar por CARU.'));
+      expect(prefs.getString('ultimo_nivel'), 'alerta');
+      // Mismo nivel en la pasada siguiente: no se repite.
+      expect(await avisoPendiente(dudoso, prefs, ahora), isNull);
+    });
+
+    test('sin el aviso del lector el texto no habla de verificar', () async {
+      SharedPreferences.setMockInitialValues({'ultimo_nivel': 'normal', claveActivos: true});
+      final prefs = await SharedPreferences.getInstance();
+      final aviso = await avisoPendiente(Actual.desdeJson(jsonDecode(actualReal))!, prefs, ahora);
+      expect(aviso!.$2, isNot(contains('verificar')));
+    });
+
+    test('con el reloj del teléfono 3 h atrasado igual avisa', () async {
+      SharedPreferences.setMockInitialValues({'ultimo_nivel': 'normal', claveActivos: true});
+      final prefs = await SharedPreferences.getInstance();
+      final atrasado = DateTime.parse('2026-10-09T09:00:00-03:00'); // la lectura es de las 12:00
+      final aviso = await avisoPendiente(Actual.desdeJson(jsonDecode(actualReal))!, prefs, atrasado);
+      expect(aviso, isNotNull);
       expect(prefs.getString('ultimo_nivel'), 'alerta');
     });
   });
@@ -176,22 +203,62 @@ void main() {
       expect(Pronostico.desdeJson({'texto': 'corto'})!.texto, 'corto');
     });
 
-    test('una altura con fecha en el futuro no da nivel', () {
+    // actualReal se generó a las 12:25:36 (hora de Uruguay).
+    final generado = DateTime.parse('2026-10-09T12:25:36-03:00');
+
+    test('una lectura posterior a "generado" no da nivel', () {
       Actual conFecha(String fecha) =>
           Actual.desdeJson(actualCon((j) => (j['altura_actual'] as Map)['fecha'] = fecha))!;
-      expect(conFecha('2026-10-09T13:50:00-03:00').nivelVigente(ahora, 48), Nivel.alerta);
-      expect(conFecha('2026-10-09T14:30:00-03:00').nivelVigente(ahora, 48), Nivel.sinDato);
+      expect(Actual.desdeJson(jsonDecode(actualReal))!.generado, generado);
+      expect(conFecha('2026-10-09T13:20:00-03:00').nivelVigente(ahora, 48), Nivel.alerta);
+      expect(conFecha('2026-10-09T13:30:00-03:00').nivelVigente(ahora, 48), Nivel.sinDato);
       expect(conFecha('2030-01-01T00:00:00-03:00').nivelVigente(ahora, 48), Nivel.sinDato);
+      // Sin "generado" no hay con qué comparar: manda el nivel publicado.
+      final sinGenerado = Actual.desdeJson(actualCon((j) => j.remove('generado')))!;
+      expect(sinGenerado.nivelVigente(ahora, 48), Nivel.alerta);
     });
 
-    test('historial sin puntos futuros ni alturas imposibles', () {
+    test('con el reloj del teléfono 3 h atrasado se ve el nivel', () {
+      final atrasado = DateTime.parse('2026-10-09T09:00:00-03:00');
+      expect(Actual.desdeJson(jsonDecode(actualReal))!.nivelVigente(atrasado, 48), Nivel.alerta);
       final h = PuntoHistorial.listaDesdeJson([
         {'fecha': '2026-10-09T12:00:00-03:00', 'valor_m': 5.95},
-        {'fecha': '2026-10-09T13:30:00-03:00', 'valor_m': 6.0}, // dentro del margen
-        {'fecha': '2026-10-09T15:00:00-03:00', 'valor_m': 6.1}, // futuro
+        {'fecha': '2026-10-09T11:00:00-03:00', 'valor_m': 5.9},
+      ], generado: generado);
+      expect(h, hasLength(2));
+    });
+
+    testWidgets('con el reloj del teléfono 3 h atrasado, Inicio muestra el nivel', (t) async {
+      t.view.physicalSize = const Size(1080, 6000);
+      t.view.devicePixelRatio = 2.0;
+      addTearDown(t.view.reset);
+      await t.pumpWidget(MaterialApp(
+        locale: const Locale('es'),
+        supportedLocales: const [Locale('es')],
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        home: Scaffold(
+          body: PantallaInicio(
+            datos: Datos(
+                actual: Actual.desdeJson(jsonDecode(actualReal)),
+                umbrales: Umbrales.desdeJson(jsonDecode(umbralesReal))),
+            config: configReal,
+            alActualizar: () async {},
+            ahora: DateTime.parse('2026-10-09T09:00:00-03:00'),
+          ),
+        ),
+      ));
+      expect(find.text('ALERTA'), findsWidgets);
+      expect(find.text('SIN DATO'), findsNothing);
+    });
+
+    test('historial sin puntos posteriores a "generado" ni alturas imposibles', () {
+      final h = PuntoHistorial.listaDesdeJson([
+        {'fecha': '2026-10-09T12:00:00-03:00', 'valor_m': 5.95},
+        {'fecha': '2026-10-09T13:20:00-03:00', 'valor_m': 6.0}, // dentro del margen
+        {'fecha': '2026-10-09T15:00:00-03:00', 'valor_m': 6.1}, // imposible
         {'fecha': '2026-10-08T12:00:00-03:00', 'valor_m': 1e308},
         {'fecha': '2026-10-08T12:00:00-03:00', 'valor_m': -3},
-      ], ahora: ahora);
+      ], generado: generado);
       expect(h.map((p) => p.valorM), [5.95, 6.0]);
     });
   });
@@ -240,6 +307,48 @@ void main() {
       final prefs = await SharedPreferences.getInstance();
       expect(prefs.getString('cache_actual'), actualReal);
       expect(prefs.getString('cache_umbrales'), umbralesReal);
+    });
+
+    // Respuesta que se queda abierta: registra si alguien soltó la conexión.
+    (http.Client, bool Function()) colgado({int estado = 200, int? largo, bool mandaAlgo = true}) {
+      var soltado = false;
+      final cliente = MockClient.streaming((pedido, _) async {
+        final c = StreamController<List<int>>(onCancel: () => soltado = true);
+        if (mandaAlgo) c.add(utf8.encode('{"nivel": '));
+        return http.StreamedResponse(c.stream, estado, contentLength: largo);
+      });
+      return (cliente, () => soltado);
+    }
+
+    test('si vence el tiempo se suelta la conexión y queda la copia', () async {
+      SharedPreferences.setMockInitialValues({'cache_actual': actualReal});
+      final (cliente, soltado) = colgado();
+      final d = await Repositorio('https://ejemplo.test/data/',
+              cliente: cliente, tiempoMaximo: const Duration(milliseconds: 50))
+          .cargar();
+      expect(d.sinConexion, isTrue);
+      expect(d.actual!.altura!.valorM, 5.95);
+      expect(soltado(), isTrue);
+    });
+
+    test('con un error o un tamaño declarado excesivo no se lee y se suelta', () async {
+      for (final (estado, largo) in [(500, null), (404, 10), (200, Repositorio.bytesMaximos + 1)]) {
+        SharedPreferences.setMockInitialValues({'cache_actual': actualReal});
+        final (cliente, soltado) = colgado(estado: estado, largo: largo, mandaAlgo: false);
+        final d = await Repositorio('https://ejemplo.test/data/', cliente: cliente).cargar();
+        expect(d.actual!.altura!.valorM, 5.95, reason: '$estado');
+        expect(soltado(), isTrue, reason: '$estado $largo');
+      }
+    });
+
+    test('si el envío no responde, vence el tiempo igual', () async {
+      SharedPreferences.setMockInitialValues({'cache_actual': actualReal});
+      final nunca = MockClient.streaming((pedido, _) => Completer<http.StreamedResponse>().future);
+      final d = await Repositorio('https://ejemplo.test/data/',
+              cliente: nunca, tiempoMaximo: const Duration(milliseconds: 50))
+          .cargar();
+      expect(d.sinConexion, isTrue);
+      expect(d.actual!.altura!.valorM, 5.95);
     });
 
     test('sin altura (CARU caída) también es válido', () {

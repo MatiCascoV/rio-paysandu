@@ -44,7 +44,6 @@ Los umbrales de nivel están en `data/umbrales.json` y son **provisorios** hasta
 | `dato_a_verificar` | Salto de más de 1 m en menos de 6 h, fuentes que no coinciden o fecha imposible. |
 | `dato_fuera_de_rango` | Se descartó una lectura fuera de 0–20 m. |
 | `fuente_no_disponible` | No se pudo leer CARU; se conserva el último dato válido con su fecha. |
-| `umbrales_invalidos` | Los umbrales de `umbrales.json` tienen un error y no se usan para calcular el nivel. |
 
 `generado` indica la última vez que cambió el contenido, no la última vez que corrió el lector.
 

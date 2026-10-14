@@ -48,9 +48,10 @@ bool debeAvisar(Nivel? anterior, Nivel nuevo, Nivel minimo) {
   // Fecha completa: la notificación puede leerse al día siguiente y "hoy" sería falso.
   final f = enHoraUruguay(a.fecha);
   final cuando = '${f.day}/${f.month} a las ${f.hour.toString().padLeft(2, '0')}:${f.minute.toString().padLeft(2, '0')}';
+  final aVerificar = actual.avisos.contains('dato_a_verificar') ? 'Dato a verificar por CARU. ' : '';
   return (
     titulo,
-    'Altura en Paysandú: ${formatoAltura(a.valorM)} m (el $cuando). '
+    'Altura en Paysandú: ${formatoAltura(a.valorM)} m (el $cuando). $aVerificar'
         'Fuente: CARU. La alerta oficial la dan el Sinae y el Cecoed.',
   );
 }
@@ -61,23 +62,30 @@ Future<void> _iniciarPlugin() => _plugin.initialize(
       settings: const InitializationSettings(android: AndroidInitializationSettings('@mipmap/ic_launcher')),
     );
 
-/// Compara el nivel con el último conocido y, si corresponde, muestra el aviso.
-Future<void> revisarNivel(Actual? actual, SharedPreferences prefs, {DateTime? ahora}) async {
-  if (kIsWeb || actual == null) return;
-  // Un dato que CARU todavía tiene que verificar no dispara avisos (ni se
-  // recuerda: el próximo dato bueno se compara con el último bueno).
-  if (actual.avisos.contains('dato_a_verificar')) return;
-  ahora ??= DateTime.now();
+/// Compara el nivel con el último conocido, lo recuerda y devuelve el aviso a
+/// mostrar (título, texto), o null si no corresponde avisar.
+/// El nivel que publica el lector manda, aunque el dato esté a verificar:
+/// callar durante una crecida es tan grave como avisar mal (el texto lo aclara).
+@visibleForTesting
+Future<(String, String)?> avisoPendiente(Actual actual, SharedPreferences prefs, DateTime ahora) async {
   await prefs.reload(); // la app y la tarea en segundo plano comparten estos datos
   final nuevo = actual.nivelVigente(ahora, prefs.getInt(_claveHorasSinDato) ?? 48);
-  if (nuevo == Nivel.sinDato) return;
+  if (nuevo == Nivel.sinDato) return null;
   final guardado = prefs.getString(_claveUltimo);
   final anterior = guardado == null ? null : nivelDesdeTexto(guardado);
   await prefs.setString(_claveUltimo, nivelATexto(nuevo));
-  if (prefs.getBool(claveActivos) != true) return;
+  if (prefs.getBool(claveActivos) != true) return null;
   final minimo = nivelDesdeTexto(prefs.getString(claveDesde) ?? 'alerta');
-  if (!debeAvisar(anterior, nuevo, minimo)) return;
-  final (titulo, cuerpo) = mensajeDeCambio(anterior, actual, nuevo, ahora);
+  if (!debeAvisar(anterior, nuevo, minimo)) return null;
+  return mensajeDeCambio(anterior, actual, nuevo, ahora);
+}
+
+/// Compara el nivel con el último conocido y, si corresponde, muestra el aviso.
+Future<void> revisarNivel(Actual? actual, SharedPreferences prefs, {DateTime? ahora}) async {
+  if (kIsWeb || actual == null) return;
+  final mensaje = await avisoPendiente(actual, prefs, ahora ?? DateTime.now());
+  if (mensaje == null) return;
+  final (titulo, cuerpo) = mensaje;
   await _plugin.show(
     id: 1,
     title: titulo,

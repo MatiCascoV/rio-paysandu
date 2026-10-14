@@ -113,6 +113,7 @@ void main() {
     final prefs = await SharedPreferences.getInstance();
     final falso = actualFalso('alerta', 5.95);
     (falso['altura_actual'] as Map)['fecha'] = DateTime.now().toUtc().toIso8601String();
+    falso['generado'] = DateTime.now().toUtc().toIso8601String(); // el JSON se armó después de la lectura
     final cliente = MockClient((pedido) async => http.Response.bytes(
         utf8.encode(switch (pedido.url.pathSegments.last) {
           'actual.json' => jsonEncode(falso),
@@ -301,6 +302,7 @@ void main() {
       final falso = actualFalso(nivel, nivel == 'sin_dato' ? null : (nivel == 'alerta' ? 5.95 : 7.05));
       if (falso['altura_actual'] != null) {
         (falso['altura_actual'] as Map)['fecha'] = DateTime.now().toUtc().toIso8601String();
+        falso['generado'] = DateTime.now().toUtc().toIso8601String(); // el JSON se armó después de la lectura
       }
       final cliente = MockClient((pedido) async => http.Response.bytes(
           utf8.encode(switch (pedido.url.pathSegments.last) {
@@ -327,6 +329,7 @@ void main() {
     final prefs = await SharedPreferences.getInstance();
     final falso = actualFalso('alerta', 5.95);
     (falso['altura_actual'] as Map)['fecha'] = DateTime.now().toUtc().toIso8601String();
+    falso['generado'] = DateTime.now().toUtc().toIso8601String(); // el JSON se armó después de la lectura
     final cliente = MockClient((pedido) async => http.Response.bytes(
         utf8.encode(switch (pedido.url.pathSegments.last) {
           'actual.json' => jsonEncode(falso),

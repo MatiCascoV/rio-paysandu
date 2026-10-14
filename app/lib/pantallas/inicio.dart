@@ -143,7 +143,10 @@ class PantallaInicio extends StatelessWidget {
       // ----- Nivel: el único color fuerte de la pantalla -----
       _FranjaNivel(
         estilo: estilo,
-        frase: descripcionNivel(nivel, umbrales, alturaM: altura.valorM, viejo: viejo),
+        frase: descripcionNivel(nivel, umbrales,
+            alturaM: altura.valorM,
+            viejo: viejo,
+            umbralesInvalidos: actual.avisos.contains('umbrales_invalidos')),
         alVerQueHacer: esGrave ? alVerQueHacer : null,
       ),
 

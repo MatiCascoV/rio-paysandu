@@ -51,8 +51,9 @@ String _centimetros(double metros) {
 }
 
 /// Diferencia entre dos alturas: "94 cm" o "1,19 m".
+/// Se decide con centímetros enteros: 0,999… m es "1,00 m", no "100 cm".
 String formatoDiferencia(double metros) =>
-    metros.abs() < 1 ? _centimetros(metros) : '${formatoAltura(metros.abs())} m';
+    _cm(metros).abs() < 100 ? _centimetros(metros) : '${formatoAltura(_cm(metros).abs() / 100)} m';
 
 /// "Crece 30 cm en 24 h", "Baja 5 cm en 30 min" o "Estable".
 /// Con [pasado] (cuando el dato ya es viejo): "Crecía…", "Bajaba…".
@@ -122,7 +123,14 @@ EstiloNivel estiloNivel(Nivel n) => switch (n) {
 /// Frase que acompaña al nivel: qué umbral pasó el río y cuánto falta para el
 /// siguiente, con las alturas publicadas. Sin [alturaM] o sin umbrales queda la
 /// frase sin cifras. Con [viejo] (dato de hace más de unas horas) se habla en pasado.
-String descripcionNivel(Nivel n, Umbrales? u, {double? alturaM, bool viejo = false}) {
+/// Con [umbralesInvalidos] (aviso del lector) y un dato fresco, se explica por
+/// qué no hay nivel aunque haya altura.
+String descripcionNivel(Nivel n, Umbrales? u,
+    {double? alturaM, bool viejo = false, bool umbralesInvalidos = false}) {
+  if (n == Nivel.sinDato && umbralesInvalidos && alturaM != null && !viejo) {
+    return 'Hay un dato reciente, pero no se puede calcular el nivel: '
+        'los niveles de referencia llegaron con un error.';
+  }
   final cifras = u == null || alturaM == null ? null : _fraseConCifras(n, u, alturaM, viejo);
   if (cifras != null) return cifras;
   final siguiente = u?.atencionM != null ? 'atención' : 'alerta';
@@ -146,8 +154,19 @@ String descripcionNivel(Nivel n, Umbrales? u, {double? alturaM, bool viejo = fal
   };
 }
 
-/// La frase con umbrales y cifras, o null si falta el umbral que nombra.
+/// Nivel que corresponde a [alturaM] con los umbrales [u], con la misma regla
+/// que el lector (altura >= umbral, en centímetros enteros).
+Nivel nivelSegunUmbrales(double alturaM, Umbrales u) {
+  for (final (nivel, valor) in umbralesOrdenados(u)) {
+    if (_cm(alturaM) >= _cm(valor)) return nivel;
+  }
+  return Nivel.normal;
+}
+
+/// La frase con umbrales y cifras, o null si falta el umbral que nombra o si
+/// las cifras no cuadran con el nivel publicado (mejor sin cifras que contradictoria).
 String? _fraseConCifras(Nivel n, Umbrales u, double alturaM, bool viejo) {
+  if (n == Nivel.sinDato || nivelSegunUmbrales(alturaM, u) != n) return null;
   String umbral(Nivel x, double valor) => '${estiloNivel(x).nombre.toLowerCase()} (${formatoAltura(valor)} m)';
   final antes = viejo ? 'Con el último dato, el río estaba' : 'El río';
   final siguiente = _siguienteUmbral(alturaM, u);
@@ -160,7 +179,10 @@ String? _fraseConCifras(Nivel n, Umbrales u, double alturaM, bool viejo) {
     case Nivel.atencion || Nivel.alerta:
       final pasado = n == Nivel.atencion ? u.atencionM : u.alertaM;
       if (pasado == null) return null;
-      final frase = '$antes ${viejo ? 'sobre' : 'pasó'} el nivel de ${umbral(n, pasado)}.';
+      // Justo en el umbral se dice "llegó", como en evacuación.
+      final justo = _cm(alturaM) == _cm(pasado);
+      final verbo = viejo ? (justo ? 'en el' : 'sobre el') : (justo ? 'llegó al' : 'pasó el');
+      final frase = '$antes $verbo nivel de ${umbral(n, pasado)}.';
       // El siguiente solo si queda por encima del que pasó (el dato puede venir desparejo).
       if (siguiente == null || _cm(siguiente.$2) <= _cm(pasado)) return frase;
       return '$frase ${textoFalta(alturaM, u, viejo: viejo)} (${formatoAltura(siguiente.$2)} m).';
@@ -256,5 +278,7 @@ String? textoAviso(String codigo) => switch (codigo) {
       'fuente_no_disponible' => 'No llegó información nueva de CARU. Se muestra el último dato que hay.',
       'umbrales_invalidos' =>
         'Los niveles de referencia que llegaron tienen un error; no se usan para calcular el nivel.',
+      'pronostico_no_disponible' =>
+        'No se pudo leer el último informe de CARU; el pronóstico puede no estar al día.',
       _ => null,
     };

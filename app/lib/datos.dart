@@ -2,7 +2,9 @@
 /// app funcione sin conexión mostrando el último dato con su fecha.
 library;
 
+import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:http/http.dart' as http;
@@ -76,7 +78,11 @@ class Repositorio {
   final String urlBase;
   final http.Client _cliente;
 
-  Repositorio(this.urlBase, {http.Client? cliente}) : _cliente = cliente ?? http.Client();
+  /// Tiempo máximo para bajar cada archivo.
+  final Duration tiempoMaximo;
+
+  Repositorio(this.urlBase, {http.Client? cliente, this.tiempoMaximo = const Duration(seconds: 15)})
+      : _cliente = cliente ?? http.Client();
 
   static const _archivos = ['actual', 'umbrales', 'historial'];
 
@@ -95,23 +101,63 @@ class Repositorio {
         _ => false,
       };
 
-  /// Baja el archivo cortando apenas pasa de [bytesMaximos].
+  /// Baja el archivo cortando apenas pasa de [bytesMaximos]. Pasado
+  /// [tiempoMaximo] se aborta el pedido y se suelta la conexión: nada queda
+  /// leyendo en segundo plano. Devuelve null si la respuesta no sirve.
   Future<List<int>?> _bajar(String nombre) async {
-    final r = await _cliente.send(http.Request('GET', Uri.parse('$urlBase$nombre.json')));
-    if (r.statusCode != 200 || (r.contentLength ?? 0) > bytesMaximos) return null;
-    final bytes = <int>[];
-    await for (final parte in r.stream) {
-      bytes.addAll(parte);
-      if (bytes.length > bytesMaximos) return null;
+    final abortar = Completer<void>();
+    final listo = Completer<List<int>?>();
+    StreamSubscription<List<int>>? suscripcion;
+    void terminar(List<int>? bytes, [Object? error]) {
+      if (listo.isCompleted) return;
+      error == null ? listo.complete(bytes) : listo.completeError(error);
     }
-    return bytes;
+
+    final reloj = Timer(tiempoMaximo, () {
+      if (!abortar.isCompleted) abortar.complete(); // corta el pedido en curso
+      suscripcion?.cancel();
+      terminar(null, TimeoutException('Sin respuesta', tiempoMaximo));
+    });
+    try {
+      final pedido = http.AbortableRequest('GET', Uri.parse('$urlBase$nombre.json'), abortTrigger: abortar.future);
+      final enviado = _cliente.send(pedido);
+      final http.StreamedResponse r;
+      try {
+        // listo solo termina antes que el envío si vence el tiempo (con error).
+        r = await Future.any([enviado, listo.future.then((_) => enviado)]);
+      } catch (_) {
+        // Si la respuesta igual llega tarde, se suelta sin leer.
+        unawaited(enviado.then((r) => r.stream.listen(null).cancel(), onError: (_) {}));
+        rethrow;
+      }
+      if (r.statusCode != 200 || (r.contentLength ?? 0) > bytesMaximos) {
+        await r.stream.listen(null).cancel(); // se suelta sin leer
+        return null;
+      }
+      final bytes = BytesBuilder(copy: false);
+      suscripcion = r.stream.listen(
+        (parte) {
+          bytes.add(parte);
+          if (bytes.length > bytesMaximos) {
+            suscripcion?.cancel();
+            terminar(null);
+          }
+        },
+        onError: (Object e) => terminar(null, e),
+        onDone: () => terminar(bytes.takeBytes()),
+        cancelOnError: true,
+      );
+      return await listo.future;
+    } finally {
+      reloj.cancel();
+    }
   }
 
   /// Baja un archivo; si lo consigue y es válido lo guarda. Devuelve (json, vinoDeLaRed).
   Future<(Object?, bool)> _leer(String nombre, SharedPreferences prefs, bool usarRed) async {
     if (usarRed) {
       try {
-        final bytes = await _bajar(nombre).timeout(const Duration(seconds: 15));
+        final bytes = await _bajar(nombre);
         if (bytes != null) {
           final texto = utf8.decode(bytes);
           final json = jsonDecode(texto); // si no es JSON válido, no se guarda
@@ -140,10 +186,11 @@ class Repositorio {
     // La tarea en segundo plano corre aparte y pudo haber guardado datos más nuevos.
     await prefs.reload();
     final r = await Future.wait(_archivos.map((a) => _leer(a, prefs, usarRed && !(soloActual && a != 'actual'))));
+    final actual = Actual.desdeJson(r[0].$1);
     return Datos(
-      actual: Actual.desdeJson(r[0].$1),
+      actual: actual,
       umbrales: Umbrales.desdeJson(r[1].$1),
-      historial: PuntoHistorial.listaDesdeJson(r[2].$1),
+      historial: PuntoHistorial.listaDesdeJson(r[2].$1, generado: actual?.generado),
       sinConexion: usarRed && !r[0].$2,
     );
   }
