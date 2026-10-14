@@ -19,9 +19,8 @@ on:
         description: Minutos entre una lectura y la siguiente
         default: "10"
 
-permissions:
-  contents: write # guardar data/ en el repositorio
-  actions: write # lanzar la corrida siguiente
+# Sin permisos por defecto: cada trabajo pide solo lo que usa.
+permissions: {}
 
 # Nunca dos a la vez: una corrida nueva espera a que termine la que está activa.
 concurrency:
@@ -36,6 +35,8 @@ jobs:
   leer:
     runs-on: ubuntu-latest
     timeout-minutes: 350
+    permissions:
+      contents: write # guardar data/ en el repositorio
     steps:
       - uses: actions/checkout@v5
 
@@ -67,8 +68,17 @@ jobs:
             sleep $(( MINUTOS_ENTRE_LECTURAS * 60 ))
           done
 
+  # Trabajo aparte para que el token que puede lanzar workflows no conviva con
+  # el código del lector ni con dependencias de terceros: no hace checkout ni pip.
+  relanzar:
+    needs: leer
+    if: always() # también si la lectura falló o se canceló, para que la cadena no se corte
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write # lanzar la corrida siguiente
+    steps:
       - name: Lanzar la corrida siguiente
-        if: always() # también si algo falló arriba, para que la cadena no se corte
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh workflow run lector.yml --repo "$GITHUB_REPOSITORY" --ref main
