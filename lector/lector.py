@@ -152,8 +152,9 @@ def armar_actual(registro, pronostico, umbrales, anterior, ahora, cfg):
     else:
         # La fuente falló, o respondió sin una lectura utilizable de Paysandú (por
         # ejemplo, si cambió el formato): conservamos el último dato válido, con su
-        # fecha original. "dato_a_verificar" no se arrastra: sin lectura nueva no hay
-        # nada que verificar, y el nivel no queda retenido.
+        # fecha original. "dato_a_verificar" solo se arrastra si la altura que queda
+        # publicada es la lectura dudosa de un salto (retenida, o ya liberada durante
+        # este mismo corte): un aviso por otra causa no tiene por qué durar todo el corte.
         avisos.append("fuente_no_disponible")
         avisos += [a for a in anterior.get("avisos", []) if a == "estacion_desactualizada"]
         altura = anterior.get("altura_actual")
@@ -161,6 +162,13 @@ def armar_actual(registro, pronostico, umbrales, anterior, ahora, cfg):
         cero = anterior.get("cero", cfg["cero"])
         if altura:
             fecha_principal = _fecha_iso(altura.get("fecha"))
+            previos = anterior.get("avisos", [])
+            retenida = _fecha_iso((anterior.get("nivel_retenido") or {}).get("fecha_lectura"))
+            if fecha_principal and retenida == fecha_principal:
+                avisos.append("dato_a_verificar")
+                salto = True  # la retención sigue, con el mismo tope de tiempo
+            elif "fuente_no_disponible" in previos and "dato_a_verificar" in previos:
+                avisos.append("dato_a_verificar")
             es_estacion = altura.get("fuente") == FUENTE_ESTACION
             max_horas = cfg["estacion_max_horas"] if es_estacion else cfg["prefectura_max_horas"]
             if fecha_principal and validar.horas_de_antiguedad(fecha_principal, ahora) > max_horas:
@@ -179,7 +187,12 @@ def armar_actual(registro, pronostico, umbrales, anterior, ahora, cfg):
         nivel = calcular_nivel(altura["valor_m"], umbrales)
     retenido = None
     if salto and nivel != "sin_dato" and anterior.get("nivel") in NIVELES_CON_DATO and nivel != anterior["nivel"]:
-        nivel, retenido = retener_nivel(nivel, principal["fecha"], anterior, ahora, cfg)
+        nivel, retenido = retener_nivel(nivel, fecha_principal, anterior, ahora, cfg)
+
+    # Contraste con el pronóstico de CARU (solo avisa, nunca retiene): un informe
+    # reciente que espera una altura muy distinta sugiere un error en uno de los dos.
+    if altura and contradice_pronostico(altura["valor_m"], pronostico, ahora, cfg):
+        avisos.append("dato_a_verificar")
 
     actual = {
         "generado": ahora.replace(microsecond=0).isoformat(),
@@ -193,6 +206,20 @@ def armar_actual(registro, pronostico, umbrales, anterior, ahora, cfg):
     if retenido:
         actual["nivel_retenido"] = retenido
     return actual
+
+
+def contradice_pronostico(valor_m, pronostico, ahora, cfg):
+    """True si hay un informe vigente y reciente (de hasta `contraste_pronostico_dias`)
+    cuya altura esperada difiere más de `contraste_pronostico_m` de la medida."""
+    pronostico = pronostico or {}
+    esperada = pronostico.get("altura_esperada_m")
+    if not pronostico.get("vigente") or type(esperada) not in (int, float):
+        return False
+    try:
+        dias = (ahora.date() - date.fromisoformat(pronostico.get("informe_fecha") or "")).days
+    except ValueError:
+        return False
+    return 0 <= dias <= cfg["contraste_pronostico_dias"] and abs(valor_m - esperada) > cfg["contraste_pronostico_m"]
 
 
 def retener_nivel(calculado, fecha_lectura, anterior, ahora, cfg):
@@ -254,14 +281,20 @@ def actualizar_historial(historial, nuevas, ahora, cfg):
     limite = ahora - timedelta(days=cfg["historial_dias"])
     detalle = ahora - timedelta(days=cfg["historial_detalle_dias"])
     futuro = ahora + timedelta(minutes=30)
+    corregible = ahora - timedelta(hours=cfg["historial_correccion_horas"])
     for fuente, lecturas in nuevas.items():
         for fecha, valor in lecturas:
-            # Lo que ya está en el historial no se reescribe (una página alterada no
-            # puede cambiar el pasado), y solo se aceptan lecturas de la última
-            # semana, que es lo que traen las páginas de detalle.
+            # Solo se aceptan lecturas de la última semana (lo que traen las páginas
+            # de detalle). Un punto ya guardado solo se corrige si es de las últimas
+            # `historial_correccion_horas` (así una corrección de CARU borra un pico
+            # falso); lo más viejo no se reescribe: una página alterada no cambia el pasado.
             if validar.en_rango(valor) and detalle <= fecha <= futuro:
                 clave = (fecha.isoformat(), fuente)
-                por_clave.setdefault(clave, {"fecha": clave[0], "valor_m": valor, "fuente": fuente})
+                entrada = {"fecha": clave[0], "valor_m": valor, "fuente": fuente}
+                if fecha >= corregible:
+                    por_clave[clave] = entrada
+                else:
+                    por_clave.setdefault(clave, entrada)
 
     salida = []
     for entrada in por_clave.values():
