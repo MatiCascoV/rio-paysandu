@@ -146,6 +146,25 @@ def test_sin_tiempo_no_pide_fuentes_secundarias(entorno, monkeypatch):
     assert "pronostico_no_disponible" in a["avisos"]
 
 
+def test_pdf_lento_no_queda_marcado_como_fallido(entorno, monkeypatch):
+    data, correr = entorno
+    descargar, pedidos = red_falsa()
+
+    def lento(url, *a, **k):
+        if url == URL_PDF:
+            pedidos.append((url, 1))
+            raise red.DescargaLenta("respuesta demasiado lenta")
+        return descargar(url, *a, **k)
+    monkeypatch.setattr(red, "descargar", lento)
+    assert lector.main() == 0
+    assert not (data / "estado_lector.json").exists()  # no se recuerda como fallido
+    assert "pronostico_no_disponible" in leer(data, "actual.json")["avisos"]
+    # La pasada siguiente lo vuelve a intentar (y esta vez anda).
+    codigo, pedidos2 = correr()
+    assert URL_PDF in [u for u, _ in pedidos2]
+    assert leer(data, "actual.json")["pronostico"]["url_informe"] == URL_PDF
+
+
 ROTO = '{"esto": no es JSON,'
 
 
