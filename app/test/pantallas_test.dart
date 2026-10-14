@@ -58,7 +58,7 @@ void main() {
     final casos = {
       'normal': (3.20, 'NORMAL', 'por debajo del nivel de alerta'),
       'atencion': (4.10, 'ATENCIÓN', 'nivel de atención'),
-      'alerta': (5.95, 'ALERTA', 'El río pasó el nivel de alerta.'),
+      'alerta': (5.95, 'ALERTA', 'El río pasó el nivel de alerta (4,39 m).'),
       'evacuacion': (7.05, 'EVACUACIÓN', 'La orden de evacuar la da el Cecoed'),
     };
     casos.forEach((nivel, caso) {
@@ -67,7 +67,7 @@ void main() {
         await mostrarInicio(t, datosCon(actualFalso(nivel, valor)));
         expect(find.text(nombre), findsOneWidget); // el nivel se dice con texto, no solo color
         expect(find.textContaining(descripcion), findsOneWidget);
-        expect(find.text('${valor.toStringAsFixed(2).replaceAll('.', ',')} m'), findsNWidgets(2)); // número grande y escalera
+        expect(find.text('${valor.toStringAsFixed(2).replaceAll('.', ',')} m'), findsOneWidget); // solo el número grande
         // toda altura lleva fecha, hora y fuente
         expect(find.text('Hoy 12:00'), findsOneWidget);
         expect(find.text('· CARU, estación automática'), findsOneWidget);
@@ -102,10 +102,10 @@ void main() {
 
   testWidgets('dice cuánto falta para el nivel siguiente y compara el pronóstico', (t) async {
     await mostrarInicio(t, datosCon(actualFalso('alerta', 5.95)));
-    expect(find.text('Faltan 94 cm para evacuación'), findsOneWidget);
+    expect(find.text('El río pasó el nivel de alerta (4,39 m). Faltan 94 cm para evacuación (6,89 m).'), findsOneWidget);
 
     await mostrarInicio(t, datosCon(actualFalso('normal', 3.20)));
-    expect(find.text('Faltan 1,19 m para alerta'), findsOneWidget);
+    expect(find.text('El río está por debajo del nivel de alerta (4,39 m). Faltan 1,19 m.'), findsOneWidget);
   });
 
   testWidgets('la app completa arranca, muestra el dato y cambia de pestaña', (t) async {
@@ -179,6 +179,8 @@ void main() {
     expect(find.textContaining('el río puede estar distinto'), findsOneWidget);
     expect(find.text('ALERTA'), findsOneWidget);
     expect(find.text('Crecía 1 cm en 30 min'), findsOneWidget); // en pasado: ya no se sabe si sigue creciendo
+    expect(find.text('Con el último dato, el río estaba sobre el nivel de alerta (4,39 m). '
+        'Faltaban 94 cm para evacuación (6,89 m).'), findsOneWidget);
 
     await mostrarInicio(t, datos, cuando: ahora.add(const Duration(hours: 60)));
     expect(find.text('SIN DATO'), findsOneWidget);
@@ -250,23 +252,22 @@ void main() {
     expect(prefs.getString('avisar_desde'), 'evacuacion');
   });
 
-  testWidgets('escala de niveles: solo marca los umbrales que existen', (t) async {
+  testWidgets('los umbrales van en la franja, sin escalera aparte', (t) async {
     await mostrarInicio(t, datosCon(actualFalso('alerta', 5.95)));
-    expect(find.text('Alerta'), findsOneWidget);
-    expect(find.text('4,39 m'), findsOneWidget);
-    expect(find.text('Evacuación'), findsOneWidget);
-    expect(find.text('6,89 m'), findsOneWidget);
-    expect(find.text('Ahora'), findsOneWidget);
-    expect(find.textContaining('Atención'), findsNothing); // atencion_m viene en null
+    expect(find.text('Ahora'), findsNothing);
+    expect(find.textContaining('atención'), findsNothing); // atencion_m viene en null
     expect(
-        find.bySemanticsLabel(RegExp('^Escala de niveles. El río está en 5,95 metros, medido hoy 12:00. '
-            'Nivel de alerta: 4,39 metros, ya superado. Nivel de evacuación: 6,89 metros, faltan 94 centímetros.')),
+        find.bySemanticsLabel('Nivel: Alerta. El río pasó el nivel de alerta (4,39 metros). '
+            'Faltan 94 centímetros para evacuación (6,89 metros).'),
         findsOneWidget);
+    // las dos notas quedan en una sola línea debajo de la tendencia
+    final nota = find.text('Medido en el puerto de Paysandú: no es la altura del agua en tu calle. '
+        'Los niveles son de referencia; el Cecoed todavía los está revisando.');
+    expect(nota, findsOneWidget);
+    expect(t.getTopLeft(nota).dy, greaterThan(t.getTopLeft(find.text('Crece 1 cm en 30 min')).dy));
 
-    // por encima de evacuación, "Ahora" pasa a ser el peldaño de arriba
     await mostrarInicio(t, datosCon(actualFalso('evacuacion', 7.20)));
-    expect(find.text('31 cm por encima de evacuación'), findsOneWidget);
-    expect(t.getTopLeft(find.text('Ahora')).dy, lessThan(t.getTopLeft(find.text('Evacuación')).dy));
+    expect(find.textContaining('El río pasó el nivel de evacuación (6,89 m) por 31 cm.'), findsOneWidget);
   });
 
   testWidgets('en alerta hay un acceso directo a Qué hacer', (t) async {
