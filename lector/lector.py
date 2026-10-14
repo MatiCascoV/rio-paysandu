@@ -251,14 +251,18 @@ def actualizar_historial(historial, nuevas, ahora, cfg):
     solo las lecturas reales de las 00, 06, 12 y 18 h. Así el archivo que baja
     el celular no pasa de unos cientos de KB."""
     por_clave = {(e["fecha"], e["fuente"]): e for e in historial}
-    for fuente, lecturas in nuevas.items():
-        for fecha, valor in lecturas:
-            if validar.en_rango(valor):
-                clave = (fecha.isoformat(), fuente)
-                por_clave[clave] = {"fecha": clave[0], "valor_m": valor, "fuente": fuente}
-
     limite = ahora - timedelta(days=cfg["historial_dias"])
     detalle = ahora - timedelta(days=cfg["historial_detalle_dias"])
+    futuro = ahora + timedelta(minutes=30)
+    for fuente, lecturas in nuevas.items():
+        for fecha, valor in lecturas:
+            # Lo que ya está en el historial no se reescribe (una página alterada no
+            # puede cambiar el pasado), y solo se aceptan lecturas de la última
+            # semana, que es lo que traen las páginas de detalle.
+            if validar.en_rango(valor) and detalle <= fecha <= futuro:
+                clave = (fecha.isoformat(), fuente)
+                por_clave.setdefault(clave, {"fecha": clave[0], "valor_m": valor, "fuente": fuente})
+
     salida = []
     for entrada in por_clave.values():
         fecha = _fecha_iso(entrada["fecha"])
