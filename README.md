@@ -1,6 +1,6 @@
-# Río Paysandú
+# Mi Río UY
 
-App Android que muestra el nivel del río Uruguay en Paysandú, su tendencia y el pronóstico
+App Android (antes "Río Paysandú"; el repositorio conserva ese nombre) que muestra el nivel del río Uruguay en Paysandú, su tendencia y el pronóstico
 publicado por CARU, y avisa cuando el río se acerca a los niveles de alerta o evacuación.
 
 Los datos salen siempre de la fuente oficial (CARU). Esta app es una ayuda a la comunidad:
@@ -138,10 +138,31 @@ flutter run                  # con un celular conectado por USB
 flutter build apk --release  # genera build/app/outputs/flutter-apk/app-release.apk
 ```
 
+Los tests de la app no corren en GitHub Actions (allí solo corren los del lector): hay que correr
+`flutter test` y `flutter analyze` antes de subir cambios de `app/`.
+
+- **Identificador:** `uy.miriouy.app`. No se cambia más: Android trataría otro identificador como otra app.
+- **Firma:** el APK de release se firma con la clave propia si existe `app/android/key.properties`
+  (fuera de git, igual que el `.jks`). Sin ese archivo se firma con la clave de depuración y la compilación
+  lo avisa: ese APK sirve para probar, **no para repartir**. La clave y su contraseña tienen respaldo fuera
+  de la PC; sin ellas no se pueden publicar actualizaciones.
+- **Ícono:** fuentes SVG en `app/assets_fuente/icono/` (ícono adaptativo, monocromo y el de notificación).
+- **Datos de ejemplo** para revisar el diseño en cada nivel: `flutter build web --dart-define=DATOS_EJEMPLO=url`
+  y abrir con `?ejemplo=normal|atencion|alerta|evacuacion|sindato`. Con datos de ejemplo la app no guarda
+  nada ni manda avisos. **Nunca publicar una compilación hecha con `DATOS_EJEMPLO`.**
 
 ## Estado
 
 - Fase 0 (entorno): hecha (`flutter doctor` sin problemas).
 - Fase 1 (lector local): hecha.
 - Fase 2 (automatización y publicación): hecha.
-- Fase 3 (app): hecha y probada con tests y capturas; falta probarla en un celular real.
+- Fase 3 (app): hecha y probada en un celular real (Redmi), del 9 al 14/10/2026 sin fallas del lector.
+  - 16/10/2026: nombre "Mi Río UY", identificador `uy.miriouy.app`, firma con clave propia e ícono nuevo.
+  - 16/10/2026: rediseño de Inicio: fondo teñido según el nivel, agua que sube con la altura del río,
+    gráfico de 7 días en Inicio y paleta azulada en modo claro y oscuro.
+- Fase 4 (notificaciones push): sin empezar.
+- Fase 4.b (varias ciudades y enlace a Google Flood Hub): investigada, sin empezar. Ver
+  [docs/proxima-etapa-ciudades.md](docs/proxima-etapa-ciudades.md).
+- Fase 5 (publicación): sin empezar.
+- Umbrales de Paysandú: provisorios hasta que los valide el Cecoed. Pendiente consultar a CARU si el
+  registro de alturas tiene acceso por HTTPS.
