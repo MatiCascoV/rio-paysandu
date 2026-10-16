@@ -1,6 +1,8 @@
 /// Textos y formatos que ve el vecino. Todo en español rioplatense, sin tecnicismos.
 library;
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import 'modelos.dart';
@@ -119,6 +121,90 @@ EstiloNivel estiloNivel(Nivel n) => switch (n) {
       Nivel.sinDato => const EstiloNivel('Sin dato', Color(0xFF424242), Color(0xFF5A6570), Colors.white,
           Color(0xFF424242), Color(0xFFBDBDBD), Icons.help),
     };
+
+/// Contraste entre dos colores opacos (de 1 a 21), como lo mide WCAG.
+double contraste(Color a, Color b) {
+  final la = a.computeLuminance(), lb = b.computeLuminance();
+  return (math.max(la, lb) + 0.05) / (math.min(la, lb) + 0.05);
+}
+
+/// Colores de Inicio para cada nivel: la pantalla se tiñe apenas con el color
+/// del nivel, el nombre va grande en un tono de la misma familia que se lee
+/// bien sobre ese tinte, y el agua (las olas) usa el color fuerte.
+abstract final class ColoresNivel {
+  /// Color pleno del nivel: botón de "Ver qué hacer" y olas.
+  static Color fuerte(Nivel n) => switch (n) {
+        Nivel.normal => const Color(0xFF1B5E20),
+        Nivel.atencion => const Color(0xFFFFD600),
+        Nivel.alerta => const Color(0xFFEF6C00),
+        Nivel.evacuacion => const Color(0xFFB71C1C),
+        Nivel.sinDato => const Color(0xFF5B6770),
+      };
+
+  /// Tono para el nombre del nivel y su ícono, sobre el tinte.
+  static Color familia(Nivel n) => Colores.oscuro
+      ? switch (n) {
+          Nivel.normal => const Color(0xFF81C784),
+          Nivel.atencion => const Color(0xFFFFD600),
+          Nivel.alerta => const Color(0xFFFF9F40),
+          Nivel.evacuacion => const Color(0xFFFF8A80),
+          Nivel.sinDato => const Color(0xFFBDBDBD),
+        }
+      : switch (n) {
+          Nivel.normal => const Color(0xFF1B5E20),
+          Nivel.atencion => const Color(0xFF6B5800),
+          Nivel.alerta => const Color(0xFF9A3F00),
+          Nivel.evacuacion => const Color(0xFF8E1515),
+          Nivel.sinDato => const Color(0xFF44525E),
+        };
+
+  /// Tinte de arriba de la pantalla: el color fuerte al 16 % sobre blanco
+  /// (claro) o al 22 % sobre el azul noche (oscuro).
+  static Color tinte(Nivel n) => Colores.oscuro
+      ? Color.lerp(const Color(0xFF0E1A24), fuerte(n), 0.22)!
+      : Color.lerp(const Color(0xFFFFFFFF), fuerte(n), 0.16)!;
+
+  /// Fondo y texto del botón "Ver qué hacer".
+  static (Color, Color) boton(Nivel n) {
+    if (Colores.oscuro) return (familia(n), const Color(0xFF0E1A24));
+    final claroDeFondo = n == Nivel.atencion || n == Nivel.alerta; // amarillo y naranja
+    return (fuerte(n), claroDeFondo ? const Color(0xFF111B24) : Colors.white);
+  }
+
+  /// Opacidad base de cada una de las tres capas de agua.
+  static double get opacidadBase => Colores.oscuro ? 0.26 : 0.18;
+
+  /// Color que queda donde se superponen [opacidades] capas de agua sobre el tinte.
+  static Color bajoElAgua(Nivel n, List<double> opacidades) {
+    var c = tinte(n);
+    for (final a in opacidades) {
+      c = Color.lerp(c, fuerte(n), a)!;
+    }
+    return c;
+  }
+
+  /// Opacidad de las tres capas de agua (de atrás hacia adelante). El agua
+  /// puede quedar detrás del número, así que la tinta y la tinta secundaria
+  /// tienen que leerse a 4,5:1 sobre las tres capas juntas. Si no alcanza, se
+  /// bajan primero las dos de adelante y, solo si hace falta, la primera.
+  static List<double> opacidadesOlas(Nivel n) {
+    final base = opacidadBase;
+    bool pasa(List<double> a) {
+      final fondo = bajoElAgua(n, a);
+      return contraste(Colores.tinta, fondo) >= 4.5 && contraste(Colores.tintaSecundaria, fondo) >= 4.5;
+    }
+
+    var a = [base, base, base];
+    for (var paso = 0; !pasa(a) && a[1] > 0; paso++) {
+      final arriba = math.max(0.0, base - 0.01 * (paso + 1));
+      a = [base, arriba, arriba];
+    }
+    for (var paso = 0; !pasa(a) && a[0] > 0; paso++) {
+      a = [math.max(0.0, base - 0.01 * (paso + 1)), 0, 0];
+    }
+    return a;
+  }
+}
 
 /// Frase que acompaña al nivel: qué umbral pasó el río y cuánto falta para el
 /// siguiente, con las alturas publicadas. Sin [alturaM] o sin umbrales queda la
