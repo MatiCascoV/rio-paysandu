@@ -420,6 +420,10 @@ class _BloqueAltura extends StatelessWidget {
   static const aire = 54.0;
 
   /// Lo que el agua sale del margen de la lista, hasta el borde de la pantalla.
+  ///
+  /// Pendiente (anotado en la revisión): en tablets o apaisado el contenido
+  /// tiene un ancho máximo de 600 dp (main.dart), así que el agua llega al
+  /// borde de esa columna y no al de la pantalla. Se deja así a propósito.
   static const margen = 16.0;
 
   const _BloqueAltura({required this.nivelAgua, required this.fraccion, required this.child});
