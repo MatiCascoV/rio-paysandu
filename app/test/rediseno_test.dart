@@ -85,14 +85,25 @@ void main() {
           expect(contraste(Colores.tintaSecundaria, tinte), greaterThanOrEqualTo(4.5), reason: razon);
           expect(contraste(Colores.primario, tinte), greaterThanOrEqualTo(4.5), reason: razon);
 
-          // el agua puede quedar detrás del número: tinta y tinta secundaria sobre 1, 2 y 3 capas
+          // el agua puede quedar detrás del número: la tinta sobre 1, 2 y 3 capas en todos los
+          // niveles; la tinta secundaria solo va sobre el agua en el caso gris (sin dato o dato viejo)
           final a = ColoresNivel.opacidadesOlas(nivel);
           expect(a, hasLength(3));
           expect(a[0], greaterThan(0), reason: 'la primera capa tiene que verse ($razon)');
+          expect(ColoresNivel.textosSobreElAgua(nivel),
+              nivel == Nivel.sinDato ? [Colores.tinta, Colores.tintaSecundaria] : [Colores.tinta]);
           for (var capas = 1; capas <= 3; capas++) {
             final agua = ColoresNivel.bajoElAgua(nivel, a.sublist(0, capas));
             expect(contraste(Colores.tinta, agua), greaterThanOrEqualTo(4.5), reason: '$razon, $capas capas');
-            expect(contraste(Colores.tintaSecundaria, agua), greaterThanOrEqualTo(4.5), reason: '$razon, $capas capas');
+            if (nivel == Nivel.sinDato) {
+              expect(contraste(Colores.tintaSecundaria, agua), greaterThanOrEqualTo(4.5),
+                  reason: '$razon, $capas capas');
+            }
+          }
+          // fuera del gris, las tres capas se ven: la de atrás queda entera y las otras no se apagan
+          if (nivel != Nivel.sinDato) {
+            expect(a[0], closeTo(ColoresNivel.opacidadBase, 1e-9), reason: razon);
+            expect(a[2], greaterThan(0), reason: razon);
           }
           // las capas nunca son más fuertes que lo pedido
           expect(a.every((x) => x <= ColoresNivel.opacidadBase + 1e-9), isTrue);
@@ -118,6 +129,26 @@ void main() {
         });
       }
     }
+  });
+
+  test('olas de atención en oscuro: amarillo más hondo, que se sigue leyendo como amarillo', () {
+    Colores.oscuro = true;
+    addTearDown(() => Colores.oscuro = false);
+    final ola = ColoresNivel.ola(Nivel.atencion);
+    expect(ola, const Color(0xFFB08900));
+    final hsv = HSVColor.fromColor(ola);
+    expect(hsv.hue, inInclusiveRange(40, 60));
+    expect(hsv.saturation, greaterThan(0.9));
+    // en claro y en los demás niveles, el color fuerte de siempre
+    expect(ColoresNivel.ola(Nivel.alerta), ColoresNivel.fuerte(Nivel.alerta));
+    Colores.oscuro = false;
+    expect(ColoresNivel.ola(Nivel.atencion), const Color(0xFFFFD600));
+  });
+
+  testWidgets('sin conexión, «Último dato» (tinta secundaria) queda fuera del agua', (t) async {
+    await mostrar(t, Datos(actual: Actual.desdeJson(actualFalso('alerta', 5.95)), umbrales: umbrales, sinConexion: true));
+    final bloque = find.ancestor(of: find.byType(OlasNivel), matching: find.byType(Stack)).first;
+    expect(t.getBottomLeft(find.text('Último dato')).dy, lessThanOrEqualTo(t.getTopLeft(bloque).dy));
   });
 
   group('agua que sube con el río', () {

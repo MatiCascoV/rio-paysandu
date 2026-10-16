@@ -132,7 +132,7 @@ double contraste(Color a, Color b) {
 /// del nivel, el nombre va grande en un tono de la misma familia que se lee
 /// bien sobre ese tinte, y el agua (las olas) usa el color fuerte.
 abstract final class ColoresNivel {
-  /// Color pleno del nivel: botón de "Ver qué hacer" y olas.
+  /// Color pleno del nivel: botón de "Ver qué hacer", tinte y (casi siempre) olas.
   static Color fuerte(Nivel n) => switch (n) {
         Nivel.normal => const Color(0xFF1B5E20),
         Nivel.atencion => const Color(0xFFFFD600),
@@ -171,6 +171,12 @@ abstract final class ColoresNivel {
     return (fuerte(n), claroDeFondo ? const Color(0xFF111B24) : Colors.white);
   }
 
+  /// Color de las olas: el fuerte del nivel, salvo atención en modo oscuro.
+  /// Ahí el amarillo pleno (#FFD600) aclara tanto el agua que la tinta clara
+  /// no llega a 4,5:1; se usa un amarillo más hondo de la misma familia
+  /// (#B08900), que sobre el azul noche se sigue leyendo como amarillo.
+  static Color ola(Nivel n) => Colores.oscuro && n == Nivel.atencion ? const Color(0xFFB08900) : fuerte(n);
+
   /// Opacidad base de cada una de las tres capas de agua.
   static double get opacidadBase => Colores.oscuro ? 0.26 : 0.18;
 
@@ -178,20 +184,26 @@ abstract final class ColoresNivel {
   static Color bajoElAgua(Nivel n, List<double> opacidades) {
     var c = tinte(n);
     for (final a in opacidades) {
-      c = Color.lerp(c, fuerte(n), a)!;
+      c = Color.lerp(c, ola(n), a)!;
     }
     return c;
   }
 
+  /// Textos que pueden quedar sobre el agua con cada nivel. El número, la
+  /// fecha y la fuente y la tendencia van en tinta; en tinta secundaria solo
+  /// con dato viejo o sin dato, que es cuando el agua va gris.
+  static List<Color> textosSobreElAgua(Nivel n) => [Colores.tinta, if (n == Nivel.sinDato) Colores.tintaSecundaria];
+
   /// Opacidad de las tres capas de agua (de atrás hacia adelante). El agua
-  /// puede quedar detrás del número, así que la tinta y la tinta secundaria
-  /// tienen que leerse a 4,5:1 sobre las tres capas juntas. Si no alcanza, se
-  /// bajan primero las dos de adelante y, solo si hace falta, la primera.
+  /// puede quedar detrás del número, así que los [textosSobreElAgua] tienen
+  /// que leerse a 4,5:1 sobre las tres capas juntas. Si no alcanza, se bajan
+  /// primero las dos de adelante y, solo si hace falta, la primera.
   static List<double> opacidadesOlas(Nivel n) {
     final base = opacidadBase;
+    final textos = textosSobreElAgua(n);
     bool pasa(List<double> a) {
       final fondo = bajoElAgua(n, a);
-      return contraste(Colores.tinta, fondo) >= 4.5 && contraste(Colores.tintaSecundaria, fondo) >= 4.5;
+      return textos.every((t) => contraste(t, fondo) >= 4.5);
     }
 
     var a = [base, base, base];

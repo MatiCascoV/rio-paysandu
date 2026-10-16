@@ -233,15 +233,17 @@ class PantallaInicio extends StatelessWidget {
       ],
       const SizedBox(height: 16),
 
+      // El rótulo va fuera del bloque: en tinta secundaria, no puede quedar sobre el agua.
+      if (viejo || datos.sinConexion)
+        Text('Último dato',
+            style: tema.titleMedium?.copyWith(color: Colores.tintaSecundaria), textAlign: TextAlign.center),
+
       // ----- Altura, con su fecha, hora y fuente pegadas, apoyada sobre el agua -----
       _BloqueAltura(
         nivelAgua: nivelAgua,
         fraccion: fraccionAgua(alturaM: altura.valorM, umbrales: umbrales, sinNivel: !hayNivel || viejo),
         child: Column(
           children: [
-            if (viejo || datos.sinConexion)
-              Text('Último dato',
-                  style: tema.titleMedium?.copyWith(color: Colores.tintaSecundaria), textAlign: TextAlign.center),
             Semantics(
               container: true,
               excludeSemantics: true,
@@ -430,7 +432,7 @@ class _BloqueAltura extends StatelessWidget {
               child: FractionallySizedBox(widthFactor: 1, heightFactor: f, child: agua),
             ),
             child: OlasNivel(
-              color: ColoresNivel.fuerte(nivelAgua),
+              color: ColoresNivel.ola(nivelAgua),
               opacidades: ColoresNivel.opacidadesOlas(nivelAgua),
             ),
           ),
