@@ -523,6 +523,7 @@ class _GraficoSemana extends StatelessWidget {
             ],
           ),
           Semantics(
+            container: true,
             label: 'Gráfico de la altura del río en los últimos 7 días. '
                 '${unidadesEnPalabras(resumenHistorial(puntos))}',
             excludeSemantics: true,

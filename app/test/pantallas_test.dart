@@ -316,7 +316,7 @@ void main() {
     expect(tocado, isTrue);
   });
 
-  for (final nivel in ['alerta', 'evacuacion', 'sin_dato']) {
+  for (final nivel in ['normal', 'atencion', 'alerta', 'evacuacion', 'sin_dato']) {
     testWidgets('celular angosto con letra grande: nada se desborda ($nivel)', (t) async {
       t.view.physicalSize = const Size(720, 1480); // 360 x 740 dp
       t.view.devicePixelRatio = 2.0;
@@ -325,7 +325,8 @@ void main() {
       addTearDown(t.platformDispatcher.clearTextScaleFactorTestValue);
       SharedPreferences.setMockInitialValues({});
       final prefs = await SharedPreferences.getInstance();
-      final falso = actualFalso(nivel, nivel == 'sin_dato' ? null : (nivel == 'alerta' ? 5.95 : 7.05));
+      final valor = switch (nivel) { 'normal' => 3.20, 'atencion' => 4.10, 'alerta' => 5.95, 'evacuacion' => 7.05, _ => null };
+      final falso = actualFalso(nivel, valor);
       if (falso['altura_actual'] != null) {
         (falso['altura_actual'] as Map)['fecha'] = DateTime.now().toUtc().toIso8601String();
         falso['generado'] = DateTime.now().toUtc().toIso8601String(); // el JSON se armó después de la lectura
@@ -344,6 +345,17 @@ void main() {
         await t.tap(find.text(pestana));
         await t.pumpAndSettle();
         expect(t.takeException(), isNull, reason: 'desborde en $pestana');
+      }
+      // En Inicio, también con el pronóstico y "Más datos" abiertos.
+      final lista = find.descendant(of: find.byType(PantallaInicio), matching: find.byType(Scrollable)).first;
+      for (final fila in [
+        if (valor != null) ...[find.textContaining('CARU espera hasta'), find.text('Más datos')],
+      ]) {
+        await t.scrollUntilVisible(fila, 150, scrollable: lista);
+        await t.pumpAndSettle();
+        await t.tap(fila);
+        await t.pumpAndSettle();
+        expect(t.takeException(), isNull, reason: 'desborde en Inicio abierto');
       }
       await t.pumpWidget(const SizedBox());
     });
