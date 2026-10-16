@@ -79,7 +79,7 @@ void main() {
         expect(find.text('Hoy 12:00'), findsOneWidget);
         expect(find.text('· CARU, estación automática'), findsOneWidget);
         expect(find.text('Crece 1 cm en 30 min'), findsOneWidget);
-        expect(find.text(textoDeslindeCorto), findsOneWidget);
+        expect(find.text('App comunitaria, sin vínculo oficial. No reemplaza la alerta oficial'), findsOneWidget);
         // el enlace a CARU y las notas van plegados en "Más datos"
         expect(find.text('Ver en la página de CARU'), findsNothing);
         await abrir(t, find.text('Más datos'));
