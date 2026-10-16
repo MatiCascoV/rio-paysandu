@@ -1,12 +1,12 @@
 {
-  "generado": "2026-10-16T05:15:07-03:00",
+  "generado": "2026-10-16T06:16:01-03:00",
   "cero": "Local",
   "altura_actual": {
     "valor_m": 5.85,
-    "fecha": "2026-10-16T05:00:00-03:00",
-    "variacion_m": -0.01,
+    "fecha": "2026-10-16T06:00:00-03:00",
+    "variacion_m": 0.0,
     "periodo": "30 min",
-    "estado": "baja",
+    "estado": "estacionado",
     "fuente": "CARU – estación automática Paysandú",
     "url": "http://190.0.152.194:8080/alturas/web/user/estacion/19/0"
   },
