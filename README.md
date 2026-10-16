@@ -160,7 +160,7 @@ Los tests de la app no corren en GitHub Actions (allí solo corren los del lecto
   - 16/10/2026: nombre "Mi Río UY", identificador `uy.miriouy.app`, firma con clave propia e ícono nuevo.
   - 16/10/2026: rediseño de Inicio: fondo teñido según el nivel, agua que sube con la altura del río,
     gráfico de 7 días en Inicio y paleta azulada en modo claro y oscuro.
-- Fase 4 (notificaciones push): sin empezar.
+- Fase 4 (notificaciones push): planificada, sin empezar. Ver [docs/fase-4-avisos-push.md](docs/fase-4-avisos-push.md).
 - Fase 4.b (varias ciudades y enlace a Google Flood Hub): investigada, sin empezar. Ver
   [docs/proxima-etapa-ciudades.md](docs/proxima-etapa-ciudades.md).
 - Fase 5 (publicación): sin empezar.
