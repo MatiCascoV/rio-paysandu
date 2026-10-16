@@ -6,6 +6,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'datos.dart';
+import 'ejemplo.dart';
 import 'enlaces.dart';
 import 'notificaciones.dart';
 import 'pantallas/ajustes.dart';
@@ -25,7 +26,12 @@ Future<void> main() async {
     // Si los avisos no se pueden preparar en este teléfono, la app igual
     // tiene que abrir y mostrar el nivel del río.
   }
-  runApp(RioPaysanduApp(config: config, prefs: prefs, repositorio: Repositorio(config.urlBase)));
+  // Datos de ejemplo por nivel: solo con --dart-define=DATOS_EJEMPLO o en debug (ver ejemplo.dart).
+  final ejemplo = nivelDeEjemplo();
+  final repositorio = ejemplo == null
+      ? Repositorio(config.urlBase)
+      : Repositorio(config.urlBase, cliente: clienteDeEjemplo(ejemplo));
+  runApp(RioPaysanduApp(config: config, prefs: prefs, repositorio: repositorio));
 }
 
 /// Preferencia guardada del modo: 'claro', 'oscuro' o nada (seguir al teléfono).
