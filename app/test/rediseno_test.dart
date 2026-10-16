@@ -220,6 +220,8 @@ void main() {
       await t.pump(const Duration(seconds: 2));
       expect(hayMovimiento(t), isTrue);
       t.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      await t.pump();
+      expect(hayMovimiento(t), isFalse, reason: 'en inactive ya se detienen');
       t.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
       t.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
       await t.pump();

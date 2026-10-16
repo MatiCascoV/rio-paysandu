@@ -38,7 +38,7 @@ class _OlasNivelState extends State<OlasNivel> with SingleTickerProviderStateMix
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     final estado = WidgetsBinding.instance.lifecycleState;
-    _enPrimerPlano = estado == null || estado == AppLifecycleState.resumed || estado == AppLifecycleState.inactive;
+    _enPrimerPlano = estado == null || estado == AppLifecycleState.resumed;
   }
 
   @override
@@ -49,7 +49,8 @@ class _OlasNivelState extends State<OlasNivel> with SingleTickerProviderStateMix
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState estado) {
-    _enPrimerPlano = estado == AppLifecycleState.resumed || estado == AppLifecycleState.inactive;
+    // Solo con la app al frente y activa: en inactive (llamada, persiana bajada) ya se detienen.
+    _enPrimerPlano = estado == AppLifecycleState.resumed;
     _decidir();
   }
 
