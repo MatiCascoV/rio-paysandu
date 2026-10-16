@@ -193,9 +193,12 @@ void main() {
 
     testWidgets('con «reducir movimiento» el agua llega directo a su altura', (t) async {
       await mostrar(t, alerta(), sinAnimaciones: true);
-      final alto = t.getSize(find.byType(OlasNivel)).height;
+      // ya en el primer cuadro: la fracción que corresponde a 5,95 m por el alto del bloque
+      final bloque = find.ancestor(of: find.byType(OlasNivel), matching: find.byType(Stack)).first;
+      final esperado = fraccionAgua(alturaM: 5.95, umbrales: umbrales, sinNivel: false) * t.getSize(bloque).height;
+      expect(t.getSize(find.byType(OlasNivel)).height, moreOrLessEquals(esperado, epsilon: 0.5));
       await t.pump(const Duration(seconds: 2));
-      expect(t.getSize(find.byType(OlasNivel)).height, alto);
+      expect(t.getSize(find.byType(OlasNivel)).height, moreOrLessEquals(esperado, epsilon: 0.5));
     });
   });
 
@@ -212,6 +215,20 @@ void main() {
       await t.pump();
       expect(hayMovimiento(t), isFalse);
       await t.pumpAndSettle(); // no queda nada andando
+      await t.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('cambiar el tamaño de la pantalla con las olas andando no rompe nada', (t) async {
+      await mostrar(t, alerta(historial: semana(ahora)));
+      await t.pump(const Duration(milliseconds: 500)); // a mitad de la subida del agua
+      for (final tamano in const [Size(720, 1480), Size(1480, 720), Size(2400, 1600), Size(1080, 6000)]) {
+        t.view.physicalSize = tamano;
+        await t.pump();
+        await t.pump(const Duration(milliseconds: 300));
+        expect(t.takeException(), isNull, reason: 'con $tamano');
+        expect(t.getSize(find.byType(OlasNivel)).height, greaterThan(0));
+      }
+      expect(hayMovimiento(t), isTrue);
       await t.pumpWidget(const SizedBox());
     });
 
