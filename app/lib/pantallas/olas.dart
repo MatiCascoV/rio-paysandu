@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
@@ -91,6 +92,9 @@ class _PintorOlas extends CustomPainter {
   // amplitud y su sentido de avance (vueltas enteras por ciclo: no salta al repetir).
   static const _capas = [(24.0, 8.0, 1), (35.0, 6.0, -1), (46.0, 5.0, 1)];
 
+  /// Parte de abajo de la banda en la que el agua pasa de su opacidad a nada.
+  static const desvanecido = 0.4;
+
   @override
   void paint(Canvas canvas, Size size) {
     if (size.isEmpty) return;
@@ -116,7 +120,15 @@ class _PintorOlas extends CustomPainter {
         ..lineTo(w, h)
         ..lineTo(0, h)
         ..close();
-      canvas.drawPath(camino, Paint()..color = color.withValues(alpha: a));
+      // Abajo el agua se desvanece (último 40 % de la banda): no se nota dónde termina.
+      final pintura = Paint()
+        ..shader = ui.Gradient.linear(
+          Offset.zero,
+          Offset(0, h),
+          [color.withValues(alpha: a), color.withValues(alpha: a), color.withValues(alpha: 0)],
+          const [0, 1 - desvanecido, 1],
+        );
+      canvas.drawPath(camino, pintura);
     }
   }
 
