@@ -78,7 +78,7 @@ class _RioPaysanduAppState extends State<RioPaysanduApp> with WidgetsBindingObse
   Widget build(BuildContext context) {
     Colores.oscuro = _oscuro; // todos los colores salen de la paleta elegida
     return MaterialApp(
-      title: 'Río Paysandú',
+      title: 'Mi Río UY',
       debugShowCheckedModeBanner: false,
       locale: const Locale('es'),
       supportedLocales: const [Locale('es')],
