@@ -2,8 +2,13 @@
 /// esperar a que el río llegue a cada nivel. Solo se usan si la app se compila
 /// con `--dart-define=DATOS_EJEMPLO=nivel` (normal, atencion, alerta,
 /// evacuacion o sindato; con "url" se elige con `?ejemplo=nivel` en la web), o
-/// en modo debug en la web con `?ejemplo=nivel`. Una compilación normal no los
-/// incluye: la constante queda vacía y el compilador descarta este camino.
+/// en modo debug en la web con `?ejemplo=nivel`. En una compilación release
+/// sin DATOS_EJEMPLO, `_habilitado` es una constante false y el compilador
+/// descarta todo este camino.
+///
+/// IMPORTANTE: nunca publicar una compilación hecha con DATOS_EJEMPLO=url (ni
+/// con ningún otro valor). Cualquiera podría abrirla con `?ejemplo=evacuacion`
+/// y ver un nivel inventado como si fuera real. Es solo para capturas locales.
 library;
 
 import 'dart:convert';
@@ -15,16 +20,15 @@ import 'package:http/testing.dart';
 
 const _definido = String.fromEnvironment('DATOS_EJEMPLO');
 
+/// Constante: en release sin DATOS_EJEMPLO vale false.
+const _habilitado = _definido != '' || (kDebugMode && kIsWeb);
+
 const _niveles = {'normal', 'atencion', 'alerta', 'evacuacion', 'sindato'};
 
 /// El nivel de ejemplo pedido, o null para usar los datos reales.
 String? nivelDeEjemplo() {
-  String? pedido;
-  if (_definido.isNotEmpty) {
-    pedido = _definido == 'url' ? Uri.base.queryParameters['ejemplo'] : _definido;
-  } else if (kDebugMode && kIsWeb) {
-    pedido = Uri.base.queryParameters['ejemplo'];
-  }
+  if (!_habilitado) return null;
+  final pedido = _definido == '' || _definido == 'url' ? Uri.base.queryParameters['ejemplo'] : _definido;
   return _niveles.contains(pedido) ? pedido : null;
 }
 
