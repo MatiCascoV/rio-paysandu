@@ -59,7 +59,7 @@ bool debeAvisar(Nivel? anterior, Nivel nuevo, Nivel minimo) {
 final _plugin = FlutterLocalNotificationsPlugin();
 
 Future<void> _iniciarPlugin() => _plugin.initialize(
-      settings: const InitializationSettings(android: AndroidInitializationSettings('@mipmap/ic_launcher')),
+      settings: const InitializationSettings(android: AndroidInitializationSettings('@drawable/ic_notificacion')),
     );
 
 /// Compara el nivel con el último conocido, lo recuerda y devuelve el aviso a
