@@ -193,7 +193,8 @@ class GraficoAltura extends StatelessWidget {
         maxX: _x(hasta),
         minY: minY,
         maxY: maxY,
-        clipData: const FlClipData.all(),
+        // En el compacto no se recorta, para que el punto del último valor se vea entero.
+        clipData: compacto ? const FlClipData.none() : const FlClipData.all(),
         gridData: FlGridData(
           horizontalInterval: 1,
           drawVerticalLine: false,

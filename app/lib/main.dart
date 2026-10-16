@@ -194,6 +194,7 @@ class _PaginaPrincipalState extends State<PaginaPrincipal> with WidgetsBindingOb
         avisosActivos: widget.prefs.getBool(claveActivos) ?? false,
         alPedirAvisos: () => setState(() => _pestana = 3),
         alVerQueHacer: _irAQueHacer,
+        alVerGrafico: () => setState(() => _pestana = 1),
       ),
       PantallaGrafico(datos: datos),
       PantallaQueHacer(config: widget.config, controlador: _scrollQueHacer),
@@ -205,8 +206,13 @@ class _PaginaPrincipalState extends State<PaginaPrincipal> with WidgetsBindingOb
         alCambiar: () => _cargar(),
       ),
     ];
+    // En Inicio la pantalla se tiñe con el color del nivel, barra de arriba incluida.
+    final enInicio = _pestana == 0;
+    final tinte = enInicio ? tinteInicio(datos, widget.config, DateTime.now()) : null;
     return Scaffold(
       appBar: AppBar(
+        backgroundColor: tinte,
+        shape: enInicio ? const Border() : null,
         title: const FittedBox(fit: BoxFit.scaleDown, child: Text('Río Uruguay en Paysandú')),
         actions: [
           if (widget.alCambiarTema != null)
@@ -229,12 +235,21 @@ class _PaginaPrincipalState extends State<PaginaPrincipal> with WidgetsBindingOb
           ),
         ],
       ),
-      body: SafeArea(
-        // En pantallas anchas (tablet, apaisado) el contenido no se estira de más.
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 600),
-            child: IndexedStack(index: _pestana, children: paginas),
+      body: DecoratedBox(
+        decoration: BoxDecoration(gradient: tinte == null ? null : degradeInicio(tinte)),
+        child: SafeArea(
+          // En pantallas anchas (tablet, apaisado) el contenido no se estira de más.
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 600),
+              child: IndexedStack(
+                index: _pestana,
+                children: [
+                  // Lo que se mueve (las olas de Inicio) se detiene en las pestañas que no están a la vista.
+                  for (final (i, pagina) in paginas.indexed) TickerMode(enabled: i == _pestana, child: pagina),
+                ],
+              ),
+            ),
           ),
         ),
       ),
