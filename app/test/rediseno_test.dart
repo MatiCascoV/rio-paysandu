@@ -79,7 +79,12 @@ void main() {
         test('${nivel.name} ($modo): textos sobre el tinte, el agua, el botón y el gráfico', () {
           final tinte = ColoresNivel.tinte(nivel);
           final razon = '${nivel.name} en modo $modo';
-          // nombre del nivel, frase y barra de arriba sobre el tinte
+          // nombre del nivel, frase y barra de arriba sobre el tinte (y sobre el fondo, si la
+          // frase es larga y baja hasta donde el degradé ya se fundió)
+          for (final detras in [Color.lerp(tinte, Colores.fondo, 0.5)!, Colores.fondo]) {
+            expect(contraste(ColoresNivel.familia(nivel), detras), greaterThanOrEqualTo(4.5), reason: razon);
+            expect(contraste(Colores.tinta, detras), greaterThanOrEqualTo(4.5), reason: razon);
+          }
           expect(contraste(ColoresNivel.familia(nivel), tinte), greaterThanOrEqualTo(4.5), reason: razon);
           expect(contraste(Colores.tinta, tinte), greaterThanOrEqualTo(4.5), reason: razon);
           expect(contraste(Colores.tintaSecundaria, tinte), greaterThanOrEqualTo(4.5), reason: razon);
@@ -92,13 +97,24 @@ void main() {
           expect(a[0], greaterThan(0), reason: 'la primera capa tiene que verse ($razon)');
           expect(ColoresNivel.textosSobreElAgua(nivel),
               nivel == Nivel.sinDato ? [Colores.tinta, Colores.tintaSecundaria] : [Colores.tinta]);
-          for (var capas = 1; capas <= 3; capas++) {
-            final agua = ColoresNivel.bajoElAgua(nivel, a.sublist(0, capas));
-            expect(contraste(Colores.tinta, agua), greaterThanOrEqualTo(4.5), reason: '$razon, $capas capas');
-            if (nivel == Nivel.sinDato) {
-              expect(contraste(Colores.tintaSecundaria, agua), greaterThanOrEqualTo(4.5),
-                  reason: '$razon, $capas capas');
+          // el bloque puede caer en cualquier punto del degradé: tinte, mitad del camino o fondo
+          final fondos = [tinte, Color.lerp(tinte, Colores.fondo, 0.5)!, Colores.fondo];
+          expect(ColoresNivel.fondosDelBloque(nivel), fondos);
+          for (final (i, detras) in fondos.indexed) {
+            for (var capas = 1; capas <= 3; capas++) {
+              final agua = ColoresNivel.bajoElAgua(nivel, a.sublist(0, capas), sobre: detras);
+              final donde = '$razon, $capas capas, fondo ${['tinte', 'mitad', 'fondo'][i]}';
+              expect(contraste(Colores.tinta, agua), greaterThanOrEqualTo(4.5), reason: donde);
+              if (nivel == Nivel.sinDato) {
+                expect(contraste(Colores.tintaSecundaria, agua), greaterThanOrEqualTo(4.5), reason: donde);
+              }
             }
+          }
+          // con dato viejo la pantalla va gris pero el nombre conserva el tono de su nivel
+          final gris = ColoresNivel.tinte(Nivel.sinDato);
+          for (final detras in [gris, Color.lerp(gris, Colores.fondo, 0.5)!, Colores.fondo]) {
+            expect(contraste(ColoresNivel.familia(nivel), detras), greaterThanOrEqualTo(4.5),
+                reason: '$razon, nombre sobre el gris del dato viejo');
           }
           // fuera del gris, las tres capas se ven: la de atrás queda entera y las otras no se apagan
           if (nivel != Nivel.sinDato) {
