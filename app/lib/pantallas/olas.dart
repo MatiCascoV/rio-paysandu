@@ -33,6 +33,10 @@ class _OlasNivelState extends State<OlasNivel> with SingleTickerProviderStateMix
   late final AnimationController _movimiento = AnimationController(vsync: this, duration: OlasNivel.ciclo);
   bool _enPrimerPlano = true;
 
+  /// Degradados ya armados, por alto de la banda, color y opacidad: no se
+  /// crean de nuevo en cada cuadro (cambian solo si cambia el tamaño o el nivel).
+  final _degradados = <(double, Color, double), ui.Gradient>{};
+
   @override
   void initState() {
     super.initState();
@@ -75,7 +79,7 @@ class _OlasNivelState extends State<OlasNivel> with SingleTickerProviderStateMix
   Widget build(BuildContext context) => ExcludeSemantics(
         child: RepaintBoundary(
           child: CustomPaint(
-            painter: _PintorOlas(_movimiento, widget.color, widget.opacidades),
+            painter: _PintorOlas(_movimiento, widget.color, widget.opacidades, _degradados),
             size: Size.infinite,
           ),
         ),
@@ -86,8 +90,26 @@ class _PintorOlas extends CustomPainter {
   final Animation<double> movimiento;
   final Color color;
   final List<double> opacidades;
+  final Map<(double, Color, double), ui.Gradient> degradados;
 
-  _PintorOlas(this.movimiento, this.color, this.opacidades) : super(repaint: movimiento);
+  _PintorOlas(this.movimiento, this.color, this.opacidades, this.degradados) : super(repaint: movimiento);
+
+  /// Más que esto solo se junta si la banda cambia mucho de alto (la subida
+  /// del agua, girar el teléfono): se tira todo y se vuelve a armar.
+  static const _tope = 24;
+
+  ui.Gradient _degradado(double h, double a) {
+    if (degradados.length > _tope) degradados.clear();
+    return degradados.putIfAbsent(
+      (h, color, a),
+      () => ui.Gradient.linear(
+        Offset.zero,
+        Offset(0, h),
+        [color.withValues(alpha: a), color.withValues(alpha: a), color.withValues(alpha: 0)],
+        const [0, 1 - desvanecido, 1],
+      ),
+    );
+  }
 
   // Cresta de cada capa medida desde arriba, para una banda de 64 dp, con su
   // amplitud y su sentido de avance (vueltas enteras por ciclo: no salta al repetir).
@@ -122,14 +144,7 @@ class _PintorOlas extends CustomPainter {
         ..lineTo(0, h)
         ..close();
       // Abajo el agua se desvanece (último 40 % de la banda): no se nota dónde termina.
-      final pintura = Paint()
-        ..shader = ui.Gradient.linear(
-          Offset.zero,
-          Offset(0, h),
-          [color.withValues(alpha: a), color.withValues(alpha: a), color.withValues(alpha: 0)],
-          const [0, 1 - desvanecido, 1],
-        );
-      canvas.drawPath(camino, pintura);
+      canvas.drawPath(camino, Paint()..shader = _degradado(h, a));
     }
   }
 

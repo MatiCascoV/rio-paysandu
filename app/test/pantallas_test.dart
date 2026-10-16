@@ -11,7 +11,6 @@ import 'package:rio_paysandu/enlaces.dart';
 import 'package:rio_paysandu/main.dart';
 import 'package:rio_paysandu/modelos.dart';
 import 'package:rio_paysandu/pantallas/ajustes.dart';
-import 'package:rio_paysandu/pantallas/comunes.dart';
 import 'package:rio_paysandu/pantallas/grafico.dart';
 import 'package:rio_paysandu/pantallas/inicio.dart';
 import 'package:rio_paysandu/pantallas/que_hacer.dart';
