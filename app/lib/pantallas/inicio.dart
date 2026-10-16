@@ -167,6 +167,9 @@ class PantallaInicio extends StatelessWidget {
     final umbrales = datos.umbrales;
     final hayNivel = nivel != Nivel.sinDato;
     final esGrave = nivel == Nivel.alerta || nivel == Nivel.evacuacion;
+    // En alerta o evacuación el botón va debajo de la altura; si arriba hay
+    // avisos que ocupan lugar, va justo debajo del nombre del nivel.
+    final botonArriba = esGrave && (viejo || datos.sinConexion);
     // El dato pierde protagonismo cuando ya no se puede tomar como actual.
     final colorDato = viejo ? Colores.tintaSecundaria : Colores.tinta;
     final avisos = [
@@ -221,6 +224,13 @@ class PantallaInicio extends StatelessWidget {
             viejo: viejo,
             umbralesInvalidos: actual.avisos.contains('umbrales_invalidos')),
       ),
+
+      // Con avisos arriba (dato viejo, sin conexión), el botón sube para no quedar
+      // fuera de la primera pantalla en un celular chico con letra grande.
+      if (botonArriba) ...[
+        const SizedBox(height: 14),
+        _BotonQueHacer(nivel: nivel, alTocar: alVerQueHacer),
+      ],
 
       // Si el dato es viejo se dice antes del número, para que no se lea como actual.
       if (viejo) ...[
@@ -306,8 +316,10 @@ class PantallaInicio extends StatelessWidget {
 
       // ----- En alerta o evacuación: qué hacer, a mano -----
       if (esGrave) ...[
-        const SizedBox(height: 16),
-        _BotonQueHacer(nivel: nivel, alTocar: alVerQueHacer),
+        if (!botonArriba) ...[
+          const SizedBox(height: 16),
+          _BotonQueHacer(nivel: nivel, alTocar: alVerQueHacer),
+        ],
         const SizedBox(height: 10),
         Text('Medido en el puerto: no es la altura del agua en tu calle.', style: apoyo, textAlign: TextAlign.center),
       ],
