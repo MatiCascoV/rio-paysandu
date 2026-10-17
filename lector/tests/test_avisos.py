@@ -555,11 +555,49 @@ def test_git_atencion_a_las_15_manda_resumen(repo):
     assert decision_git(repo, repo.commit(pub("atencion", "15:30", prefectura=DIA)))["avisar"] is False
 
 
-def test_git_commit_que_no_toca_actual_json_decide_como_el_que_lo_publico(repo):
+def test_git_commit_que_no_toca_actual_json_no_repite_avisos(repo):
+    # Revisión del 17/10: antes decidía como el commit que publicó actual.json y
+    # repetía el urgente y el resumen (el lector hace `git add data`).
     repo.commit(pub("atencion", "09:35", prefectura=AYER))
     c = repo.commit(pub("alerta", "10:05", prefectura=AYER))
-    otro = repo.commit(mensaje="cambio de código")
-    assert decision_git(repo, otro) == decision_git(repo, c)
+    d = decision_git(repo, c)
+    assert d["urgente"] == "alerta" and d["resumen"] is True
+    otro = repo.commit(mensaje="solo historial.json")
+    salida = repo.ruta / "out"
+    assert decision_git(repo, otro, salida) == {
+        "avisar": False, "urgente": None, "resumen": False, "fuente": None,
+        "motivo": "Sin aviso: el commit no cambió data/actual.json."}
+    assert salida.read_text(encoding="utf-8") == (
+        "avisar=false\nurgente=ninguno\nresumen=false\nfuente=ninguna\n")
+
+
+def clonar_poco_profundo(repo, destino, profundidad):
+    subprocess.run(["git", "clone", "-q", "--no-local", f"--depth={profundidad}",
+                    repo.ruta.as_uri(), str(destino)], check=True, capture_output=True)
+    return destino
+
+
+def test_git_historia_poco_profunda_que_no_alcanza_sale_con_2(repo, tmp_path_factory):
+    # Revisión del 17/10: en un clon --depth, git ve el commit del borde como si
+    # creara actual.json y nada más atrás; decidir con eso podía perder un urgente.
+    repo.commit(pub("atencion", "07:00", prefectura=AYER))
+    repo.commit(sin_dato("08:00"))
+    repo.commit(sin_dato("08:30"))
+    c = repo.commit(pub("alerta", "09:00", prefectura=AYER))
+    assert decision_git(repo, c)["urgente"] == "alerta"
+    corto = clonar_poco_profundo(repo, tmp_path_factory.mktemp("corto") / "r", 3)
+    salida = corto / "out"
+    r = correr(["--commit", c], corto, salida)
+    assert r.returncode == 2 and "historia" in r.stderr and not salida.exists()
+    # Si el recorrido termina antes del borde, decide igual.
+    largo = clonar_poco_profundo(repo, tmp_path_factory.mktemp("largo") / "r", 4)
+    assert correr(["--commit", c], largo).returncode == 0
+    assert json.loads(correr(["--commit", c], largo).stdout)["urgente"] == "alerta"
+    # Con el nivel nuevo normal no se mira atrás: el borde no molesta.
+    n = repo.commit(pub("normal", "09:30", prefectura=AYER))
+    borde = clonar_poco_profundo(repo, tmp_path_factory.mktemp("borde") / "r", 2)
+    r = correr(["--commit", n], borde)
+    assert r.returncode == 0 and json.loads(r.stdout)["avisar"] is False
 
 
 def test_git_historia_mas_larga_que_el_limite(repo, monkeypatch):
@@ -572,7 +610,7 @@ def test_git_historia_mas_larga_que_el_limite(repo, monkeypatch):
     monkeypatch.chdir(repo.ruta)
     monkeypatch.setattr(avisos, "MAX_HISTORIA", 3)
     assert avisos.decidir(avisos._leer_de_commit(c, avisos.RUTA_ACTUAL),
-                          avisos._anteriores_de_git(c))["urgente"] is None
+                          avisos._anteriores_de_git(avisos._log_de_actual(c)))["urgente"] is None
 
 
 def test_git_versiones_rotas_se_saltean(repo):

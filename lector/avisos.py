@@ -245,19 +245,47 @@ def _leer_de_commit(commit, ruta):
         return None
 
 
-def _anteriores_de_git(commit):
-    """Versiones anteriores de actual.json, de la más reciente a la más vieja
-    (hasta MAX_HISTORIA). Se leen de a una, a medida que decidir() las pide.
-
-    La primera entrada del log es el commit que dejó el actual.json vigente en
-    `commit` (el mismo `commit` si lo modificó): esa es la publicación nueva y
-    se saltea."""
+def _log_de_actual(commit):
+    """Commits que cambiaron actual.json hasta `commit`, del más reciente al más
+    viejo (hasta MAX_HISTORIA + 1, contando el que dejó la versión vigente)."""
     codigo, salida = _git("log", "--format=%H", "-n", str(MAX_HISTORIA + 1),
                           commit, "--", RUTA_ACTUAL)
     if codigo != 0:
         raise ErrorAvisos("git log falló")
-    for linea in salida.decode("ascii", "replace").split()[1:]:
+    return salida.decode("ascii", "replace").split()
+
+
+def _bordes_shallow():
+    """Commits donde se corta una historia poco profunda (git fetch --depth), o
+    conjunto vacío si la historia está completa."""
+    codigo, salida = _git("rev-parse", "--git-path", "shallow")
+    if codigo != 0:
+        raise ErrorAvisos("git rev-parse falló")
+    try:
+        texto = Path(salida.decode("utf-8", "replace").strip()).read_text(encoding="ascii")
+    except FileNotFoundError:
+        return set()
+    except (OSError, UnicodeDecodeError) as e:
+        raise ErrorAvisos(f"no se pudo leer el borde de la historia: {type(e).__name__}") from e
+    return set(texto.split())
+
+
+def _anteriores_de_git(log):
+    """Versiones anteriores de actual.json, de la más reciente a la más vieja
+    (hasta MAX_HISTORIA). Se leen de a una, a medida que decidir() las pide.
+
+    `log` es lo que devuelve _log_de_actual(): la primera entrada es la
+    publicación nueva y se saltea.
+
+    En una historia poco profunda git muestra el commit del borde como si
+    hubiera creado actual.json y no ve nada más atrás. Si decidir() pide una
+    versión más allá del borde, se corta con error en vez de decidir con la
+    historia incompleta (podría perder un urgente o repetir un resumen)."""
+    anteriores = log[1:]
+    for linea in anteriores:
         yield _leer_de_commit(linea, RUTA_ACTUAL)
+    if anteriores and len(log) <= MAX_HISTORIA and anteriores[-1] in _bordes_shallow():
+        raise ErrorAvisos("la historia traída no alcanza para decidir (hace falta un fetch más profundo)")
 
 
 # ---------- línea de comandos ----------
@@ -281,7 +309,14 @@ def _decidir_desde_argumentos(argv):
         nuevo = _leer_de_commit(commit, RUTA_ACTUAL)
         if nuevo is None:
             raise ErrorAvisos("el actual.json nuevo falta o no es un objeto JSON")
-        return decidir(nuevo, _anteriores_de_git(commit))
+        log = _log_de_actual(commit)
+        if not log or log[0] != commit:
+            # El lector hace `git add data`: un commit que solo cambió el historial
+            # trae el mismo actual.json que el anterior, que ya se avisó (o no) en
+            # su momento. Decidir de nuevo repetiría el urgente y el resumen.
+            return {"avisar": False, "urgente": None, "resumen": False, "fuente": None,
+                    "motivo": "Sin aviso: el commit no cambió data/actual.json."}
+        return decidir(nuevo, _anteriores_de_git(log))
 
     if len(a.archivos) != 2:
         raise ErrorAvisos("hacen falta ANTERIOR.json y NUEVO.json, o --commit")
