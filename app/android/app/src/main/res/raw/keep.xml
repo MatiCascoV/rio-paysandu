@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- El ícono de las notificaciones solo se nombra desde Dart ('@drawable/ic_notificacion'),
-     así que la reducción de recursos del build release lo borraba y los avisos no arrancaban. -->
-<resources xmlns:tools="http://schemas.android.com/tools"
-    tools:keep="@drawable/ic_notificacion" />
