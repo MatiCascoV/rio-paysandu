@@ -11,7 +11,8 @@ Ante cualquier duda hay que comunicarse con los canales oficiales (Cecoed Paysan
 
 - `lector/` — programa en Python que lee los datos de CARU, los valida y genera los JSON.
 - `data/` — JSON generados por el lector (se publican con GitHub Pages).
-- `.github/workflows/` — automatización que corre el lector cada unos 10 minutos (bucle que se relanza solo).
+- `.github/workflows/` — automatización que corre el lector cada unos 10 minutos (bucle que se relanza solo)
+  y los tests del lector y de la app.
 - `app/` — app Flutter que lee los JSON publicados.
 
 El detalle del proyecto y sus fases está en [PROMPT_MAESTRO.md](PROMPT_MAESTRO.md).
@@ -146,8 +147,11 @@ flutter run                  # con un celular conectado por USB
 flutter build apk --release  # genera build/app/outputs/flutter-apk/app-release.apk
 ```
 
-Los tests de la app no corren en GitHub Actions (allí solo corren los del lector): hay que correr
-`flutter test` y `flutter analyze` antes de subir cambios de `app/`.
+En GitHub Actions (`.github/workflows/app.yml`, con cada cambio en `app/`) corren `flutter analyze` y
+`flutter test`, y se compila el APK de release para controlar que siga adentro todo recurso que el código
+Dart nombra como texto (`'@drawable/...'`, `'@mipmap/...'`): la reducción de recursos del release los borra
+si no están en `tools:keep` de `app/android/app/src/main/res/raw/keep.xml`. Ese APK no se guarda (está
+firmado con la clave de depuración). Igual conviene correr `flutter test` y `flutter analyze` antes de subir.
 
 - **Identificador:** `uy.miriouy.app`. No se cambia más: Android trataría otro identificador como otra app.
 - **Firma:** el APK de release se firma con la clave propia si existe `app/android/key.properties`
