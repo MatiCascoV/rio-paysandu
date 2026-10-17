@@ -213,12 +213,13 @@ jobs:
 
           # Una re-corrida ("Re-run jobs") usa las mismas salidas de decidir: volvería
           # a mandar lo que ya salió (por ejemplo el urgente, si solo falló el resumen).
-          # Para reintentar, lanzar el workflow de nuevo a propósito.
+          # Para reintentar, lanzar el workflow de nuevo a propósito. Termina con error
+          # para que la corrida quede en rojo: puede haber un aviso que no salió.
           if [ "$GITHUB_RUN_ATTEMPT" != 1 ]; then
-            echo "::warning::No se envía: es una re-corrida (intento $GITHUB_RUN_ATTEMPT) y podría repetir avisos ya enviados"
+            echo "::error::No se envía: es una re-corrida (intento $GITHUB_RUN_ATTEMPT) y podría repetir avisos ya enviados; para reintentar, lanzar el workflow de nuevo"
             echo "motivo=es una re-corrida y podría repetir avisos ya enviados" >> "$GITHUB_OUTPUT"
             echo "listo=false" >> "$GITHUB_OUTPUT"
-            exit 0
+            exit 1
           fi
 
           # Comodidad, no seguridad: desde otra rama este mismo archivo se puede editar
@@ -459,10 +460,10 @@ jobs:
               echo "no se sabe: el paso de envío se cortó antes de terminar este mensaje"
             elif [ "$RESULTADO_ENVIAR" = failure ]; then
               echo "no: el paso de envío falló antes de mandarlo"
-            elif [ "$RESULTADO_CONFIG" != success ]; then
-              echo "no: la decisión o la configuración de envío es inválida"
             elif [ -n "$MOTIVO_CONFIG" ]; then
               echo "no: $MOTIVO_CONFIG"
+            elif [ "$RESULTADO_CONFIG" != success ]; then
+              echo "no: la decisión o la configuración de envío es inválida"
             elif [ "$RESULTADO_AUTH" != success ]; then
               echo "no: falló la autenticación en Google Cloud"
             else
