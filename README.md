@@ -75,6 +75,14 @@ Lo de los pasos 2 y 3 se pide con un solo intento, solo si pasaron menos de 90 s
 (`presupuesto_secundarias_s`) y nunca después de los 150 s (`limite_descargas_s`). Los tiempos están en
 `lector/config.json`.
 
+**Margen al bajar de nivel.** Para que `nivel` pase a uno menor que el publicado antes, la altura tiene
+que quedar 5 cm o más por debajo del umbral (`margen_bajada_m` en `lector/config.json`; justo 5 cm ya
+baja). Al subir no hay margen: al tocar el umbral, sube. Puede bajar varios niveles de una, pero solo hasta
+donde lo permita el margen. Evita avisos "subió" y "bajó" seguidos cuando el río está justo en el umbral.
+Sin un nivel anterior con dato (primer arranque, `sin_dato`) no se aplica. El margen va antes de la
+retención por salto, así que una oscilación dentro del margen no crea `nivel_retenido`. El valor se
+confirma con el Cecoed; tiene que ser de 0 a 0,5 m (0 lo desactiva), si no el lector sale con código `1`.
+
 Código de salida de `lector.py`: `0` bien; `3` no se pudo leer el registro de CARU o vino sin el dato de
 Paysandú (se publicó el último dato con `fuente_no_disponible`); `4` `data/umbrales.json` inválido (además
 imprime `::error::`); `1` `lector/config.json` mal escrito o con un cero no soportado.
