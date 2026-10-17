@@ -21,8 +21,8 @@ El pronóstico ya no genera ningún push: se quitó esa lógica y la opción `--
 mensaje pasa de un tema (`nivel-paysandu`) a tres (`alerta-`, `evacuacion-` y `resumen-paysandu`). El margen
 al bajar (paso 2) no cambia.
 
-Las secciones de abajo describen la versión nueva. Los commits de la tabla son de la versión anterior; los
-cambios de este rediseño todavía no están commiteados.
+Las secciones de abajo describen la versión nueva, con las correcciones de la revisión del 17/10/2026
+(al final).
 
 ## Commits
 
@@ -34,6 +34,9 @@ cambios de este rediseño todavía no están commiteados.
 | `7d92d8f` | `avisos.yml`: decidir y enviar en trabajos separados |
 | `66ca8a6` | `avisos.yml`: el comentario de concurrency dice cuándo se pierde un push |
 | `aca3523` | Test del margen: la pasada intermedia retiene el nivel |
+| `a14915f` | Avisos: urgente al subir a alerta/evacuación y resumen diario en crecida (rediseño) |
+| `59a378c` | `avisos.py`: sin aviso si el commit no cambió `actual.json`, y error si la historia no alcanza |
+| `37fdb29` | `avisos.yml`: concurrency por commit, sin envío en re-corridas y token sin exportar |
 
 ## Margen al bajar (paso 2)
 
@@ -52,7 +55,8 @@ cambios de este rediseño todavía no están commiteados.
 |---|---|---|
 | Sube a `alerta` o a `evacuacion` (desde un nivel menor con dato) | Sí (`alerta` o `evacuacion`) | — |
 | Baja, sigue igual, o normal → atención | No | — |
-| Entra o sale de `sin_dato`, o sin anterior con dato | No | — |
+| Entra o sale de `sin_dato` sin subir respecto del último nivel con dato, o sin anterior con dato | No | — |
+| El commit no cambió `data/actual.json` (solo historial) | No | No |
 | Nivel `normal` | No | No |
 | `atencion` o más, llegó la lectura de Prefectura del día, y todavía no hubo resumen hoy | — | Sí (`prefectura`) |
 | `atencion` o más, desde las 10:00 sin Prefectura del día, y todavía no hubo resumen hoy | — | Sí (`estacion`) |
@@ -64,7 +68,11 @@ Las horas son de Uruguay (UTC-3 fija). "Ya hubo resumen hoy" se calcula mirando 
 del mismo día, sin guardar estado. Urgente y resumen pueden salir en la misma pasada.
 
 CLI: `python lector/avisos.py ANTERIOR.json NUEVO.json` o `python lector/avisos.py --commit <sha>` (recorre
-hasta 200 versiones de `data/actual.json` hacia atrás). Imprime una línea JSON
+hasta 200 versiones de `data/actual.json` hacia atrás, tanto para el nivel anterior con dato como para las
+publicaciones del mismo día; con publicaciones cada 5 minutos o más, 200 versiones son más de 16 h, así que
+el recorrido del día no se corta antes del primer resumen posible). Con `--commit`, si el commit no cambió
+`data/actual.json` no avisa nada, y si la historia es poco profunda y el recorrido llega al borde sin
+terminar, sale con 2. Imprime una línea JSON
 (`avisar`, `urgente`, `resumen`, `fuente`, `motivo`) y, en GitHub Actions, escribe `avisar`, `urgente`,
 `resumen` y `fuente` en `GITHUB_OUTPUT`. Código 0 si decidió, 2 si no pudo.
 
@@ -111,8 +119,9 @@ hasta 200 versiones de `data/actual.json` hacia atrás). Imprime una línea JSON
 
 Siguen vigentes:
 
-- **Concurrency:** si una corrida en espera es cancelada por otra y era justo la del cambio, ese push se
-  pierde (queda la revisión local).
+- **Concurrency:** desde la revisión del 17/10 hay un grupo por commit, así que una corrida de otro commit
+  (o una prueba a mano) ya no cancela la que esperaba. Si un envío falla no hay reintentos (queda la
+  revisión local), y una re-corrida no envía.
 - **Margen después de `sin_dato`:** el lector no aplica margen si el anterior es `sin_dato`, pero
   `avisos.py` busca hacia atrás. Tras una caída larga (más de 48 h) o umbrales inválidos con el río
   justo en el umbral, el nivel puede bajar sin margen y volver a subir. Como las bajadas ya no avisan, lo
@@ -143,14 +152,21 @@ assertion.repository_id == '1412063651' &&
 assertion.repository_owner_id == '141058604' &&
 assertion.repository == 'MatiCascoV/rio-paysandu' &&
 assertion.ref == 'refs/heads/main' &&
-assertion.workflow_ref == 'MatiCascoV/rio-paysandu/.github/workflows/avisos.yml@refs/heads/main'
+assertion.workflow_ref == 'MatiCascoV/rio-paysandu/.github/workflows/avisos.yml@refs/heads/main' &&
+assertion.event_name == 'workflow_dispatch' &&
+assertion.run_attempt == '1' &&
+assertion.runner_environment == 'github-hosted'
 ```
 
+`run_attempt == '1'` hace que la credencial rechace las re-corridas ("Re-run jobs"), que repetirían avisos
+ya enviados; para reintentar hay que lanzar el workflow de nuevo a propósito.
+
 Mapeo: `google.subject=assertion.sub` y `attribute.repository`, `attribute.repository_id`,
-`attribute.repository_owner_id`, `attribute.ref`, `attribute.workflow_ref`. Cuenta de servicio: rol
-`roles/firebasecloudmessaging.admin` (el predefinido más chico que encontramos; lo mínimo real es un rol
-propio con solo `cloudmessaging.messages.create`, conviene confirmarlo en la consola) y
-`roles/iam.workloadIdentityUser` sobre la cuenta para el `principalSet` del repositorio. Variables:
+`attribute.repository_owner_id`, `attribute.ref`, `attribute.workflow_ref`. Cuenta de servicio: un rol
+propio con solo `cloudmessaging.messages.create` (confirmarlo en la consola; `roles/firebasecloudmessaging.admin`
+solo si no queda otra) y `roles/iam.workloadIdentityUser` sobre la cuenta para
+`principalSet://iam.googleapis.com/projects/<número>/locations/global/workloadIdentityPools/<pool>/attribute.repository_id/1412063651`,
+en un pool exclusivo para esto. Variables:
 `GCP_WIF_PROVIDER` (`projects/<número>/locations/global/workloadIdentityPools/<pool>/providers/<proveedor>`),
 `GCP_SA_EMAIL` y `FIREBASE_PROJECT_ID`. Los IDs numéricos salen de la API pública de GitHub; verificarlos.
 
