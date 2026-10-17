@@ -248,8 +248,9 @@ def _leer_de_commit(commit, ruta):
 def _log_de_actual(commit):
     """Commits que cambiaron actual.json hasta `commit`, del más reciente al más
     viejo (hasta MAX_HISTORIA + 1, contando el que dejó la versión vigente)."""
+    # :(top) para que la ruta sea desde la raíz aunque se corra desde un subdirectorio.
     codigo, salida = _git("log", "--format=%H", "-n", str(MAX_HISTORIA + 1),
-                          commit, "--", RUTA_ACTUAL)
+                          commit, "--", ":(top)" + RUTA_ACTUAL)
     if codigo != 0:
         raise ErrorAvisos("git log falló")
     return salida.decode("ascii", "replace").split()
@@ -284,7 +285,7 @@ def _anteriores_de_git(log):
     anteriores = log[1:]
     for linea in anteriores:
         yield _leer_de_commit(linea, RUTA_ACTUAL)
-    if anteriores and len(log) <= MAX_HISTORIA and anteriores[-1] in _bordes_shallow():
+    if anteriores and len(log) <= MAX_HISTORIA and log[-1] in _bordes_shallow():
         raise ErrorAvisos("la historia traída no alcanza para decidir (hace falta un fetch más profundo)")
 
 
@@ -309,6 +310,10 @@ def _decidir_desde_argumentos(argv):
         nuevo = _leer_de_commit(commit, RUTA_ACTUAL)
         if nuevo is None:
             raise ErrorAvisos("el actual.json nuevo falta o no es un objeto JSON")
+        if commit in _bordes_shallow():
+            # En el borde git no ve el padre: no se sabe si el commit cambió
+            # actual.json ni qué se publicó antes.
+            raise ErrorAvisos("el commit está en el borde de la historia traída (hace falta un fetch más profundo)")
         log = _log_de_actual(commit)
         if not log or log[0] != commit:
             # El lector hace `git add data`: un commit que solo cambió el historial

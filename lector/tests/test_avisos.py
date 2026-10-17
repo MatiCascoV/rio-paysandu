@@ -571,6 +571,13 @@ def test_git_commit_que_no_toca_actual_json_no_repite_avisos(repo):
         "avisar=false\nurgente=ninguno\nresumen=false\nfuente=ninguna\n")
 
 
+def test_git_desde_un_subdirectorio(repo):
+    repo.commit(pub("atencion", "08:00", prefectura=AYER))
+    c = repo.commit(pub("alerta", "08:30", prefectura=AYER))
+    r = correr(["--commit", c], repo.ruta / "data")
+    assert r.returncode == 0 and json.loads(r.stdout)["urgente"] == "alerta"
+
+
 def clonar_poco_profundo(repo, destino, profundidad):
     subprocess.run(["git", "clone", "-q", "--no-local", f"--depth={profundidad}",
                     repo.ruta.as_uri(), str(destino)], check=True, capture_output=True)
@@ -593,6 +600,10 @@ def test_git_historia_poco_profunda_que_no_alcanza_sale_con_2(repo, tmp_path_fac
     largo = clonar_poco_profundo(repo, tmp_path_factory.mktemp("largo") / "r", 4)
     assert correr(["--commit", c], largo).returncode == 0
     assert json.loads(correr(["--commit", c], largo).stdout)["urgente"] == "alerta"
+    # El commit es el borde: no se sabe si cambió actual.json ni qué hubo antes.
+    solo = clonar_poco_profundo(repo, tmp_path_factory.mktemp("solo") / "r", 1)
+    r = correr(["--commit", c], solo)
+    assert r.returncode == 2 and "borde" in r.stderr
     # Con el nivel nuevo normal no se mira atrás: el borde no molesta.
     n = repo.commit(pub("normal", "09:30", prefectura=AYER))
     borde = clonar_poco_profundo(repo, tmp_path_factory.mktemp("borde") / "r", 2)
