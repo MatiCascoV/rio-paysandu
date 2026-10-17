@@ -10,6 +10,10 @@ name: Avisos push
 # JSON guardada en ningún lado. La cuenta de servicio solo puede enviar mensajes de
 # FCM y Google solo la entrega a este archivo (avisos.yml) corriendo desde main: por
 # eso este workflow se lanza siempre con --ref main y siempre corre el código de main.
+#
+# Dos trabajos, como "relanzar" en lector.yml: "decidir" lee los datos y corre código
+# del repositorio, pero no puede pedir credenciales; "enviar" puede pedirlas, pero no
+# trae el repositorio ni corre nada de él: solo recibe avisar/tipo ya validados.
 
 on:
   workflow_dispatch: # lo lanza el lector (más adelante, con prueba=false) o alguien a mano
@@ -24,7 +28,7 @@ on:
         # Un lanzamiento a mano va al tema de prueba salvo que se destilde a propósito.
         default: true
 
-# Sin permisos por defecto: el trabajo pide solo lo que usa.
+# Sin permisos por defecto: cada trabajo pide solo lo que usa.
 permissions: {}
 
 # Nunca dos envíos a la vez. Ojo: GitHub deja una sola corrida en espera por grupo;
@@ -36,13 +40,17 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  avisar:
+  decidir:
     runs-on: ubuntu-latest
-    # Traer historia + decidir + autenticar + un envío: con 10 minutos sobra.
-    timeout-minutes: 10
+    # Traer historia + decidir: con 8 minutos sobra.
+    timeout-minutes: 8
     permissions:
-      contents: read # checkout y git fetch del historial de datos
-      id-token: write # pedir el token OIDC que Google cambia por un token de FCM
+      contents: read # checkout y git fetch del historial de datos; sin id-token
+    outputs:
+      # Solo valores de formato fijo: "enviar" los vuelve a validar igual.
+      avisar: ${{ steps.decidir.outputs.avisar }}
+      tipo: ${{ steps.decidir.outputs.tipo }}
+      anterior: ${{ steps.commits.outputs.anterior }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
@@ -103,21 +111,21 @@ jobs:
           if git rev-parse --quiet --verify "$COMMIT^{commit}^" >/dev/null; then
             anterior=$(git rev-list -n 1 "$COMMIT^" -- data/actual.json)
           fi
+          # Sale de git, pero igual: a GITHUB_OUTPUT solo va un SHA o nada.
+          [[ "$anterior" =~ ^[0-9a-f]{40}$ ]] || anterior=""
           echo "anterior=$anterior" >> "$GITHUB_OUTPUT"
           if [ -z "$anterior" ]; then
             echo "::notice::No hay una publicación anterior de data/actual.json con qué comparar; no se envía nada"
           fi
 
-      # Sin cache y sin pip install: lector/avisos.py usa solo la biblioteca estándar,
-      # y en un trabajo que puede pedir credenciales no se instala código de terceros.
+      # Sin cache y sin pip install: lector/avisos.py usa solo la biblioteca estándar.
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         if: steps.commits.outputs.anterior != ''
         with:
           python-version: "3.12"
 
-      # Se decide ANTES de autenticar: el código que lee los datos corre cuando todavía
-      # no existe ningún token de Google en el trabajo. (Igual podría pedir un token
-      # OIDC, porque el trabajo tiene id-token: write; es código nuestro, de main.)
+      # Este trabajo no tiene id-token: write, así que el código que lee los datos no
+      # puede pedir ningún token, ni de GitHub para Google ni de Google.
       # Contrato: escribe avisar=true|false y tipo=nivel|pronostico|ninguno en
       # $GITHUB_OUTPUT; termina con 0 si decidió y con 2 si no pudo (el trabajo falla).
       - name: Decidir si hay que avisar
@@ -129,27 +137,83 @@ jobs:
           COMMIT: ${{ inputs.commit }}
         run: python lector/avisos.py --anterior "$ANTERIOR" --nuevo "$COMMIT"
 
-      - name: Revisar la configuración de envío
-        id: config
-        if: steps.decidir.outputs.avisar == 'true'
+      # Resumen de lo decidido en todas las salidas (también si algo falló o se canceló).
+      # Si hay que avisar, cómo terminó el envío lo cuenta el resumen de "enviar".
+      - name: Resumen
+        if: always()
         env:
+          COMMIT: ${{ inputs.commit }}
+          PRUEBA: ${{ inputs.prueba }}
+          RESULTADO_COMMITS: ${{ steps.commits.outcome }}
+          ANTERIOR: ${{ steps.commits.outputs.anterior }}
+          RESULTADO_DECIDIR: ${{ steps.decidir.outcome }}
+          AVISAR: ${{ steps.decidir.outputs.avisar }}
+          TIPO: ${{ steps.decidir.outputs.tipo }}
+        run: |
+          # Lo que no tiene el formato esperado no se copia al resumen.
+          [[ "$COMMIT" =~ ^[0-9a-f]{40}$ ]] || COMMIT="(inválido)"
+          [[ "$ANTERIOR" =~ ^[0-9a-f]{40}$ ]] || ANTERIOR="(ninguno)"
+          [[ "$AVISAR" =~ ^(true|false)$ ]] || AVISAR="(sin decidir)"
+          [[ "$TIPO" =~ ^(nivel|pronostico|ninguno)$ ]] || TIPO="(sin decidir)"
+
+          if [ "$RESULTADO_COMMITS" != success ]; then
+            enviado="no: el commit no es válido o no está publicado en main/datos"
+          elif [ "$ANTERIOR" = "(ninguno)" ]; then
+            enviado="no: no hay publicación anterior de data/actual.json con qué comparar"
+          elif [ "$RESULTADO_DECIDIR" != success ]; then
+            enviado="no: lector/avisos.py no pudo decidir"
+          elif [ "$AVISAR" != true ]; then
+            enviado="no: no hay cambio que avisar"
+          else
+            enviado="hay que avisar: lo hace el trabajo enviar (ver su resumen abajo)"
+          fi
+          if [ "$PRUEBA" = "false" ]; then prueba="no (tema nivel-paysandu)"; else prueba="sí (tema prueba-paysandu)"; fi
+
+          {
+            echo "## Avisos push"
+            echo
+            echo "- Commit: \`$COMMIT\`"
+            echo "- Publicación anterior: \`$ANTERIOR\`"
+            echo "- Decisión: avisar=$AVISAR, tipo=$TIPO"
+            echo "- Prueba: $prueba"
+            echo "- Envío: $enviado"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Trabajo aparte para que la credencial de envío no conviva con el código del
+  # repositorio ni con los datos: sin checkout, sin setup-python, sin acciones de
+  # terceros salvo la de autenticar. Solo bash, jq y curl del runner.
+  enviar:
+    needs: decidir
+    if: needs.decidir.outputs.avisar == 'true'
+    runs-on: ubuntu-latest
+    # Revisar + autenticar + un envío: con 5 minutos sobra.
+    timeout-minutes: 5
+    permissions:
+      id-token: write # pedir el token OIDC que Google cambia por un token de FCM; sin contents
+    steps:
+      - name: Revisar la decisión y la configuración de envío
+        id: config
+        env:
+          AVISAR: ${{ needs.decidir.outputs.avisar }}
+          TIPO: ${{ needs.decidir.outputs.tipo }}
           WIF_PROVIDER: ${{ vars.GCP_WIF_PROVIDER }}
           SA_EMAIL: ${{ vars.GCP_SA_EMAIL }}
           PROYECTO: ${{ vars.FIREBASE_PROJECT_ID }}
-          TIPO: ${{ steps.decidir.outputs.tipo }}
         run: |
-          # La salida de avisos.py también se valida antes de usarla.
-          if ! [[ "$TIPO" =~ ^(nivel|pronostico)$ ]]; then
-            echo "::error::avisos.py dijo avisar=true con un tipo inesperado: '$TIPO'"
+          # Lo que llega de "decidir" se valida antes de usarlo, aunque el if del
+          # trabajo ya lo haya mirado.
+          if [ "$AVISAR" != true ] || ! [[ "$TIPO" =~ ^(nivel|pronostico)$ ]]; then
+            echo "::error::La decisión que llegó de decidir no tiene el formato esperado (avisar=true y tipo nivel o pronostico)"
             exit 1
           fi
 
-          # La credencial solo se entrega a main: desde otra rama se puede probar la
-          # decisión, pero no tiene sentido intentar autenticar.
+          # Comodidad, no seguridad: desde otra rama este mismo archivo se puede editar
+          # y sacar el chequeo. Lo que de verdad frena es la condición del proveedor
+          # (ref == refs/heads/main). Acá solo se evita un error de autenticación ruidoso.
           if [ "$GITHUB_REF" != "refs/heads/main" ]; then
-            echo "::warning::No se envía: el workflow corre desde $GITHUB_REF y la credencial solo acepta main"
+            echo "::warning::No se envía: el workflow no corre desde main y la credencial solo acepta main"
+            echo "motivo=el workflow no corre desde main y la credencial solo acepta main" >> "$GITHUB_OUTPUT"
             echo "listo=false" >> "$GITHUB_OUTPUT"
-            echo "motivo=corre desde $GITHUB_REF y la credencial solo acepta main" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -161,8 +225,8 @@ jobs:
           [ -n "$PROYECTO" ] || faltan+=(FIREBASE_PROJECT_ID)
           if [ "${#faltan[@]}" -gt 0 ]; then
             echo "::warning::No se envía: faltan las variables del repositorio ${faltan[*]}"
-            echo "listo=false" >> "$GITHUB_OUTPUT"
             echo "motivo=faltan las variables del repositorio ${faltan[*]}" >> "$GITHUB_OUTPUT"
+            echo "listo=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -181,6 +245,18 @@ jobs:
           fi
           echo "listo=true" >> "$GITHUB_OUTPUT"
 
+      # Paso 6, lo que pone el dueño en Google Cloud (la seguridad está ahí, no acá):
+      # - Condición del proveedor:
+      #     assertion.repository_id == '1412063651' &&
+      #     assertion.repository_owner_id == '141058604' &&
+      #     assertion.repository == 'MatiCascoV/rio-paysandu' &&
+      #     assertion.ref == 'refs/heads/main' &&
+      #     assertion.workflow_ref == 'MatiCascoV/rio-paysandu/.github/workflows/avisos.yml@refs/heads/main'
+      #   (los *_id son números que GitHub no reusa: si el repositorio se borra, otro
+      #   con el mismo nombre no entra).
+      # - La cuenta de servicio: solo un rol propio con cloudmessaging.messages.create
+      #   (o, si no, roles/firebasecloudmessaging.admin), y roles/iam.workloadIdentityUser
+      #   para el principalSet de este repositorio. Nada más.
       - name: Autenticar en Google Cloud (identidad federada)
         id: auth
         if: steps.config.outputs.listo == 'true'
@@ -208,7 +284,8 @@ jobs:
           PRUEBA: ${{ inputs.prueba }}
         run: |
           # Nada de set -x: el token no se imprime nunca.
-          if [ "$PRUEBA" = "true" ]; then tema=prueba-paysandu; else tema=nivel-paysandu; fi
+          # Solo un "false" explícito va al tema real; cualquier otra cosa, al de prueba.
+          if [ "$PRUEBA" = "false" ]; then tema=nivel-paysandu; else tema=prueba-paysandu; fi
           echo "tema=$tema" >> "$GITHUB_OUTPUT"
 
           # Mensaje SOLO DE DATOS, sin notification, title ni body: si alguien robara
@@ -219,10 +296,12 @@ jobs:
             '{message: {topic: $tema, data: {tipo: "nivel", ciudad: "paysandu"}, android: {priority: "HIGH"}}}')
 
           # El encabezado con el token entra por un descriptor (printf es interno de
-          # bash), así no aparece en la línea de comandos de curl que ve cualquier proceso.
+          # bash), así no aparece en la línea de comandos de curl que ve cualquier proceso,
+          # ni queda en ningún archivo. La respuesta de FCM (sin el token) va a RUNNER_TEMP,
+          # fuera del workspace.
           # Sin reintentos: si se cortó después de que FCM lo aceptó, reintentar
           # duplicaría el aviso; la revisión local queda de respaldo.
-          respuesta=$(mktemp)
+          respuesta=$(mktemp -p "$RUNNER_TEMP")
           codigo=0
           http=$(curl -sS --fail-with-body --max-time 30 \
             -X POST "https://fcm.googleapis.com/v1/projects/$PROYECTO/messages:send" \
@@ -231,32 +310,32 @@ jobs:
             --data-binary "$cuerpo" \
             -o "$respuesta" -w '%{http_code}') || codigo=$?
           unset TOKEN_FCM
+          [[ "$http" =~ ^[0-9]{3}$ ]] || http="?"
 
+          # De la respuesta solo se guardan caracteres inofensivos y una línea: va a
+          # GITHUB_OUTPUT y al resumen.
           if [ "$codigo" -eq 0 ]; then
-            nombre=$(jq -r '.name // empty' "$respuesta" 2>/dev/null | head -c 300 | tr -d '\r\n')
+            nombre=$(jq -r '.name // empty' "$respuesta" 2>/dev/null \
+              | head -c 300 | tr -cd 'A-Za-z0-9/:._-')
+            rm -f "$respuesta"
             echo "resultado=enviado (${nombre:-sin name en la respuesta})" >> "$GITHUB_OUTPUT"
             echo "Enviado al tema $tema: ${nombre:-sin name en la respuesta}"
           else
             # Solo el código HTTP y el error que devuelve FCM, recortado a una línea;
             # nunca encabezados ni el token.
             error=$(jq -r '.error | "\(.status // "") \(.message // "")"' "$respuesta" 2>/dev/null \
-              | head -c 300 | tr -d '\r\n')
-            echo "resultado=falló (curl $codigo, HTTP ${http:-?}: ${error:-sin detalle})" >> "$GITHUB_OUTPUT"
-            echo "::error::El envío a FCM falló (curl $codigo, HTTP ${http:-?}): ${error:-sin detalle}"
+              | head -c 300 | tr -cd 'A-Za-z0-9 .,:;_()/-')
+            rm -f "$respuesta"
+            echo "resultado=falló (curl $codigo, HTTP $http: ${error:-sin detalle})" >> "$GITHUB_OUTPUT"
+            echo "::error::El envío a FCM falló (curl $codigo, HTTP $http): ${error:-sin detalle}"
             exit 1
           fi
 
-      # Resumen de la corrida en todas las salidas (también si algo falló o se canceló).
+      # Cómo terminó el envío, en todas las salidas de este trabajo (también si algo
+      # falló o se canceló). Si "enviar" ni arrancó, el resumen de "decidir" ya dice por qué.
       - name: Resumen
         if: always()
         env:
-          COMMIT: ${{ inputs.commit }}
-          PRUEBA: ${{ inputs.prueba }}
-          RESULTADO_COMMITS: ${{ steps.commits.outcome }}
-          ANTERIOR: ${{ steps.commits.outputs.anterior }}
-          RESULTADO_DECIDIR: ${{ steps.decidir.outcome }}
-          AVISAR: ${{ steps.decidir.outputs.avisar }}
-          TIPO: ${{ steps.decidir.outputs.tipo }}
           RESULTADO_CONFIG: ${{ steps.config.outcome }}
           MOTIVO_CONFIG: ${{ steps.config.outputs.motivo }}
           RESULTADO_AUTH: ${{ steps.auth.outcome }}
@@ -264,26 +343,13 @@ jobs:
           TEMA: ${{ steps.enviar.outputs.tema }}
           RESULTADO_ENVIO: ${{ steps.enviar.outputs.resultado }}
         run: |
-          # Lo que no tiene el formato esperado no se copia al resumen.
-          [[ "$COMMIT" =~ ^[0-9a-f]{40}$ ]] || COMMIT="(inválido)"
-          [[ "$ANTERIOR" =~ ^[0-9a-f]{40}$ ]] || ANTERIOR="(ninguno)"
-          [[ "$AVISAR" =~ ^(true|false)$ ]] || AVISAR="(sin decidir)"
-          [[ "$TIPO" =~ ^(nivel|pronostico|ninguno)$ ]] || TIPO="(sin decidir)"
-
+          [[ "$TEMA" =~ ^(nivel|prueba)-paysandu$ ]] || TEMA=""
           if [ "$RESULTADO_ENVIAR" = success ]; then
             enviado="sí: $RESULTADO_ENVIO"
           elif [ "$RESULTADO_ENVIAR" = failure ]; then
             enviado="no: ${RESULTADO_ENVIO:-el paso de envío falló}"
-          elif [ "$RESULTADO_COMMITS" != success ]; then
-            enviado="no: el commit no es válido o no está publicado en main/datos"
-          elif [ "$ANTERIOR" = "(ninguno)" ]; then
-            enviado="no: no hay publicación anterior de data/actual.json con qué comparar"
-          elif [ "$RESULTADO_DECIDIR" != success ]; then
-            enviado="no: lector/avisos.py no pudo decidir"
-          elif [ "$AVISAR" != true ]; then
-            enviado="no: no hay cambio que avisar"
           elif [ "$RESULTADO_CONFIG" != success ]; then
-            enviado="no: la configuración de envío es inválida"
+            enviado="no: la decisión o la configuración de envío es inválida"
           elif [ -n "$MOTIVO_CONFIG" ]; then
             enviado="no: $MOTIVO_CONFIG"
           elif [ "$RESULTADO_AUTH" != success ]; then
@@ -291,15 +357,10 @@ jobs:
           else
             enviado="no: el trabajo se cortó antes de enviar"
           fi
-          if [ "$PRUEBA" = "true" ]; then prueba="sí (tema prueba-paysandu)"; else prueba="no (tema nivel-paysandu)"; fi
 
           {
-            echo "## Avisos push"
+            echo "### Envío"
             echo
-            echo "- Commit: \`$COMMIT\`"
-            echo "- Publicación anterior: \`$ANTERIOR\`"
-            echo "- Decisión: avisar=$AVISAR, tipo=$TIPO"
-            echo "- Prueba: $prueba"
             [ -n "$TEMA" ] && echo "- Tema: \`$TEMA\`"
             echo "- Enviado: $enviado"
           } >> "$GITHUB_STEP_SUMMARY"
