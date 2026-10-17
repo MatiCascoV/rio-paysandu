@@ -7,6 +7,23 @@ Alcance: paso 2 (margen al bajar de nivel) y paso 7 sin credenciales (`lector/av
 `data/`, `app/`, `lector.yml`, la configuración del repositorio, secretos ni variables, y no se creó nada
 en Google.
 
+## Cambio de diseño (17/10/2026)
+
+La decisión de avisos se rehízo con la especificación del dueño (ver "Qué notificaciones se mandan" en
+[fase-4-avisos-push.md](fase-4-avisos-push.md)). Antes se avisaba en cada cambio de nivel (al subir y al
+bajar) y cuando el pronóstico pasaba a superar un umbral. Ahora hay solo dos tipos:
+
+- **Urgente:** cuando el nivel sube a `alerta` o a `evacuacion`. Las bajadas no avisan.
+- **Resumen del día:** uno por día como máximo, solo en `atencion` o más; sale con la lectura de Prefectura
+  del día o, si a las 10:00 no llegó, con la estación automática.
+
+El pronóstico ya no genera ningún push: se quitó esa lógica y la opción `--umbrales` de `avisos.py`. El
+mensaje pasa de un tema (`nivel-paysandu`) a tres (`alerta-`, `evacuacion-` y `resumen-paysandu`). El margen
+al bajar (paso 2) no cambia.
+
+Las secciones de abajo describen la versión nueva. Los commits de la tabla son de la versión anterior; los
+cambios de este rediseño todavía no están commiteados.
+
 ## Commits
 
 | Commit | Qué |
@@ -31,32 +48,39 @@ en Google.
 
 ## Qué decide `avisos.py`
 
-| Caso | ¿Avisa? | Tipo |
+| Caso | Urgente | Resumen |
 |---|---|---|
-| Cambio de nivel con dato en las dos publicaciones (sube o baja) | Sí | `nivel` |
-| Mismo nivel, pronóstico sin cambio de categoría | No | — |
-| Entra o sale de `sin_dato`, nivel desconocido o mal formado | No | — |
-| Sin publicación anterior (o ilegible) | No | — |
-| Pronóstico vigente que pasa a superar alerta | Sí | `pronostico` |
-| Pronóstico vigente que pasa a superar evacuación (desde nada o desde alerta) | Sí | `pronostico` |
-| Pronóstico que baja, sigue igual o no está vigente | No | — |
-| Umbrales inválidos | Solo puede avisar por nivel | `nivel` |
-| Cambio de nivel y de pronóstico a la vez | Sí | `nivel` |
+| Sube a `alerta` o a `evacuacion` (desde un nivel menor con dato) | Sí (`alerta` o `evacuacion`) | — |
+| Baja, sigue igual, o normal → atención | No | — |
+| Entra o sale de `sin_dato`, o sin anterior con dato | No | — |
+| Nivel `normal` | No | No |
+| `atencion` o más, llegó la lectura de Prefectura del día, y todavía no hubo resumen hoy | — | Sí (`prefectura`) |
+| `atencion` o más, desde las 10:00 sin Prefectura del día, y todavía no hubo resumen hoy | — | Sí (`estacion`) |
+| Ya hubo resumen hoy | — | No |
+| `generado` inválido | — | No |
+| Pronóstico (cualquiera) | No | No |
 
-CLI: `python lector/avisos.py ANTERIOR.json NUEVO.json [--umbrales RUTA]` o
-`python lector/avisos.py --anterior <commit> [--nuevo <commit>]`. Imprime la decisión en JSON y, en
-GitHub Actions, escribe `avisar` y `tipo` en `GITHUB_OUTPUT`. Código 0 si decidió, 2 si no pudo.
+Las horas son de Uruguay (UTC-3 fija). "Ya hubo resumen hoy" se calcula mirando las publicaciones anteriores
+del mismo día, sin guardar estado. Urgente y resumen pueden salir en la misma pasada.
+
+CLI: `python lector/avisos.py ANTERIOR.json NUEVO.json` o `python lector/avisos.py --commit <sha>` (recorre
+hasta 200 versiones de `data/actual.json` hacia atrás). Imprime una línea JSON
+(`avisar`, `urgente`, `resumen`, `fuente`, `motivo`) y, en GitHub Actions, escribe `avisar`, `urgente`,
+`resumen` y `fuente` en `GITHUB_OUTPUT`. Código 0 si decidió, 2 si no pudo.
 
 ## `avisos.yml`
 
 - Solo `workflow_dispatch` (entradas `commit`, SHA de 40 caracteres, y `prueba`, por defecto `true`).
 - `permissions: {}` arriba. Trabajo `decidir`: `contents: read`; valida el commit, exige que esté en
-  `origin/main` (o en la futura rama `datos`), ubica la publicación anterior y corre `avisos.py`
-  (solo biblioteca estándar, sin pip). Trabajo `enviar`: `id-token: write`, sin checkout ni código del
+  `origin/main` (o en la futura rama `datos`) y corre `avisos.py --commit` (solo biblioteca estándar,
+  sin pip). Trabajo `enviar`: `id-token: write`, sin checkout ni código del
   repo; si faltan `vars.GCP_WIF_PROVIDER`, `vars.GCP_SA_EMAIL` o `vars.FIREBASE_PROJECT_ID` termina sin
   enviar y lo dice en el resumen; si están, se autentica con `google-github-actions/auth` (OIDC, scope
-  `firebase.messaging`, 300 s, sin archivo de credenciales) y manda a FCM HTTP v1 un mensaje solo de datos
-  `{"tipo":"nivel","ciudad":"paysandu"}`, prioridad `HIGH`, al tema `nivel-paysandu` (o `prueba-paysandu`).
+  `firebase.messaging`, 300 s, sin archivo de credenciales) y manda a FCM HTTP v1 mensajes solo de datos:
+  primero el urgente (si hay; prioridad `HIGH`, al tema `alerta-paysandu` o a la condición de evacuación) y
+  después el resumen (si hay; prioridad `NORMAL`, al tema `resumen-paysandu`). Con `prueba`, los temas
+  llevan el prefijo `prueba-`. Cada uno se manda una vez sin reintentos; si uno falla, igual intenta el otro
+  y el trabajo termina con error.
 - Acciones fijadas por SHA: checkout v5.1.0, setup-python v6.3.0 (las mismas del repo) y
   google-github-actions/auth v3.0.0 (`7c6bc770dae815cd3e89ee6cdf493a5fab2cc093`, verificado con
   `git ls-remote`). actionlint 1.7.12 con shellcheck: sin errores.
@@ -67,18 +91,15 @@ GitHub Actions, escribe `avisar` y `tipo` en `GITHUB_OUTPUT`. Código 0 si decid
 `python -m pytest -q` desde la raíz (Python 3.12, dependencias instaladas con
 `pip install --require-hashes --only-binary=:all: -r lector/requirements.txt -r lector/requirements-dev.txt`):
 
-```
-240 passed in 16.62s
-```
+<!-- TESTS -->
 
-(137 tenía `main`; se agregaron 19 del margen y 84 de avisos.)
+(La versión anterior daba `240 passed`; ese número ya no vale para el rediseño.)
 
 ## Decisiones que tomé por mi cuenta
 
 1. **Búsqueda hacia atrás en modo git:** si el `actual.json` anterior está en `sin_dato`, `avisos.py`
    busca (hasta 200 versiones) el último nivel con dato. Así una caída de la fuente no avisa, pero tampoco
-   hace perder un cambio de nivel real al volver. El pronóstico se compara contra el anterior inmediato,
-   para no repetir un aviso de pronóstico ya mandado durante la caída.
+   hace perder una subida real al volver.
 2. **Dos trabajos en `avisos.yml`** en lugar de uno: el código que lee datos no puede pedir un token
    OIDC y el que tiene la credencial no corre nada del repositorio.
 3. **`prueba` por defecto `true`**, y cualquier valor distinto de `false` va al tema de prueba.
@@ -86,21 +107,23 @@ GitHub Actions, escribe `avisar` y `tipo` en `GITHUB_OUTPUT`. Código 0 si decid
 5. **Desde una rama distinta de `main`** el workflow decide pero no se autentica (warning, termina bien).
 6. **Margen 0–0,5 m validado** en `main()` con código 1.
 
-## Observaciones de la revisión que quedan para decidir
+## Observaciones de la revisión
 
-- **Un push de tipo `pronostico` hoy no muestra nada:** el mensaje siempre dice `"tipo":"nivel"` (como pide
-  el plan) y la app (`revisarNivel`) solo avisa por cambio de nivel. Hay que definirlo en el paso 4:
-  pasar el tipo en el mensaje y qué muestra la app (con su propia marca), o no enviar por pronóstico
-  hasta entonces.
-- **Margen después de `sin_dato`:** el lector no aplica margen si el anterior es `sin_dato`, pero
-  `avisos.py` busca hacia atrás. Tras una caída larga (más de 48 h) o umbrales inválidos con el río
-  justo en el umbral, puede haber un "bajó" y un "subió" seguidos. Es raro; arreglarlo pide guardar el
-  último nivel con dato en `actual.json` (cambia el contrato, sección 5).
-- **Pronóstico sin histéresis:** informes diarios que alternan 4,40 / 4,38 / 4,40 darían dos avisos.
+Siguen vigentes:
+
 - **Concurrency:** si una corrida en espera es cancelada por otra y era justo la del cambio, ese push se
   pierde (queda la revisión local).
-- Caso raro: si el anterior inmediato es ilegible, la búsqueda hacia atrás usa el pronóstico de la versión
-  encontrada y podría repetir un aviso de pronóstico.
+- **Margen después de `sin_dato`:** el lector no aplica margen si el anterior es `sin_dato`, pero
+  `avisos.py` busca hacia atrás. Tras una caída larga (más de 48 h) o umbrales inválidos con el río
+  justo en el umbral, el nivel puede bajar sin margen y volver a subir. Como las bajadas ya no avisan, lo
+  único que puede pasar es **un urgente de más** si el río vuelve a subir. Es raro; arreglarlo pide guardar
+  el último nivel con dato en `actual.json` (cambia el contrato, sección 5).
+
+Resueltas por el cambio de diseño (el pronóstico ya no avisa):
+
+- ~~Un push de tipo `pronostico` no mostraba nada en la app.~~
+- ~~Pronóstico sin histéresis: informes que alternan 4,40 / 4,38 / 4,40 daban dos avisos.~~
+- ~~Caso raro: con el anterior inmediato ilegible se podía repetir un aviso de pronóstico.~~
 
 ## Pendiente para el dueño
 
@@ -108,7 +131,7 @@ GitHub Actions, escribe `avisar` y `tipo` en `GITHUB_OUTPUT`. Código 0 si decid
 |---|---|
 | 1 | Proyecto de Firebase "Mi Río UY", registrar `uy.miriouy.app`, `google-services.json`, sin Analytics. |
 | 3 | Prueba de entrega en el Redmi con la app cerrada (decide si sirve el mensaje solo de datos). |
-| 4 | App: suscripción al tema, manejador en segundo plano, marca compartida con el respaldo; definir el caso `pronostico`. |
+| 4 | App: pestaña Avisos, suscripción a los tres temas según preferencias, manejador en segundo plano, `revisarNivel` con las mismas reglas y marcas compartidas; decidir si se muestran urgente y resumen cuando llegan juntos. |
 | 5 | Mover los datos a la rama `datos` y GitHub Pages a esa rama. |
 | 6 | Identidad federada (ver abajo) y las tres variables del repositorio. |
 | 8 | Prueba completa en el tema de prueba y una semana en el real. Antes, lanzar `avisos.yml` desde `lector.yml` (trabajo aparte con `actions: write`, `--ref main`, `commit` y `prueba=false`). |

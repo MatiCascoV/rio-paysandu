@@ -1,29 +1,34 @@
-"""Decide si hay que mandar un aviso push comparando dos publicaciones de actual.json.
+"""Decide si hay que mandar avisos push a partir de las publicaciones de actual.json.
 
 Lo usa .github/workflows/avisos.yml: el push va sin texto, así que acá solo se
 decide *si* avisar y de qué tipo; la app arma el aviso con lo que diga actual.json.
 
+Hay dos avisos, independientes (pueden salir los dos en la misma pasada):
+- Urgente: el nivel SUBE a alerta o a evacuación.
+- Resumen del día: uno por día, solo con nivel atención o más.
+
 Uso (desde la raíz del repositorio):
-    python lector/avisos.py ANTERIOR.json NUEVO.json [--umbrales data/umbrales.json]
-    python lector/avisos.py --anterior <commit> [--nuevo <commit>]
+    python lector/avisos.py ANTERIOR.json NUEVO.json
+    python lector/avisos.py --commit <commit>
 
 Imprime una línea JSON con la decisión. Si existe GITHUB_OUTPUT, agrega
-`avisar=true|false` y `tipo=nivel|pronostico|ninguno`. Sale con 0 si pudo
-decidir (avise o no) y con 2 si no pudo.
+`avisar=true|false`, `urgente=alerta|evacuacion|ninguno`, `resumen=true|false`
+y `fuente=prefectura|estacion|ninguna`. Sale con 0 si pudo decidir (avise o no)
+y con 2 si no pudo.
 
 Solo biblioteca estándar: corre en un workflow con credenciales donde no se
 instala nada con pip.
 """
 import argparse
 import json
-import math
 import os
 import re
 import subprocess
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from nivel import NIVELES_CON_DATO, umbrales_validos
+from nivel import NIVELES_CON_DATO
 
 # Nombres para el motivo. Solo se escriben valores que estén en estas listas:
 # el motivo termina en el resumen de GitHub Actions y nada del JSON se copia tal cual.
@@ -33,10 +38,16 @@ NOMBRES_NIVEL = {
     "alerta": "alerta",
     "evacuacion": "evacuación",
 }
-NOMBRES_PRONOSTICO = {1: "alerta", 2: "evacuación"}
+NIVELES_URGENTES = ("alerta", "evacuacion")
+NIVELES_CON_RESUMEN = ("atencion", "alerta", "evacuacion")
+
+# Uruguay no tiene horario de verano: la hora local es siempre UTC-3.
+ZONA_LOCAL = timezone(timedelta(hours=-3))
+# Si a esta hora local todavía no llegó la lectura de Prefectura del día, el
+# resumen sale con la estación automática.
+HORA_RESPALDO = 10
 
 RUTA_ACTUAL = "data/actual.json"
-RUTA_UMBRALES = "data/umbrales.json"
 REVISION_VALIDA = re.compile(r"[0-9A-Za-z_./~^-]+")
 MAX_HISTORIA = 200
 
@@ -57,72 +68,130 @@ def _nivel(publicacion):
     return None
 
 
-def _altura_valida(v):
-    return type(v) in (int, float) and math.isfinite(v) and 0 < v <= 20
+def _hora_local(texto):
+    """Fecha y hora ISO 8601 con offset -> datetime en UTC-3, o None.
+    Sin offset no se sabe qué hora es: se toma como inválida."""
+    if not isinstance(texto, str) or len(texto) > 64:
+        return None
+    if texto.endswith(("Z", "z")):
+        texto = texto[:-1] + "+00:00"
+    try:
+        momento = datetime.fromisoformat(texto)
+    except ValueError:
+        return None
+    if momento.tzinfo is None or momento.utcoffset() is None:
+        return None
+    try:
+        return momento.astimezone(ZONA_LOCAL)
+    except (OverflowError, ValueError):
+        return None
 
 
-def _categoria_pronostico(publicacion, umbrales):
-    """0 = ninguna, 1 = supera alerta, 2 = supera evacuación."""
-    if not isinstance(publicacion, dict) or not umbrales_validos(umbrales):
-        return 0
-    pronostico = publicacion.get("pronostico")
-    if not isinstance(pronostico, dict) or pronostico.get("vigente") is not True:
-        return 0
-    altura = pronostico.get("altura_esperada_m")
-    if not _altura_valida(altura):
-        return 0
-    if altura >= umbrales["evacuacion_m"]:
-        return 2
-    if altura >= umbrales["alerta_m"]:
-        return 1
-    return 0
+def _generado(publicacion):
+    if not isinstance(publicacion, dict):
+        return None
+    return _hora_local(publicacion.get("generado"))
 
 
-def decidir(anterior, nuevo, umbrales):
-    """Compara dos publicaciones de actual.json. Nunca lanza excepción: lo que
-    venga mal formado se trata como sin dato.
+def _fecha_prefectura(publicacion):
+    lectura = publicacion.get("lectura_prefectura") if isinstance(publicacion, dict) else None
+    if not isinstance(lectura, dict):
+        return None
+    momento = _hora_local(lectura.get("fecha"))
+    return momento.date() if momento else None
 
-    - Nivel: avisa si los dos tienen nivel con dato y son distintos (subida o
-      bajada; la app filtra según el mínimo que eligió el usuario). Entrar o
-      salir de sin_dato no avisa: una caída de la fuente no es un cambio de nivel.
+
+def resumen_listo(publicacion):
+    """Con qué fuente saldría el resumen del día en esta publicación, sin mirar
+    si ya salió: "prefectura" si ya llegó la lectura de Prefectura de hoy,
+    "estacion" si no llegó pero ya son las 10, None si no corresponde (nivel
+    normal o sin dato, fecha inválida, o antes de las 10 sin Prefectura)."""
+    if _nivel(publicacion) not in NIVELES_CON_RESUMEN:
+        return None
+    generado = _generado(publicacion)
+    if generado is None:
+        return None
+    if _fecha_prefectura(publicacion) == generado.date():
+        return "prefectura"
+    if generado.hour >= HORA_RESPALDO:
+        return "estacion"
+    return None
+
+
+def decidir(nuevo, anteriores):
+    """Decide los avisos de `nuevo`. `anteriores` son las publicaciones previas,
+    de la más reciente a la más vieja (puede ser un generador: se lee solo lo
+    necesario). Nunca lanza excepción: lo que venga mal formado se trata como
+    sin dato.
+
+    - Urgente: el nivel nuevo es alerta o evacuación y es mayor que el último
+      nivel con dato anterior (se saltean las publicaciones sin_dato, así una
+      caída de la fuente no hace perder una subida real). Bajar, quedarse igual
+      o entrar/salir de sin_dato no avisa. Sin anterior con dato no avisa.
       El nivel publicado ya trae la retención y el margen al bajar del lector,
       así que no se recalcula desde la altura.
-    - Pronóstico: avisa si la altura esperada pasa a superar un umbral más alto
-      que antes (ninguno < alerta < evacuación). Bajar no avisa.
-    - Sin anterior (primer arranque) no hay contra qué comparar: no avisa.
+    - Resumen: `resumen_listo(nuevo)` no es None y ninguna publicación anterior
+      del mismo día local lo tenía. Así se decide sin estado guardado y es
+      reproducible desde el historial: nunca dos resúmenes el mismo día.
     """
-    if not isinstance(anterior, dict):
-        return {"avisar": False, "tipo": None,
-                "motivo": "No hay publicación anterior para comparar."}
+    nivel_ahora = _nivel(nuevo)
+    generado = _generado(nuevo)
+    hoy = generado.date() if generado else None
+    fuente = resumen_listo(nuevo)
 
-    nivel_antes, nivel_ahora = _nivel(anterior), _nivel(nuevo)
-    cambio_nivel = None
-    if nivel_antes and nivel_ahora and nivel_antes != nivel_ahora:
-        subio = NIVELES_CON_DATO.index(nivel_ahora) > NIVELES_CON_DATO.index(nivel_antes)
-        cambio_nivel = "El nivel {} de {} a {}".format(
-            "subió" if subio else "bajó",
-            NOMBRES_NIVEL[nivel_antes], NOMBRES_NIVEL[nivel_ahora])
+    nivel_antes = None
+    ya_hubo_resumen = False
+    buscar_nivel = nivel_ahora in NIVELES_URGENTES
+    buscar_dia = fuente is not None
+    iterador = iter(anteriores) if (buscar_nivel or buscar_dia) else iter(())
+    for anterior in iterador:
+        if buscar_nivel and _nivel(anterior):
+            nivel_antes = _nivel(anterior)
+            buscar_nivel = False
+        if buscar_dia:
+            fecha = _generado(anterior)
+            if fecha is None or fecha.date() > hoy:
+                continue    # sin fecha o de un día posterior: no cuenta para hoy
+            if fecha.date() < hoy:
+                buscar_dia = False      # llegamos a un día anterior: no hubo resumen hoy
+            elif resumen_listo(anterior) is not None:
+                ya_hubo_resumen = True
+                buscar_dia = False
+        if not (buscar_nivel or buscar_dia):
+            break       # no se lee una versión más de la necesaria (cada una es un git show)
 
-    cat_antes = _categoria_pronostico(anterior, umbrales)
-    cat_ahora = _categoria_pronostico(nuevo, umbrales)
-    cambio_pronostico = None
-    if cat_ahora > cat_antes:
-        cambio_pronostico = "el pronóstico supera la altura de {}".format(
-            NOMBRES_PRONOSTICO[cat_ahora])
+    urgente = None
+    if (nivel_ahora in NIVELES_URGENTES and nivel_antes
+            and NIVELES_CON_DATO.index(nivel_ahora) > NIVELES_CON_DATO.index(nivel_antes)):
+        urgente = nivel_ahora
+    resumen = fuente is not None and not ya_hubo_resumen
 
-    if cambio_nivel and cambio_pronostico:
-        return {"avisar": True, "tipo": "nivel",
-                "motivo": f"{cambio_nivel} y {cambio_pronostico}."}
-    if cambio_nivel:
-        return {"avisar": True, "tipo": "nivel", "motivo": f"{cambio_nivel}."}
-    if cambio_pronostico:
-        return {"avisar": True, "tipo": "pronostico",
-                "motivo": cambio_pronostico[0].upper() + cambio_pronostico[1:] + "."}
-    if not (nivel_antes and nivel_ahora):
-        motivo = "Sin aviso: falta el nivel en alguna de las dos publicaciones."
-    else:
-        motivo = "Sin cambios para avisar."
-    return {"avisar": False, "tipo": None, "motivo": motivo}
+    partes = []
+    if urgente:
+        partes.append("El nivel subió de {} a {}.".format(
+            NOMBRES_NIVEL[nivel_antes], NOMBRES_NIVEL[urgente]))
+    if resumen:
+        partes.append("Resumen del día con la lectura de Prefectura."
+                      if fuente == "prefectura" else
+                      "Resumen del día con la estación automática "
+                      "(no llegó la lectura de Prefectura antes de las 10).")
+    if not partes:
+        if nivel_ahora is None:
+            motivo = "Sin aviso: la publicación nueva no tiene nivel."
+        elif nivel_ahora == "normal":
+            motivo = "Sin aviso: nivel normal."
+        elif ya_hubo_resumen:
+            motivo = "Sin aviso: el nivel no subió y el resumen de hoy ya salió."
+        elif generado is None:
+            motivo = "Sin aviso: el nivel no subió y la fecha de la publicación no es válida."
+        else:
+            motivo = ("Sin aviso: el nivel no subió y todavía no llegó la lectura "
+                      "de Prefectura de hoy (antes de las 10).")
+        partes.append(motivo)
+
+    return {"avisar": bool(urgente or resumen), "urgente": urgente,
+            "resumen": resumen, "fuente": fuente if resumen else None,
+            "motivo": " ".join(partes)}
 
 
 # ---------- lectura ----------
@@ -176,28 +245,19 @@ def _leer_de_commit(commit, ruta):
         return None
 
 
-def _anterior_con_nivel(commit, anterior):
-    """Si el anterior no tiene nivel con dato, busca hacia atrás la última
-    versión de actual.json que sí lo tenga: así una caída de la fuente no hace
-    perder un cambio de nivel real cuando vuelve.
+def _anteriores_de_git(commit):
+    """Versiones anteriores de actual.json, de la más reciente a la más vieja
+    (hasta MAX_HISTORIA). Se leen de a una, a medida que decidir() las pide.
 
-    El pronóstico se sigue comparando contra el anterior inmediato (si se pudo
-    leer), para no repetir un aviso de pronóstico ya mandado durante la caída."""
-    if _nivel(anterior):
-        return anterior
-    codigo, salida = _git("log", "--format=%H", "-n", str(MAX_HISTORIA),
+    La primera entrada del log es el commit que dejó el actual.json vigente en
+    `commit` (el mismo `commit` si lo modificó): esa es la publicación nueva y
+    se saltea."""
+    codigo, salida = _git("log", "--format=%H", "-n", str(MAX_HISTORIA + 1),
                           commit, "--", RUTA_ACTUAL)
     if codigo != 0:
         raise ErrorAvisos("git log falló")
-    for linea in salida.decode("ascii", "replace").split():
-        if linea == commit:
-            continue
-        candidato = _leer_de_commit(linea, RUTA_ACTUAL)
-        if _nivel(candidato):
-            if isinstance(anterior, dict):
-                candidato = dict(candidato, pronostico=anterior.get("pronostico"))
-            return candidato
-    return anterior
+    for linea in salida.decode("ascii", "replace").split()[1:]:
+        yield _leer_de_commit(linea, RUTA_ACTUAL)
 
 
 # ---------- línea de comandos ----------
@@ -208,36 +268,29 @@ class _Argumentos(argparse.ArgumentParser):
 
 
 def _decidir_desde_argumentos(argv):
-    p = _Argumentos(description="Decide si hay que mandar un aviso push.")
+    p = _Argumentos(description="Decide si hay que mandar avisos push.")
     p.add_argument("archivos", nargs="*", metavar="JSON",
                    help="ANTERIOR.json NUEVO.json")
-    p.add_argument("--umbrales", help=f"por defecto {RUTA_UMBRALES}")
-    p.add_argument("--anterior", help="commit de la publicación anterior")
-    p.add_argument("--nuevo", help="commit de la publicación nueva (por defecto HEAD)")
+    p.add_argument("--commit", help="commit con el data/actual.json nuevo")
     a = p.parse_args(argv)
 
-    if a.anterior is not None:
-        if a.archivos or a.umbrales is not None:
-            raise ErrorAvisos("--anterior no se combina con archivos ni con --umbrales")
-        anterior_commit = _resolver(a.anterior)
-        nuevo_commit = _resolver(a.nuevo if a.nuevo is not None else "HEAD")
-        nuevo = _leer_de_commit(nuevo_commit, RUTA_ACTUAL)
+    if a.commit is not None:
+        if a.archivos:
+            raise ErrorAvisos("--commit no se combina con archivos")
+        commit = _resolver(a.commit)
+        nuevo = _leer_de_commit(commit, RUTA_ACTUAL)
         if nuevo is None:
             raise ErrorAvisos("el actual.json nuevo falta o no es un objeto JSON")
-        umbrales = _leer_de_commit(nuevo_commit, RUTA_UMBRALES)
-        anterior = _anterior_con_nivel(
-            anterior_commit, _leer_de_commit(anterior_commit, RUTA_ACTUAL))
-        return decidir(anterior, nuevo, umbrales)
+        return decidir(nuevo, _anteriores_de_git(commit))
 
-    if a.nuevo is not None:
-        raise ErrorAvisos("--nuevo necesita --anterior")
     if len(a.archivos) != 2:
-        raise ErrorAvisos("hacen falta ANTERIOR.json y NUEVO.json")
+        raise ErrorAvisos("hacen falta ANTERIOR.json y NUEVO.json, o --commit")
     nuevo = _leer_archivo(a.archivos[1])
     if nuevo is None:
         raise ErrorAvisos("el actual.json nuevo falta o no es un objeto JSON")
-    umbrales = _leer_archivo(a.umbrales if a.umbrales is not None else RUTA_UMBRALES)
-    return decidir(_leer_archivo(a.archivos[0]), nuevo, umbrales)
+    # Un anterior que no se puede leer equivale a no tener publicación previa.
+    anterior = _leer_archivo(a.archivos[0])
+    return decidir(nuevo, [anterior] if anterior is not None else [])
 
 
 def main(argv=None):
@@ -250,8 +303,11 @@ def main(argv=None):
     print(json.dumps(decision))
     salida = os.environ.get("GITHUB_OUTPUT")
     if salida:
-        lineas = "avisar={}\ntipo={}\n".format(
-            "true" if decision["avisar"] else "false", decision["tipo"] or "ninguno")
+        lineas = "avisar={}\nurgente={}\nresumen={}\nfuente={}\n".format(
+            "true" if decision["avisar"] else "false",
+            decision["urgente"] or "ninguno",
+            "true" if decision["resumen"] else "false",
+            decision["fuente"] or "ninguna")
         try:
             with open(salida, "a", encoding="utf-8") as f:
                 f.write(lineas)
