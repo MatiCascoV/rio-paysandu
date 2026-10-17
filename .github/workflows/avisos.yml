@@ -33,17 +33,15 @@ on:
 # Sin permisos por defecto: cada trabajo pide solo lo que usa.
 permissions: {}
 
-# Nunca dos envíos a la vez. Ojo: GitHub deja una sola corrida en espera por grupo;
-# si llega otra, la que esperaba se cancela. La decisión no guarda estado: sale del
-# historial de data/actual.json, que ya trae la publicación de la cancelada. Entonces,
-# si la cancelada era la de la subida a alerta o evacuación, la nueva compara contra
-# un nivel que ya subió y ese urgente se pierde; si era la del resumen del día, la
-# nueva ve que una publicación anterior de ese día ya estaba lista para resumen y no lo
-# manda: el resumen de ese día se pierde. Lo mismo si un envío falla (no hay
-# reintentos). En los dos casos el aviso llega por la revisión local de la app (más
-# tarde). Con publicaciones cada 10 minutos y corridas de menos de uno, es raro.
+# Nunca dos corridas del mismo commit a la vez. Un grupo por commit y no uno solo:
+# GitHub deja una sola corrida en espera por grupo y cancela la que esperaba si llega
+# otra, y como la decisión no guarda estado (sale del historial de data/actual.json),
+# la cancelada perdía su urgente o su resumen (por ejemplo, una prueba a mano que
+# llegaba justo con la subida real). Corridas de commits distintos no se pisan: cada
+# una decide sobre su propio commit y los temas son independientes.
+# Si un envío falla no hay reintentos: el aviso llega por la revisión local de la app.
 concurrency:
-  group: avisos
+  group: avisos-${{ inputs.commit }}
   cancel-in-progress: false
 
 jobs:
@@ -213,9 +211,20 @@ jobs:
             exit 1
           fi
 
+          # Una re-corrida ("Re-run jobs") usa las mismas salidas de decidir: volvería
+          # a mandar lo que ya salió (por ejemplo el urgente, si solo falló el resumen).
+          # Para reintentar, lanzar el workflow de nuevo a propósito.
+          if [ "$GITHUB_RUN_ATTEMPT" != 1 ]; then
+            echo "::warning::No se envía: es una re-corrida (intento $GITHUB_RUN_ATTEMPT) y podría repetir avisos ya enviados"
+            echo "motivo=es una re-corrida y podría repetir avisos ya enviados" >> "$GITHUB_OUTPUT"
+            echo "listo=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           # Comodidad, no seguridad: desde otra rama este mismo archivo se puede editar
-          # y sacar el chequeo. Lo que de verdad frena es la condición del proveedor
-          # (ref == refs/heads/main). Acá solo se evita un error de autenticación ruidoso.
+          # y sacar estos chequeos. Lo que de verdad frena es la condición del proveedor
+          # (ref == refs/heads/main, run_attempt == 1). Acá solo se evita un error de
+          # autenticación ruidoso.
           if [ "$GITHUB_REF" != "refs/heads/main" ]; then
             echo "::warning::No se envía: el workflow no corre desde main y la credencial solo acepta main"
             echo "motivo=el workflow no corre desde main y la credencial solo acepta main" >> "$GITHUB_OUTPUT"
@@ -257,12 +266,17 @@ jobs:
       #     assertion.repository_owner_id == '141058604' &&
       #     assertion.repository == 'MatiCascoV/rio-paysandu' &&
       #     assertion.ref == 'refs/heads/main' &&
-      #     assertion.workflow_ref == 'MatiCascoV/rio-paysandu/.github/workflows/avisos.yml@refs/heads/main'
+      #     assertion.workflow_ref == 'MatiCascoV/rio-paysandu/.github/workflows/avisos.yml@refs/heads/main' &&
+      #     assertion.event_name == 'workflow_dispatch' &&
+      #     assertion.run_attempt == '1' &&
+      #     assertion.runner_environment == 'github-hosted'
       #   (los *_id son números que GitHub no reusa: si el repositorio se borra, otro
-      #   con el mismo nombre no entra).
-      # - La cuenta de servicio: solo un rol propio con cloudmessaging.messages.create
-      #   (o, si no, roles/firebasecloudmessaging.admin), y roles/iam.workloadIdentityUser
-      #   para el principalSet de este repositorio. Nada más.
+      #   con el mismo nombre no entra; run_attempt == '1' rechaza las re-corridas, que
+      #   repetirían avisos). Si el repositorio se renombra o transfiere, falla cerrado.
+      # - La cuenta de servicio: un rol propio con solo cloudmessaging.messages.create
+      #   (roles/firebasecloudmessaging.admin solo si no queda otra), y
+      #   roles/iam.workloadIdentityUser para el principalSet
+      #   .../attribute.repository_id/1412063651 de un pool exclusivo para esto. Nada más.
       - name: Autenticar en Google Cloud (identidad federada)
         id: auth
         if: steps.config.outputs.listo == 'true'
@@ -292,7 +306,11 @@ jobs:
           RESUMEN: ${{ needs.decidir.outputs.resumen }}
           FUENTE: ${{ needs.decidir.outputs.fuente }}
         run: |
-          # Nada de set -x: el token no se imprime nunca.
+          # Nada de set -x: el token no se imprime nunca. Se pasa a una variable del
+          # shell sin exportar, así no lo heredan curl, jq ni ningún otro proceso hijo.
+          token="$TOKEN_FCM"
+          unset TOKEN_FCM
+          if [ -n "$token" ]; then echo "::add-mask::$token"; fi
           # Otra vez los formatos (el paso de revisión ya los miró): de acá salen el
           # destino y los datos de los mensajes.
           if ! [[ "$URGENTE" =~ ^(alerta|evacuacion|ninguno)$ ]] \
@@ -315,10 +333,12 @@ jobs:
             fi
           done
 
-          # Mensajes SOLO DE DATOS, sin notification, title ni body: si alguien robara
-          # la credencial no podría mostrar un texto falso ("Evacuar ya"); la app solo
-          # muestra lo que dice actual.json. jq arma el JSON (comillas y escapes
-          # incluidos); los valores de data son textos, como pide FCM.
+          # Mensajes SOLO DE DATOS, sin notification, title ni body: este workflow nunca
+          # manda texto, y la app solo muestra lo que dice actual.json. Ojo: eso no
+          # protege contra un robo del token, que puede mandar un mensaje con texto a
+          # cualquier tema; lo que acota un robo es que el token dura 300 s y solo existe
+          # en este trabajo. jq arma el JSON (comillas y escapes incluidos); los valores
+          # de data son textos, como pide FCM.
           # - Urgente alerta: al tema de alerta. Urgente evacuación: a quien esté en el
           #   tema de alerta O en el de evacuación; cada teléfono está en uno solo y la
           #   condición entrega una sola vez por teléfono. Prioridad alta para que
@@ -364,7 +384,7 @@ jobs:
             respuesta=$(mktemp -p "$RUNNER_TEMP")
             http=$(curl -sS --fail-with-body --max-time 30 \
               -X POST "https://fcm.googleapis.com/v1/projects/$PROYECTO/messages:send" \
-              -H @<(printf 'Authorization: Bearer %s\n' "$TOKEN_FCM") \
+              -H @<(printf 'Authorization: Bearer %s\n' "$token") \
               -H "Content-Type: application/json; charset=UTF-8" \
               --data-binary "$cuerpo" \
               -o "$respuesta" -w '%{http_code}') || codigo=$?
@@ -401,7 +421,7 @@ jobs:
             echo "destino_resumen=$destino_resumen" >> "$GITHUB_OUTPUT"
             enviar_uno resumen "$destino_resumen" "$cuerpo_resumen" || fallos=$((fallos + 1))
           fi
-          unset TOKEN_FCM
+          unset token
           if [ "$fallos" -gt 0 ]; then
             exit 1
           fi
