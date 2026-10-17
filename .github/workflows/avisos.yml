@@ -32,9 +32,10 @@ on:
 permissions: {}
 
 # Nunca dos envíos a la vez. Ojo: GitHub deja una sola corrida en espera por grupo;
-# si llega otra, la que esperaba se cancela. No se pierde nada: la nueva compara
-# contra la publicación anterior a SU commit, que ya incluye el cambio de la cancelada
-# (salvo que la cancelada fuera justo la del cambio; la revisión local queda de respaldo).
+# si llega otra, la que esperaba se cancela. La nueva compara contra la publicación
+# anterior a SU commit, que ya trae el cambio de la cancelada: si la cancelada era la
+# del cambio de nivel, ese push se pierde y el aviso llega por la revisión local de la
+# app (más tarde). Con publicaciones cada 10 minutos y corridas de menos de uno, es raro.
 concurrency:
   group: avisos
   cancel-in-progress: false
