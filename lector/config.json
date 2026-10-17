@@ -7,6 +7,7 @@
   "prefectura_max_horas": 30,
   "discrepancia_max_horas": 3,
   "retencion_max_min": 30,
+  "margen_bajada_m": 0.05,
   "contraste_pronostico_dias": 1,
   "contraste_pronostico_m": 1.5,
   "sin_dato_horas": 48,
