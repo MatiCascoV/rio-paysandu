@@ -144,6 +144,7 @@ def test_salto_falso_que_vuelve_dentro_del_margen_no_cambia_nivel_ni_retiene():
     anterior = pasada(registro(4.40, T0), None, T0)
     a = pasada(registro(3.30, t1, 4.40), anterior, t1)
     assert a["nivel"] == "alerta" and "dato_a_verificar" in a["avisos"]
+    assert "nivel_retenido" in a  # el margen se aplica contra el nivel retenido
     b = pasada(registro(4.36, t2, 3.30), a, t2)
     assert b["nivel"] == "alerta"
     assert "nivel_retenido" not in b
