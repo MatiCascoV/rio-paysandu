@@ -37,6 +37,9 @@ Las secciones de abajo describen la versión nueva, con las correcciones de la r
 | `a14915f` | Avisos: urgente al subir a alerta/evacuación y resumen diario en crecida (rediseño) |
 | `59a378c` | `avisos.py`: sin aviso si el commit no cambió `actual.json`, y error si la historia no alcanza |
 | `37fdb29` | `avisos.yml`: concurrency por commit, sin envío en re-corridas y token sin exportar |
+| `7831066` | Docs de avisos: alcance de "solo datos", paso 6 completo y cuidado en la prueba del paso 8 |
+| `09ff6cb` | `avisos.py`: error si el commit es el borde de una historia poco profunda |
+| `c158bd3` | `avisos.yml`: una re-corrida bloqueada deja la corrida en rojo |
 
 ## Margen al bajar (paso 2)
 
@@ -99,9 +102,12 @@ terminar, sale con 2. Imprime una línea JSON
 `python -m pytest -q` desde la raíz (Python 3.12, dependencias instaladas con
 `pip install --require-hashes --only-binary=:all: -r lector/requirements.txt -r lector/requirements-dev.txt`):
 
-<!-- TESTS -->
+```
+283 passed in 19.59s
+```
 
-(La versión anterior daba `240 passed`; ese número ya no vale para el rediseño.)
+(Python 3.13 en el entorno del agente, 17/10/2026, después de la revisión. Antes de la revisión daba
+`281 passed`; la versión anterior al rediseño, `240 passed`.)
 
 ## Decisiones que tomé por mi cuenta
 
@@ -176,3 +182,51 @@ Orquesté e integré yo. Data Engineer: margen y sus tests. API Tester: `avisos.
 Automator: `avisos.yml`. Secrets & Credential Hygiene Engineer: revisión de credenciales y separación en
 dos trabajos. Code Reviewer: sin bloqueantes; corregí el comentario de concurrency y el resto quedó
 anotado arriba. Reality Checker: aprobado con evidencia (pytest, actionlint, CLI probado a mano).
+
+## Revisión del 17/10/2026
+
+Revisaron en paralelo, solo lectura, Code Reviewer (`avisos.py` contra la especificación) y Secrets &
+Credential Hygiene Engineer (`avisos.yml`); Reality Checker verificó al final con evidencia. No hubo
+bloqueantes. La regla de `decidir()` cumple la especificación en todos los bordes probados: 10:00 exacto
+(10:00:00 da `estacion`, 09:59:59 no), medianoche, `generado` y fecha de Prefectura con otros offsets,
+Prefectura de otro día, sin_dato en el medio, urgente y resumen juntos, nunca dos resúmenes el mismo día.
+
+**Importantes (corregidos):**
+
+| Hallazgo | Qué se hizo |
+|---|---|
+| `--commit` sobre un commit que no cambió `data/actual.json` (el lector hace `git add data`; puede cambiar solo `historial.json`) decidía como el que lo publicó y **repetía el urgente y el resumen**. El test fijaba ese comportamiento. | Ahora no avisa (`motivo`: "el commit no cambió data/actual.json"). Test cambiado. |
+| Una sola cola de concurrency: GitHub cancela la corrida en espera si llega otra, y como no hay estado, **se perdía su urgente o su resumen** (por ejemplo, una prueba a mano que llega justo con la subida real). | Grupo por commit: `avisos-${{ inputs.commit }}`. |
+| "Re-run jobs" vuelve a correr `enviar` con las mismas salidas: si falló solo el resumen, **el urgente salía dos veces**. | `enviar` no manda si `GITHUB_RUN_ATTEMPT != 1` (termina en rojo y lo dice el resumen) y la condición del proveedor suma `run_attempt == '1'`, `event_name == 'workflow_dispatch'` y `runner_environment == 'github-hosted'`. |
+| El comentario y la doc decían que con mensajes solo de datos **un robo de la credencial no podía mostrar texto falso**. Es falso: con el token se puede mandar una `notification` con texto a cualquier tema. | Comentario y fila de la doc corregidos: lo que acota un robo es el token de 300 s que solo existe en `enviar` y la condición del proveedor. |
+| La prueba del paso 8 con un `actual.json` falso en `main`/`datos` **queda en el historial** del que sale la decisión (suprime el resumen real del día o tapa la próxima subida). | Advertencia en el paso 8 de `fase-4-avisos-push.md`. |
+
+**Menores:**
+
+| Hallazgo | Qué se hizo |
+|---|---|
+| Historia poco profunda: git muestra el commit del borde como si creara `actual.json`; con el commit lanzado lejos de la punta se podía perder un urgente o repetir un resumen. Reality Checker encontró además que si el commit lanzado **es** el borde se salteaban las dos protecciones. | `avisos.py` sale con 2 si el recorrido llega al borde sin terminar o si el commit es el borde. Tests con clones `--depth`. En el uso normal (commit cerca de la punta, 500 de profundidad, corte en 200 versiones) no salta. |
+| El token quedaba en el entorno de curl, jq y los demás procesos hijos. | Pasa a una variable del shell sin exportar y se vuelve a enmascarar (`::add-mask::`). Probado con un curl falso: ni en argv ni en el entorno de los hijos. |
+| El límite de 200 versiones también corta el recorrido del día; no estaba documentado. | Documentado (más de 16 h con publicaciones cada 5 min; no puede duplicar el resumen). |
+| Docs: "entrar o salir de sin_dato no avisa" se leía como que atención → sin_dato → alerta no avisa; el informe decía que el rediseño no estaba commiteado; el paso 6 de la doc nombraba solo `repository`, `ref` y el archivo; se sugería `roles/firebasecloudmessaging.admin` primero. | Corregidos. |
+| `--commit` corrido desde un subdirectorio respondía siempre "no cambió" (ruta relativa en `git log`). | Ruta con `:(top)`. Test. |
+| El resumen de `enviar` mostraba "configuración inválida" cuando el motivo era otro. | El motivo se muestra primero. |
+
+**Quedan (anotados, sin cambio):**
+
+- Si `git fetch` falla por la red, el resumen de `decidir` dice "el commit no es válido o no está publicado".
+  Cosmético.
+- Relanzar a mano un commit viejo con `prueba=false` repite su aviso (decidir acepta cualquiera de los
+  últimos 500). Solo puede hacerlo alguien con escritura; si hace falta, exigir que `generado` tenga menos
+  de una hora.
+- Un merge cuyo `actual.json` viene del segundo padre se toma como "no cambió". Hoy el lector sube con
+  rebase (historia lineal); revisarlo si en el paso 5 los datos entran por merge. Cuando `lector.yml`
+  lance `avisos.yml`, tiene que pasar el SHA ya rebasado (`git rev-parse HEAD` después de subir).
+- El resumen de respaldo de las 10:00 sale con la primera **publicación** desde esa hora: si nada cambia
+  (el lector no commitea si solo cambió `generado`), sale con el próximo cambio.
+- Sigue sin probarse en GitHub Actions y contra FCM (pasos 6 y 8).
+
+Evidencia: `python -m pytest -q` → `283 passed`; actionlint 1.7.7 con shellcheck 0.10.0 sobre
+`avisos.yml` → sin errores (código 0); los bloques `run` del trabajo `enviar` pasan shellcheck por
+separado. Envío simulado con un curl falso: urgente antes que el resumen, se intentan los dos si uno
+falla, el paso termina con 1, el token entra por `@/dev/fd/63` y no queda en archivos.
