@@ -1,0 +1,583 @@
+<!doctype html>
+<html lang="es-UY">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maqueta pestaña Mapa</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+/* ===== Tokens: copiados de app/lib/tema.dart y textos.dart ===== */
+:root {
+  --primario:#0B3C5D; --sobre-primario:#FFFFFF; --primario-suave:#D6E6F2;
+  --fondo:#EEF4F8; --superficie:#FFFFFF; --superficie-alta:#E4EEF5;
+  --tinta:#0B2A3F; --tinta-2:#3F5566; --borde-control:#566B7B; --divisor:#D2DEE7;
+  --recuadro-fondo:#FFF4D6; --recuadro-icono:#7A4A00;
+  --mezcla-tinte:#FFFFFF; --pct-tinte:16%;
+  /* nivel: fuerte (relleno) y familia (texto sobre el tinte) */
+  --normal:#1B5E20;     --normal-fam:#1B5E20;
+  --alerta:#EF6C00;     --alerta-fam:#9A3F00;
+  --evacuacion:#B71C1C; --evacuacion-fam:#8E1515;
+  --sindato:#5B6770;    --sindato-fam:#44525E;
+  /* mapa */
+  --m-calle:#FBFAF7; --m-manzana:#E3DCCD; --m-rio:#2F6FAD; --m-rio-texto:#FFFFFF;
+  --m-agua:#3D8BD9; --m-agua-op:.55; --m-rayado:#0B3C5D; --m-borde-hoy:#0B2A3F;
+  --m-banda:#0B3C5D; --m-texto:#2B3E4C; --m-halo:#FBFAF7; --m-casa:#0B2A3F;
+  /* página (fuera del celular) */
+  --pag-fondo:#DCE6EE; --pag-tinta:#0B2A3F; --pag-tinta-2:#3F5566;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --primario:#8CCBEE; --sobre-primario:#06283D; --primario-suave:#1D3A50;
+    --fondo:#0E1A24; --superficie:#16283A; --superficie-alta:#22374B;
+    --tinta:#EAF2F8; --tinta-2:#A9BCCB; --borde-control:#8A9DAE; --divisor:#26394A;
+    --recuadro-fondo:#3A2E12; --recuadro-icono:#FFC857;
+    --mezcla-tinte:#0E1A24; --pct-tinte:22%;
+    --normal:#2E7D32; --normal-fam:#81C784; --alerta:#EF6C00; --alerta-fam:#FF9F40;
+    --evacuacion:#C62828; --evacuacion-fam:#FF8A80; --sindato:#5B6770; --sindato-fam:#BDBDBD;
+    --m-calle:#1B2A37; --m-manzana:#2B3E51; --m-rio:#0F4C85; --m-rio-texto:#EAF2F8;
+    --m-agua:#6CB4FF; --m-agua-op:.45; --m-rayado:#D6ECFF; --m-borde-hoy:#FFFFFF;
+    --m-banda:#BFE0FF; --m-texto:#D5E2EC; --m-halo:#1B2A37; --m-casa:#FFFFFF;
+    --pag-fondo:#081118; --pag-tinta:#EAF2F8; --pag-tinta-2:#A9BCCB;
+  }
+}
+:root[data-theme="dark"] {
+  --primario:#8CCBEE; --sobre-primario:#06283D; --primario-suave:#1D3A50;
+  --fondo:#0E1A24; --superficie:#16283A; --superficie-alta:#22374B;
+  --tinta:#EAF2F8; --tinta-2:#A9BCCB; --borde-control:#8A9DAE; --divisor:#26394A;
+  --recuadro-fondo:#3A2E12; --recuadro-icono:#FFC857;
+  --mezcla-tinte:#0E1A24; --pct-tinte:22%;
+  --normal:#2E7D32; --normal-fam:#81C784; --alerta:#EF6C00; --alerta-fam:#FF9F40;
+  --evacuacion:#C62828; --evacuacion-fam:#FF8A80; --sindato:#5B6770; --sindato-fam:#BDBDBD;
+  --m-calle:#1B2A37; --m-manzana:#2B3E51; --m-rio:#0F4C85; --m-rio-texto:#EAF2F8;
+  --m-agua:#6CB4FF; --m-agua-op:.45; --m-rayado:#D6ECFF; --m-borde-hoy:#FFFFFF;
+  --m-banda:#BFE0FF; --m-texto:#D5E2EC; --m-halo:#1B2A37; --m-casa:#FFFFFF;
+  --pag-fondo:#081118; --pag-tinta:#EAF2F8; --pag-tinta-2:#A9BCCB;
+}
+
+* { box-sizing:border-box; }
+body { margin:0; background:var(--pag-fondo); color:var(--pag-tinta);
+  font-family:Roboto, system-ui, sans-serif; }
+.pagina { max-width:1220px; margin:0 auto; padding:24px 16px 48px; }
+.pagina > header { display:flex; flex-wrap:wrap; gap:12px; align-items:flex-start; justify-content:space-between; }
+.pagina h1 { font-size:26px; margin:0 0 6px; font-weight:800; }
+.pagina p.intro { margin:0; color:var(--pag-tinta-2); max-width:760px; line-height:1.45; }
+.btn-tema { font:600 16px Roboto, sans-serif; padding:10px 16px; min-height:48px; border-radius:12px;
+  border:1.5px solid var(--pag-tinta); background:transparent; color:var(--pag-tinta); cursor:pointer; }
+.celulares { display:flex; flex-wrap:wrap; gap:32px; justify-content:center; margin-top:28px; }
+.col { display:flex; flex-direction:column; align-items:center; gap:10px; max-width:100%; }
+.col h2 { font-size:18px; margin:0; font-weight:600; }
+.col .nota { font-size:14px; color:var(--pag-tinta-2); margin:0; max-width:360px; text-align:center; line-height:1.4; }
+.selector { display:flex; flex-wrap:wrap; gap:6px; justify-content:center; max-width:360px; }
+.selector button { font:600 14px Roboto, sans-serif; min-height:40px; padding:6px 12px; border-radius:10px;
+  border:1.5px solid var(--pag-tinta-2); background:transparent; color:var(--pag-tinta); cursor:pointer; }
+.selector button[aria-pressed="true"] { background:var(--pag-tinta); color:var(--pag-fondo); border-color:var(--pag-tinta); }
+
+/* ===== Celular 360 x 780 ===== */
+.celular { width:360px; max-width:100%; height:780px; border-radius:34px; overflow:hidden;
+  background:var(--fondo); color:var(--tinta); display:flex; flex-direction:column;
+  box-shadow:0 0 0 8px #0b1620, 0 18px 40px rgb(0 0 0 / .28); position:relative; }
+.estado-sis { height:24px; flex:none; display:flex; justify-content:space-between; padding:4px 22px 0;
+  font-size:12px; color:var(--tinta-2); background:var(--tinte); }
+.appbar { height:56px; flex:none; display:flex; align-items:center; justify-content:space-between;
+  padding:0 8px 0 16px; background:var(--tinte); border-bottom:1px solid var(--divisor); }
+.appbar h3 { margin:0; font-size:20px; font-weight:600; }
+.icono-btn { width:48px; height:48px; border:0; background:transparent; color:var(--primario); border-radius:12px;
+  display:grid; place-items:center; cursor:pointer; }
+.scroll { flex:1; overflow-y:auto; overflow-x:hidden; }
+.scroll::-webkit-scrollbar { width:0; }
+
+/* nivel: cada pantalla define --fuerte y --fam; el tinte sale como en ColoresNivel.tinte */
+.celular { --tinte: color-mix(in srgb, var(--fuerte) var(--pct-tinte), var(--mezcla-tinte)); }
+.n-normal { --fuerte:var(--normal); --fam:var(--normal-fam); }
+.n-alerta { --fuerte:var(--alerta); --fam:var(--alerta-fam); }
+.n-evacuacion { --fuerte:var(--evacuacion); --fam:var(--evacuacion-fam); }
+.n-sindato { --fuerte:var(--sindato); --fam:var(--sindato-fam); }
+
+.hoy { background:linear-gradient(var(--tinte), var(--fondo)); padding:12px 16px 4px; }
+.hoy .fila { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.hoy .etq { font-size:16px; color:var(--tinta-2); }
+.hoy .valor { font-size:22px; font-weight:800; }
+.nivel-txt { display:inline-flex; align-items:center; gap:4px; font-weight:800; font-size:16px; color:var(--fam); text-transform:uppercase; }
+.hoy .meta { font-size:15px; color:var(--tinta-2); margin-top:2px; }
+
+.recuadro { margin:8px 16px 0; padding:12px 14px; border-radius:20px; background:var(--recuadro-fondo);
+  display:flex; gap:10px; font-size:16px; line-height:1.4; }
+.recuadro svg { flex:none; color:var(--recuadro-icono); margin-top:1px; }
+
+.lectura { padding:10px 16px 8px; }
+.lectura .etq { font-size:15px; color:var(--tinta-2); }
+.lectura .fila { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; }
+.lectura .grande { font-size:38px; font-weight:800; line-height:1.05; letter-spacing:-.5px; }
+.pastilla { display:inline-flex; align-items:center; gap:5px; font-weight:800; font-size:15px; padding:5px 10px 5px 7px;
+  border-radius:999px; background:var(--p-fondo); color:var(--p-texto); text-transform:uppercase; }
+.lectura .comp { font-size:16px; color:var(--tinta-2); margin-top:2px; }
+
+.mapa { position:relative; margin:4px 16px 0; border-radius:20px; overflow:hidden; background:var(--m-calle);
+  border:1px solid var(--divisor); height:300px; }
+.mapa svg.carto { display:block; width:100%; height:100%; touch-action:none; }
+.esquema { position:absolute; left:8px; top:8px; font-size:12px; font-weight:800; letter-spacing:.6px; padding:3px 8px;
+  border-radius:8px; background:var(--superficie); color:var(--tinta); border:1px solid var(--borde-control); }
+.botones-mapa { position:absolute; right:8px; top:8px; display:flex; flex-direction:column; gap:6px; }
+.botones-mapa button { width:48px; height:48px; border-radius:12px; border:1px solid var(--borde-control);
+  background:var(--superficie); color:var(--primario); display:grid; place-items:center; cursor:pointer; padding:0; }
+.simulacion[hidden]{display:none}
+.simulacion { margin:0 16px 8px; background:var(--tinta); color:var(--fondo);
+  border-radius:14px; padding:8px 10px; font-size:15px; line-height:1.3; display:flex; gap:8px; align-items:center; }
+.simulacion button { margin-left:auto; flex:none; font:600 15px Roboto, sans-serif; min-height:44px; padding:0 10px;
+  border-radius:10px; border:1.5px solid var(--fondo); background:transparent; color:var(--fondo); cursor:pointer; text-decoration:underline; }
+.marcando { position:absolute; inset:auto 8px 8px 8px; background:var(--superficie); color:var(--tinta); border-radius:14px;
+  padding:10px 12px; font-size:16px; border:2px solid var(--primario); }
+.marcando .acc { display:flex; gap:8px; margin-top:8px; }
+.cargando { position:absolute; inset:0; display:grid; place-items:center; background:var(--superficie-alta); color:var(--tinta-2);
+  font-size:17px; text-align:center; padding:20px; }
+.cargando .barra { width:160px; height:8px; border-radius:4px; background:var(--divisor); overflow:hidden; margin:12px auto 0; }
+.cargando .barra i { display:block; width:40%; height:100%; background:var(--primario); animation:carga 1.4s ease-in-out infinite; }
+@keyframes carga { 0%{transform:translateX(-100%)} 100%{transform:translateX(260%)} }
+@media (prefers-reduced-motion: reduce) { .cargando .barra i { animation:none; width:60%; } }
+
+.zonas { margin:8px 16px 0; font-size:16px; line-height:1.4; }
+.zonas b { font-weight:600; }
+
+.control { padding:12px 16px 0; }
+.control .fila { display:flex; align-items:center; gap:8px; }
+.paso { width:56px; height:56px; flex:none; border-radius:12px; border:1.5px solid var(--primario); background:var(--superficie);
+  color:var(--primario); font:800 26px Roboto, sans-serif; cursor:pointer; display:grid; place-items:center; padding:0; }
+.pista { flex:1; position:relative; height:56px; }
+input[type=range] { -webkit-appearance:none; appearance:none; width:100%; height:56px; background:transparent; margin:0; cursor:pointer; position:relative; z-index:1; }
+input[type=range]::-webkit-slider-runnable-track { height:10px; border-radius:5px; background:var(--pista, var(--divisor)); }
+input[type=range]::-moz-range-track { height:10px; border-radius:5px; background:var(--pista, var(--divisor)); }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:32px; height:32px; margin-top:-11px; border-radius:50%;
+  background:var(--primario); border:4px solid var(--superficie); box-shadow:0 0 0 2px var(--primario); }
+input[type=range]::-moz-range-thumb { width:26px; height:26px; border-radius:50%; background:var(--primario); border:4px solid var(--superficie); box-shadow:0 0 0 2px var(--primario); }
+input[type=range]:focus-visible { outline:3px solid var(--primario); outline-offset:2px; border-radius:8px; }
+.marcas { position:relative; height:34px; margin:0 64px; font-size:13px; color:var(--tinta-2); }
+.marcas span { position:absolute; transform:translateX(-50%); text-align:center; white-space:nowrap; line-height:1.15; top:0; }
+.marcas span::before { content:""; display:block; width:2px; height:8px; margin:0 auto 2px; background:var(--tinta-2); }
+.marcas .extremo { transform:none; }
+.marcas .extremo::before { display:none; }
+
+.titulo-sec { font-size:18px; font-weight:600; margin:16px 16px 8px; }
+.chips { display:grid; grid-template-columns:1fr 1fr; gap:8px; padding:0 16px; }
+.chip { min-height:56px; border-radius:12px; border:1.5px solid var(--borde-control); background:var(--superficie);
+  color:var(--tinta); text-align:left; padding:6px 10px; cursor:pointer; font-family:inherit; display:flex; flex-direction:column; justify-content:center; }
+.chip .c1 { font-size:16px; font-weight:600; line-height:1.2; }
+.chip .c2 { font-size:14px; color:var(--tinta-2); }
+.chip[aria-pressed="true"] { background:var(--primario); color:var(--sobre-primario); border-color:var(--primario); }
+.chip[aria-pressed="true"] .c2 { color:var(--sobre-primario); }
+.chip:focus-visible, .paso:focus-visible, .botones-mapa button:focus-visible, .btn:focus-visible { outline:3px solid var(--primario); outline-offset:2px; }
+
+.tarjeta { margin:16px 16px 0; background:var(--superficie); border-radius:20px; padding:14px 16px; }
+.tarjeta h4 { margin:0 0 6px; font-size:18px; font-weight:600; display:flex; gap:8px; align-items:center; }
+.tarjeta p { margin:6px 0 0; font-size:17px; line-height:1.4; }
+.tarjeta .fuerte { font-weight:800; }
+.btn { font:600 17px Roboto, sans-serif; min-height:52px; padding:0 16px; border-radius:12px; cursor:pointer; }
+.btn-lleno { background:var(--primario); color:var(--sobre-primario); border:0; }
+.btn-borde { background:transparent; color:var(--primario); border:1.5px solid var(--primario); }
+.btn-enlace { background:transparent; color:var(--primario); border:0; text-decoration:underline; padding:0 4px; min-height:48px; }
+
+.leyenda { margin:16px 16px 0; display:grid; gap:8px; font-size:16px; }
+.leyenda div { display:flex; gap:10px; align-items:center; }
+.leyenda svg { flex:none; border-radius:4px; }
+.aviso { margin:16px 16px 0; font-size:16px; line-height:1.45; color:var(--tinta); }
+.fuente { margin:8px 16px 20px; font-size:15px; color:var(--tinta-2); line-height:1.4; }
+hr.sep { border:0; border-top:1px solid var(--divisor); margin:16px 16px 0; }
+
+.nav { height:72px; flex:none; display:grid; grid-template-columns:repeat(5,1fr); background:var(--fondo); border-top:1px solid var(--divisor); }
+.nav div { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; font-size:13px; color:var(--tinta-2); }
+.nav .ind { width:56px; height:30px; border-radius:15px; display:grid; place-items:center; }
+.nav .activo { color:var(--primario); font-weight:600; }
+.nav .activo .ind { background:var(--primario-suave); }
+.sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+
+/* textos del SVG */
+.carto text { font-family:Roboto, sans-serif; paint-order:stroke; stroke:var(--m-halo); stroke-width:3.5px; stroke-linejoin:round; fill:var(--m-texto); }
+.carto text.rio { fill:var(--m-rio-texto); stroke:none; font-weight:600; letter-spacing:2px; }
+@media (max-width:400px){ .celular{ height:auto; min-height:780px; } }
+</style>
+</head>
+<body>
+<div class="pagina">
+  <header>
+    <div>
+      <h1>Pestaña "Mapa": maqueta</h1>
+      <p class="intro">Tres pantallas de 360 × 780. El mapa es un <b>esquema</b>: la costa, el arroyo y las manzanas son aproximados y no sirven para ubicar una casa real. Mové el deslizador, tocá los botones de altura o, en la tercera pantalla, cambiá de estado. Las alturas de crecidas históricas son <b>valores de ejemplo</b> hasta cargarlas de Dinagua.</p>
+    </div>
+    <button class="btn-tema" id="btnTema" type="button">Tema: automático</button>
+  </header>
+  <div class="celulares">
+    <div class="col">
+      <h2>1 · Uso diario (río normal)</h2>
+      <p class="nota">Se abre en la altura de hoy. El agua apenas sale del cauce.</p>
+      <div id="cel1"></div>
+    </div>
+    <div class="col">
+      <h2>2 · En crecida, con "mi casa"</h2>
+      <p class="nota">Río en alerta. Se abre en el pronóstico de CARU y dice con qué altura el agua llegaría a la casa marcada.</p>
+      <div id="cel2"></div>
+    </div>
+    <div class="col">
+      <h2>3 · Estados y primera vez</h2>
+      <div class="selector" role="group" aria-label="Estado de la pantalla 3">
+        <button type="button" data-estado="primera" aria-pressed="true">Primera vez</button>
+        <button type="button" data-estado="marcar" aria-pressed="false">Marcar mi casa</button>
+        <button type="button" data-estado="offline" aria-pressed="false">Sin conexión</button>
+        <button type="button" data-estado="viejo" aria-pressed="false">Dato viejo</button>
+        <button type="button" data-estado="sindato" aria-pressed="false">Sin dato</button>
+        <button type="button" data-estado="cargando" aria-pressed="false">Cargando</button>
+      </div>
+      <div id="cel3"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ===== Íconos (trazos simples, estilo Material) ===== */
+const IC = {
+  normal:'<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="currentColor"/><path d="M7 12.5l3.2 3.2L17.5 8.5" stroke="var(--ic-in,#fff)" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  alerta:'<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5L23 21.5H1z" fill="currentColor"/><path d="M12 9v5.5" stroke="var(--ic-in,#fff)" stroke-width="2.4" stroke-linecap="round"/><circle cx="12" cy="18" r="1.4" fill="var(--ic-in,#fff)"/></svg>',
+  evacuacion:'<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 2h8l6 6v8l-6 6H8l-6-6V8z" fill="currentColor"/><path d="M12 7v6" stroke="var(--ic-in,#fff)" stroke-width="2.4" stroke-linecap="round"/><circle cx="12" cy="16.8" r="1.4" fill="var(--ic-in,#fff)"/></svg>',
+  sindato:'<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="currentColor"/><path d="M9.3 9.3a2.8 2.8 0 1 1 3.9 2.6c-.8.4-1.2 1-1.2 1.8v.6" stroke="var(--ic-in,#fff)" stroke-width="2.2" fill="none" stroke-linecap="round"/><circle cx="12" cy="17.3" r="1.3" fill="var(--ic-in,#fff)"/></svg>',
+  aviso:'<svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5L23 21.5H1z" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/><path d="M12 9.5v5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="12" cy="18" r="1.3" fill="currentColor"/></svg>',
+  nube:'<svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18h10.5a4 4 0 0 0 .5-8 6 6 0 0 0-11.5 1.5A3.3 3.3 0 0 0 7 18z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M4 4l16 16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+  reloj:'<svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 7v5.5l3.5 2" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>',
+  casa:'<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5L12 4l9 7.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M5.5 10v10h13V10" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/><path d="M10 20v-5h4v5" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
+  mas:'<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>',
+  menos:'<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>',
+  ayuda:'<svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9.4 9.4a2.7 2.7 0 1 1 3.8 2.5c-.8.4-1.2 1-1.2 1.8v.5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/><circle cx="12" cy="17.2" r="1.2" fill="currentColor"/></svg>',
+  navAgua:'<svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 9c2.5 0 2.5-2 5-2s2.5 2 5 2 2.5-2 5-2 2.5 2 5 2M2 15c2.5 0 2.5-2 5-2s2.5 2 5 2 2.5-2 5-2 2.5 2 5 2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+  navGraf:'<svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l5-6 4 3 7-8" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  navMapa:'<svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z M9 4v14 M15 6v14" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>',
+  navQue:'<svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l8 3v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10v-6z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M12 8v7M8.5 11.5h7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+  navAvisos:'<svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 17V11a6 6 0 0 1 12 0v6l1.5 2h-15z M10 21h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>'
+};
+
+/* ===== Datos (umbrales de data/umbrales.json; históricas = EJEMPLO) ===== */
+const ALERTA = 4.39, EVAC = 6.89, MIN = 2, MAX = 11, PASO = 0.10, MARGEN = 0.5;
+const HISTORICAS = [ // valores de ejemplo: reemplazar por los picos de Dinagua (con fecha)
+  {k:'2009', h:9.20, t:'Crecida 2009'}, {k:'2015', h:9.40, t:'Crecida 2015'},
+  {k:'2017', h:7.80, t:'Crecida 2017'}, {k:'2019', h:8.40, t:'Crecida 2019'},
+  {k:'2025', h:7.10, t:'Crecida 2025'}
+];
+const fmt = m => m.toFixed(2).replace('.', ',');
+const fmtDif = m => { const cm = Math.round(Math.abs(m)*100); return cm < 100 ? cm + ' cm' : fmt(cm/100) + ' m'; };
+const nivelDe = h => h >= EVAC ? 'evacuacion' : h >= ALERTA ? 'alerta' : 'normal';
+const NOMBRE = {normal:'Normal', alerta:'Alerta', evacuacion:'Evacuación', sindato:'Sin dato'};
+const pastillaColores = n => { // relleno pleno y texto con >= 5:1 (textos.dart)
+  const oscuro = document.documentElement.dataset.theme === 'dark' ||
+    (!document.documentElement.dataset.theme && matchMedia('(prefers-color-scheme: dark)').matches);
+  const t = {normal:['var(--normal)','#fff'], alerta:['var(--alerta)','#111B24'], evacuacion:['var(--evacuacion)','#fff'], sindato:['var(--sindato)','#fff']}[n];
+  return `--p-fondo:${t[0]};--p-texto:${t[1]};--ic-in:${n==='alerta'?'var(--alerta)':t[0]};` + (oscuro ? '' : '');
+};
+
+/* ===== Terreno esquemático: cota (m, mismo cero que la escala) según la distancia a la costa ===== */
+const W = 328, H = 300;
+const costa = y => 86 + 9*Math.sin(y/42) + (y > 220 ? (y-220)*0.12 : 0);
+function cota(d, y) {
+  const sacra = 2.4*Math.exp(-(((y-62)/22)**2)) * Math.max(0, 1 - d/250); // valle del arroyo
+  const bajo  = 1.6*Math.exp(-(((y-262)/24)**2)) * Math.max(0, 1 - d/160); // zona baja al sur
+  return 3.4 + d*0.05 - sacra - bajo;
+}
+const cotaEn = (x, y) => cota(x - costa(y), y);
+function borde(h, y) { // distancia a la costa donde el terreno alcanza la altura h
+  let lo = 0, hi = W;
+  if (cota(0, y) >= h) return 0;
+  if (cota(hi, y) < h) return hi;
+  for (let i = 0; i < 22; i++) { const m = (lo+hi)/2; cota(m, y) < h ? lo = m : hi = m; }
+  return hi;
+}
+const FILAS = []; for (let y = -6; y <= H + 6; y += 4) FILAS.push(y);
+function poligono(hA, hB) { // área entre la cota hA (o la costa) y la cota hB
+  const ida = FILAS.map(y => [costa(y) + (hA == null ? -3 : borde(hA, y)), y]);
+  const vuelta = FILAS.slice().reverse().map(y => [costa(y) + borde(hB, y), y]);
+  return 'M' + ida.concat(vuelta).map(p => p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join('L') + 'Z';
+}
+const linea = h => 'M' + FILAS.map(y => (costa(y) + borde(h, y)).toFixed(1) + ' ' + y).join('L');
+
+function zonasConAgua(h) {
+  const z = [];
+  if (borde(h, 140) > 8) z.push('Costanera');
+  if (borde(h, 190) > 20) z.push('zona del Puerto');
+  if (borde(h, 62) > 60) z.push('Arroyo Sacra');
+  if (borde(h, 262) > 50) z.push('zona baja del sur');
+  if (borde(h, 140) > 95) z.push('primeras cuadras hacia el Centro');
+  return z;
+}
+
+function svgMapa(id) {
+  const rioCamino = 'M-5 -5 L' + FILAS.map(y => costa(y).toFixed(1) + ' ' + y).join('L') + ` L-5 ${H+5}Z`;
+  let manz = '';
+  for (let y0 = 6; y0 < H; y0 += 30) {
+    if (y0 < 76 && y0 + 24 > 50) continue; // el arroyo
+    for (let x0 = 96; x0 < W; x0 += 30) {
+      const c = Math.max(costa(y0), costa(y0+24)) + 14;
+      if (x0 < c) continue;
+      manz += `<rect x="${x0}" y="${y0}" width="24" height="24" rx="2"/>`;
+    }
+  }
+  const arroyo = 'M' + Array.from({length:50}, (_, i) => { const d = i*5; return (costa(62)+d).toFixed(1) + ' ' + (62 + 5*Math.sin(d/18)).toFixed(1); }).join('L');
+  const costanera = 'M' + FILAS.map(y => (costa(y) + 7).toFixed(1) + ' ' + y).join('L');
+  return `
+  <svg class="carto" viewBox="0 0 ${W} ${H}" role="img" aria-labelledby="${id}-t ${id}-d" preserveAspectRatio="xMidYMid slice">
+    <title id="${id}-t">Esquema de la costa de Paysandú</title>
+    <desc id="${id}-d"></desc>
+    <defs>
+      <pattern id="${id}-ray" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+        <line x1="0" y1="0" x2="0" y2="7" stroke="var(--m-rayado)" stroke-width="1.6" stroke-opacity=".55"/>
+      </pattern>
+      <pattern id="${id}-pun" width="6" height="6" patternUnits="userSpaceOnUse">
+        <circle cx="3" cy="3" r="1.2" fill="var(--m-banda)" fill-opacity=".8"/>
+      </pattern>
+    </defs>
+    <rect width="${W}" height="${H}" fill="var(--m-calle)"/>
+    <g fill="var(--m-manzana)">${manz}</g>
+    <path d="${costanera}" stroke="var(--m-calle)" stroke-width="6" fill="none"/>
+    <rect x="${costa(186)-34}" y="181" width="40" height="10" rx="2" fill="var(--m-manzana)"/>
+    <path d="${rioCamino}" fill="var(--m-rio)"/>
+    <path d="${arroyo}" stroke="var(--m-rio)" stroke-width="5" fill="none" stroke-linecap="round"/>
+    <g class="agua">
+      <path class="a-banda" fill="url(#${id}-pun)"/>
+      <path class="a-relleno" fill="var(--m-agua)" fill-opacity="var(--m-agua-op)"/>
+      <path class="a-rayado" fill="url(#${id}-ray)"/>
+      <path class="a-borde" fill="none" stroke="var(--m-rayado)" stroke-width="1.5" stroke-dasharray="5 3"/>
+      <path class="a-hoy" fill="none" stroke="var(--m-borde-hoy)" stroke-width="3"/>
+    </g>
+    <text class="rio" x="0" y="0" font-size="14" transform="translate(40 210) rotate(-90)">RÍO URUGUAY</text>
+    <text x="${costa(62)+70}" y="44" font-size="13" font-weight="600">Arroyo Sacra</text>
+    <text x="${costa(186)-30}" y="207" font-size="13" font-weight="600">Puerto</text>
+    <text x="${costa(118)+12}" y="122" font-size="12" transform="rotate(-80 ${costa(118)+12} 122)">Costanera</text>
+    <text x="262" y="292" font-size="13" font-weight="600">Centro →</text>
+    <g transform="translate(300 64)"><path d="M0 -14 L6 4 L0 0 L-6 4Z" fill="var(--m-texto)"/><text x="-4" y="18" font-size="12" font-weight="800">N</text></g>
+    <g transform="translate(110 290)"><path d="M0 0h60" stroke="var(--m-texto)" stroke-width="2.5"/><path d="M0 -4v8M60 -4v8" stroke="var(--m-texto)" stroke-width="2"/><text x="66" y="4" font-size="12">≈ 300 m</text></g>
+    <g class="casa" style="display:none">
+      <circle r="13" fill="var(--m-calle)" stroke="var(--m-casa)" stroke-width="3"/>
+      <g transform="translate(-9 -10) scale(.78)" color="var(--m-casa)">${IC.casa.replace('width="22" height="22"','width="24" height="24"')}</g>
+      <text x="16" y="5" font-size="13" font-weight="800">Mi casa</text>
+    </g>
+    <g class="cruz" style="display:none" stroke="var(--m-casa)" stroke-width="2.5"><circle r="16" fill="none"/><path d="M-26 0h18M8 0h18M0 -26v18M0 8v18"/></g>
+  </svg>`;
+}
+
+/* ===== Una pantalla ===== */
+function crearPantalla(raiz, cfg) {
+  const id = raiz.id;
+  const s = { h: cfg.inicial ?? cfg.hoy ?? ALERTA, casa: cfg.casa || null, estado: cfg.estado || 'normal', marcando: false };
+  const hoy = () => s.estado === 'sindato' ? null : cfg.hoy;
+  const nivHoy = () => (hoy() == null || s.estado === 'viejo') ? 'sindato' : nivelDe(cfg.hoy);
+
+  function render() {
+    const nh = nivHoy();
+    const chipsBase = [];
+    if (hoy() != null) chipsBase.push({k:'hoy', h:cfg.hoy, t: s.estado==='viejo'||s.estado==='offline' ? 'Último dato' : 'Hoy'});
+    if (cfg.pron && s.estado !== 'sindato') chipsBase.push({k:'pron', h:cfg.pron, t:'Pronóstico CARU'});
+    chipsBase.push({k:'alerta', h:ALERTA, t:'Nivel de alerta'}, {k:'evac', h:EVAC, t:'Nivel de evacuación'});
+    const chips = chipsBase.concat(HISTORICAS);
+    const meta = { normal:'Actualizado: hoy 15:00 · Fuente: CARU', offline:'Último dato guardado: hoy 09:00 · Fuente: CARU',
+      viejo:'Último dato: ayer 18:00 (hace 21 h) · Fuente: CARU', sindato:'No hay un dato confiable de la altura de hoy.',
+      primera:'Actualizado: hoy 15:00 · Fuente: CARU', marcar:'Actualizado: hoy 15:00 · Fuente: CARU', cargando:'Actualizado: hoy 15:00 · Fuente: CARU' }[s.estado] || 'Actualizado: hoy 15:00 · Fuente: CARU';
+    let recuadro = '';
+    if (s.estado === 'offline') recuadro = `<div class="recuadro">${IC.nube}<div>Sin conexión. El mapa funciona igual, pero "Hoy" es el último dato guardado (hoy 09:00).</div></div>`;
+    if (s.estado === 'viejo') recuadro = `<div class="recuadro">${IC.reloj}<div>El último dato es de hace 21 horas. El río pudo cambiar. Mirá la fuente o los canales oficiales.</div></div>`;
+    if (s.estado === 'sindato') recuadro = `<div class="recuadro">${IC.aviso}<div>No hay un dato confiable de hoy. Igual podés elegir una altura para ver hasta dónde llegaría el agua.</div></div>`;
+
+    const etqHoy = s.estado==='viejo'||s.estado==='offline' ? 'Último dato:' : 'Río hoy:';
+    raiz.innerHTML = `
+    <div class="celular n-${nh}">
+      <div class="estado-sis" aria-hidden="true"><span>15:42</span><span>▮▮▮ 78%</span></div>
+      <div class="appbar"><h3>Mapa del agua</h3><button class="icono-btn" type="button" aria-label="Cómo leer el mapa">${IC.ayuda}</button></div>
+      <div class="scroll">
+        <section class="hoy" aria-label="Altura del río hoy">
+          ${hoy() == null ? `<div class="fila"><span class="nivel-txt" style="--ic-in:var(--fondo)">${IC.sindato} Sin dato</span></div>`
+            : `<div class="fila"><span class="etq">${etqHoy}</span><span class="valor">${fmt(cfg.hoy)} m</span>
+               <span class="nivel-txt" style="--ic-in:var(--tinte)">${IC[nh]} ${NOMBRE[nh]}</span></div>`}
+          <div class="meta">${meta}</div>
+        </section>
+        ${recuadro}
+        ${s.estado === 'primera' ? `<div class="tarjeta" style="margin-top:8px">
+            <h4>${IC.navMapa} Cómo se usa</h4>
+            <p>El celeste rayado muestra hasta dónde llegaría el río con la altura que elijas. Mové la barra o tocá una altura.</p>
+            <p>Es aproximado y <b>no reemplaza la alerta oficial</b>.</p>
+            <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button class="btn btn-lleno" data-acc="entendido" type="button">Entendido</button></div>
+          </div>` : ''}
+        <div class="lectura">
+          <div class="etq">Viendo el agua con el río en</div>
+          <div class="fila"><span class="grande js-h"></span><span class="pastilla js-p"></span></div>
+          <div class="comp js-comp"></div>
+        </div>
+        <div class="simulacion js-sim" hidden></div>
+        <figure class="mapa" style="margin:4px 16px 0">
+          ${svgMapa(id)}
+          <span class="esquema" aria-hidden="true">ESQUEMA · NO ES EXACTO</span>
+          <div class="botones-mapa">
+            <button type="button" aria-label="Acercar">${IC.mas}</button>
+            <button type="button" aria-label="Alejar">${IC.menos}</button>
+            <button type="button" data-acc="vercasa" aria-label="Centrar en mi casa">${IC.casa}</button>
+          </div>
+          ${s.estado === 'cargando' ? `<div class="cargando" role="status"><div>Preparando el mapa…<div class="barra"><i></i></div></div></div>` : ''}
+          ${s.marcando ? `<div class="marcando" role="status">Tocá el mapa donde está tu casa.<div class="acc"><button class="btn btn-borde" data-acc="cancelar" type="button">Cancelar</button></div></div>` : ''}
+        </figure>
+        <p class="zonas js-zonas" aria-live="off"></p>
+        <div class="control">
+          <label class="sr" for="${id}-r">Altura del río para el mapa</label>
+          <div class="fila">
+            <button class="paso" type="button" data-paso="-1" aria-label="Bajar 10 centímetros">−</button>
+            <div class="pista"><input id="${id}-r" type="range" min="${MIN}" max="${MAX}" step="${PASO}"></div>
+            <button class="paso" type="button" data-paso="1" aria-label="Subir 10 centímetros">+</button>
+          </div>
+          <div class="marcas" aria-hidden="true">
+            <span class="extremo" style="left:0">${MIN} m</span>
+            <span style="left:${(ALERTA-MIN)/(MAX-MIN)*100}%">Alerta<br>4,39</span>
+            <span style="left:${(EVAC-MIN)/(MAX-MIN)*100}%">Evac.<br>6,89</span>
+            <span class="extremo" style="right:0;left:auto">${MAX} m</span>
+          </div>
+        </div>
+        <h4 class="titulo-sec">Elegí una altura</h4>
+        <div class="chips" role="group" aria-label="Alturas para ver en el mapa">
+          ${chips.map(c => `<button class="chip" type="button" data-h="${c.h}" aria-pressed="false"><span class="c1">${c.t}</span><span class="c2">${fmt(c.h)} m${/^\d{4}$/.test(c.k) ? ' · ejemplo' : ''}</span></button>`).join('')}
+        </div>
+        <div class="tarjeta js-casa"></div>
+        <hr class="sep">
+        <div class="leyenda" aria-label="Qué significa cada cosa del mapa">
+          <div><svg width="36" height="22" aria-hidden="true"><rect width="36" height="22" fill="var(--m-rio)"/></svg>Río y arroyo, en su cauce</div>
+          <div><svg width="36" height="22" aria-hidden="true"><rect width="36" height="22" fill="var(--m-calle)"/><rect width="36" height="22" fill="var(--m-agua)" fill-opacity="var(--m-agua-op)"/><rect width="36" height="22" fill="url(#${id}-ray)"/></svg>Hasta dónde llegaría el agua</div>
+          <div><svg width="36" height="22" aria-hidden="true"><rect width="36" height="22" fill="var(--m-calle)"/><rect width="36" height="22" fill="url(#${id}-pun)"/></svg>Puede llegar un poco más (hasta 50 cm)</div>
+          <div><svg width="36" height="22" aria-hidden="true"><rect width="36" height="22" fill="var(--m-calle)"/><path d="M0 11h36" stroke="var(--m-borde-hoy)" stroke-width="3"/></svg>Borde del agua hoy</div>
+          <div><svg width="36" height="22" aria-hidden="true"><rect width="36" height="22" fill="var(--m-calle)"/><circle cx="18" cy="11" r="9" fill="var(--m-calle)" stroke="var(--m-casa)" stroke-width="2.5"/></svg>Mi casa (solo queda en este teléfono)</div>
+        </div>
+        <p class="aviso"><b>Este mapa es aproximado.</b> Muestra hasta dónde podría llegar el río con esa altura, según el terreno. No tiene en cuenta la lluvia, los desagües ni las calles cortadas. No reemplaza la alerta oficial: seguí las indicaciones del Cecoed.</p>
+        <p class="fuente">Terreno y zonas inundables: Dinagua / IDE Uruguay. Altura del río y pronóstico: CARU. <button class="btn-enlace" type="button">Ver fuentes</button></p>
+      </div>
+      <nav class="nav" aria-label="Secciones">
+        <div>${'<span class="ind">'+IC.navAgua+'</span>'}Inicio</div>
+        <div>${'<span class="ind">'+IC.navGraf+'</span>'}Gráfico</div>
+        <div class="activo" aria-current="page">${'<span class="ind">'+IC.navMapa+'</span>'}Mapa</div>
+        <div>${'<span class="ind">'+IC.navQue+'</span>'}Qué hacer</div>
+        <div>${'<span class="ind">'+IC.navAvisos+'</span>'}Avisos</div>
+      </nav>
+    </div>`;
+    enlazar(); actualizar();
+  }
+
+  function enlazar() {
+    const r = raiz.querySelector('input[type=range]');
+    r.value = s.h;
+    r.addEventListener('input', () => { s.h = +r.value; actualizar(); });
+    raiz.querySelectorAll('[data-paso]').forEach(b => b.addEventListener('click', () => {
+      s.h = Math.min(MAX, Math.max(MIN, Math.round((s.h + PASO * +b.dataset.paso)*10)/10)); actualizar(true);
+    }));
+    raiz.querySelectorAll('.chip').forEach(b => b.addEventListener('click', () => { s.h = +b.dataset.h; actualizar(true); }));
+    raiz.querySelector('svg.carto').addEventListener('click', ev => {
+      if (!s.marcando) return;
+      const svg = ev.currentTarget, p = svg.createSVGPoint(); p.x = ev.clientX; p.y = ev.clientY;
+      const q = p.matrixTransform(svg.getScreenCTM().inverse());
+      if (q.x < costa(q.y) + 4) return; // en el río no
+      s.casa = {x:q.x, y:q.y}; s.marcando = false; render();
+    });
+    raiz.addEventListener('click', ev => {
+      const a = ev.target.closest('[data-acc]'); if (!a) return;
+      const acc = a.dataset.acc;
+      if (acc === 'marcar') { s.marcando = true; render(); }
+      if (acc === 'cancelar') { s.marcando = false; render(); }
+      if (acc === 'borrar') { s.casa = null; render(); }
+      if (acc === 'hoy') { s.h = cfg.hoy; actualizar(true); }
+      if (acc === 'entendido') { s.estado = 'normal'; render(); }
+    });
+  }
+
+  function actualizar(anunciar) {
+    const h = Math.round(s.h*100)/100, n = nivelDe(h);
+    const svg = raiz.querySelector('svg.carto');
+    raiz.querySelector('input[type=range]').value = h;
+    const r = raiz.querySelector('input[type=range]');
+    r.setAttribute('aria-valuetext', `${fmt(h).replace(',', ' coma ')} metros, nivel ${NOMBRE[n]}`);
+    const pct = v => ((v-MIN)/(MAX-MIN)*100).toFixed(1) + '%';
+    r.style.setProperty('--pista', `linear-gradient(90deg, var(--primario) ${pct(h)}, var(--divisor) ${pct(h)})`);
+
+    raiz.querySelector('.js-h').textContent = fmt(h) + ' m';
+    const p = raiz.querySelector('.js-p');
+    p.setAttribute('style', pastillaColores(n)); p.innerHTML = IC[n] + ' ' + NOMBRE[n];
+    const hh = hoy();
+    raiz.querySelector('.js-comp').textContent = hh == null ? 'No hay altura de hoy para comparar.'
+      : Math.round(h*100) === Math.round(hh*100) ? (s.estado==='viejo'||s.estado==='offline' ? 'Es el último dato guardado.' : 'Es la altura de hoy.')
+      : `${fmtDif(h-hh)} ${h > hh ? 'más' : 'menos'} que ${s.estado==='viejo'||s.estado==='offline' ? 'el último dato' : 'hoy'}.`;
+
+    // agua
+    svg.querySelector('.a-relleno').setAttribute('d', poligono(null, h));
+    svg.querySelector('.a-rayado').setAttribute('d', poligono(null, h));
+    svg.querySelector('.a-borde').setAttribute('d', linea(h));
+    svg.querySelector('.a-banda').setAttribute('d', poligono(h, Math.min(MAX + 1, h + MARGEN)));
+    const lh = svg.querySelector('.a-hoy');
+    if (hh != null && Math.abs(h - hh) > 0.04) { lh.setAttribute('d', linea(hh)); lh.style.display = ''; } else lh.style.display = 'none';
+
+    // casa
+    const gc = svg.querySelector('.casa');
+    if (s.casa) { gc.style.display = ''; gc.setAttribute('transform', `translate(${s.casa.x.toFixed(1)} ${s.casa.y.toFixed(1)})`); } else gc.style.display = 'none';
+    svg.querySelector('.cruz').style.display = 'none';
+
+    // simulación
+    const sim = raiz.querySelector('.js-sim');
+    if (hh != null && Math.abs(h - hh) > 0.04 && !s.marcando && s.estado !== 'cargando') {
+      sim.hidden = false;
+      sim.innerHTML = `<span>No es el río de hoy: es una prueba con ${fmt(h)} m.</span><button type="button" data-acc="hoy">Volver a hoy</button>`;
+    } else sim.hidden = true;
+
+    // zonas (texto visible y descripción del mapa)
+    const z = zonasConAgua(h);
+    const zt = z.length ? 'Con esta altura el agua llegaría a: ' + z.join(', ') + '.' : 'Con esta altura el agua cubre solo la orilla y la boca del arroyo.';
+    raiz.querySelector('.js-zonas').innerHTML = `<b>${z.length ? 'Zonas con agua:' : 'Sin barrios con agua.'}</b> ${z.length ? z.join(', ') + ' (aprox.).' : 'Solo la orilla y la boca del arroyo (aprox.).'}`;
+    svg.querySelector('desc').textContent = `Esquema, no es exacto. Río en ${fmt(h)} metros. ${zt}`;
+
+    // chips
+    raiz.querySelectorAll('.chip').forEach(c => c.setAttribute('aria-pressed', Math.abs(+c.dataset.h - h) < 0.005 ? 'true' : 'false'));
+
+    // tarjeta casa
+    const tc = raiz.querySelector('.js-casa');
+    if (!s.casa) {
+      tc.innerHTML = `<h4>${IC.casa} Mi casa</h4><p>Marcá tu casa en el mapa para saber con qué altura del río podría llegar el agua.</p>
+        <p style="font-size:15px;color:var(--tinta-2)">Queda guardada solo en este teléfono. No se envía a nadie.</p>
+        <div style="margin-top:12px"><button class="btn btn-borde" data-acc="marcar" type="button">Marcar mi casa</button></div>`;
+    } else {
+      const c = Math.round(cotaEn(s.casa.x, s.casa.y)*10)/10;
+      let msg;
+      if (h >= c) msg = `<p class="fuerte">Con ${fmt(h)} m, el mapa muestra agua en tu casa.</p>`;
+      else if (h + MARGEN >= c) msg = `<p class="fuerte">Con ${fmt(h)} m, el agua quedaría muy cerca de tu casa.</p>`;
+      else msg = `<p class="fuerte">Con ${fmt(h)} m, el mapa no muestra agua en tu casa.</p>`;
+      const faltan = hh != null && hh < c ? `<p>Hoy el río está en ${fmt(hh)} m: faltan unos ${fmtDif(c - hh)}.</p>` : '';
+      tc.innerHTML = `<h4>${IC.casa} Mi casa</h4>${msg}
+        <p>Según el mapa, el agua llegaría a tu casa con el río en <b>aprox. ${fmt(c)} m</b>. Podría ser hasta 50 cm antes.</p>${faltan}
+        <p style="font-size:15px;color:var(--tinta-2)">Es una estimación. Ante la duda, seguí las indicaciones del Cecoed.</p>
+        <div style="display:flex;gap:4px;margin-top:8px;flex-wrap:wrap"><button class="btn-enlace" data-acc="marcar" type="button">Mover</button><button class="btn-enlace" data-acc="borrar" type="button">Borrar</button></div>`;
+    }
+  }
+  s.render = render;
+  render();
+  return s;
+}
+
+/* ===== Las tres pantallas ===== */
+const CASA_EJ = { x: costa(196) + 104, y: 196 };
+crearPantalla(document.getElementById('cel1'), { hoy: 3.62, pron: 3.80 });
+crearPantalla(document.getElementById('cel2'), { hoy: 5.12, pron: 5.60, inicial: 5.60, casa: CASA_EJ });
+const p3 = crearPantalla(document.getElementById('cel3'), { hoy: 4.80, pron: 5.05, estado: 'primera' });
+document.querySelectorAll('.selector button').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('.selector button').forEach(x => x.setAttribute('aria-pressed', x === b ? 'true' : 'false'));
+  const e = b.dataset.estado;
+  p3.marcando = e === 'marcar';
+  p3.estado = e === 'marcar' ? 'normal' : e;
+  p3.h = e === 'sindato' ? ALERTA : 4.80;
+  p3.render();
+}));
+
+/* ===== Tema ===== */
+const btnTema = document.getElementById('btnTema');
+const temas = [null, 'light', 'dark'], nombresTema = {null:'automático', light:'claro', dark:'oscuro'};
+let iTema = 0;
+btnTema.addEventListener('click', () => {
+  iTema = (iTema + 1) % 3; const t = temas[iTema];
+  if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme;
+  btnTema.textContent = 'Tema: ' + nombresTema[t];
+  document.querySelectorAll('.js-p').forEach(() => {}); // las pastillas usan variables: se repintan solas
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,374 @@
+<title>Mapa del agua Paysandú</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+/* Una columna tipo celular centrada: lectura de altura, mapa real, control y explicación. Tokens de app/lib/tema.dart. */
+:root {
+  --primario:#0B3C5D; --sobre-primario:#FFFFFF; --primario-suave:#D6E6F2;
+  --fondo:#EEF4F8; --superficie:#FFFFFF; --tinta:#0B2A3F; --tinta-2:#3F5566;
+  --borde-control:#566B7B; --divisor:#D2DEE7; --recuadro-fondo:#FFF4D6; --recuadro-icono:#7A4A00;
+  --alerta:#EF6C00; --alerta-fam:#9A3F00; --alerta-tinte:#FCE3CE;
+  --m-tierra:#F4F1EA; --m-calle:#FFFFFF; --m-calle-borde:#CFC8B8; --m-avenida:#F6D58E;
+  --m-rio:#8DB8DF; --m-agua:#1F6FC0; --m-agua-op:.42; --m-rayado:#0B3C5D; --m-texto:#3B4A55; --m-halo:#F4F1EA;
+  --m-casa:#B71C1C;
+  --fuente:Roboto, system-ui, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --primario:#8CCBEE; --sobre-primario:#06283D; --primario-suave:#1D3A50;
+    --fondo:#0E1A24; --superficie:#16283A; --tinta:#EAF2F8; --tinta-2:#A9BCCB;
+    --borde-control:#8A9DAE; --divisor:#26394A; --recuadro-fondo:#3A2E12; --recuadro-icono:#FFC857;
+    --alerta:#EF6C00; --alerta-fam:#FF9F40; --alerta-tinte:#3A2414;
+    --m-tierra:#1A2631; --m-calle:#2E3E4C; --m-calle-borde:#22313D; --m-avenida:#6B5A33;
+    --m-rio:#21476B; --m-agua:#6CB4FF; --m-agua-op:.45; --m-rayado:#D6ECFF; --m-texto:#D5E2EC; --m-halo:#1A2631;
+    --m-casa:#FF8A80; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"] {
+  --primario:#8CCBEE; --sobre-primario:#06283D; --primario-suave:#1D3A50;
+  --fondo:#0E1A24; --superficie:#16283A; --tinta:#EAF2F8; --tinta-2:#A9BCCB;
+  --borde-control:#8A9DAE; --divisor:#26394A; --recuadro-fondo:#3A2E12; --recuadro-icono:#FFC857;
+  --alerta:#EF6C00; --alerta-fam:#FF9F40; --alerta-tinte:#3A2414;
+  --m-tierra:#1A2631; --m-calle:#2E3E4C; --m-calle-borde:#22313D; --m-avenida:#6B5A33;
+  --m-rio:#21476B; --m-agua:#6CB4FF; --m-agua-op:.45; --m-rayado:#D6ECFF; --m-texto:#D5E2EC; --m-halo:#1A2631;
+  --m-casa:#FF8A80; color-scheme:dark;
+}
+* { box-sizing:border-box; }
+body { background:var(--fondo); color:var(--tinta); font-family:var(--fuente); font-size:16px; line-height:1.45;
+  padding-left:max(16px, env(safe-area-inset-left, 0px)); padding-right:max(16px, env(safe-area-inset-right, 0px)); padding-block:20px 40px; }
+.col { max-width:560px; margin:0 auto; display:flex; flex-direction:column; gap:14px; }
+h1 { font-size:24px; font-weight:800; margin:0; text-wrap:balance; }
+.intro { margin:4px 0 0; color:var(--tinta-2); }
+.hoy { background:var(--alerta-tinte); border-radius:20px; padding:12px 16px; display:flex; flex-wrap:wrap; gap:4px 12px; align-items:baseline; }
+.hoy .valor { font-size:30px; font-weight:800; font-variant-numeric:tabular-nums; }
+.hoy .nivel { font-weight:800; color:var(--alerta-fam); text-transform:uppercase; letter-spacing:.4px; }
+.hoy .meta { flex-basis:100%; font-size:14px; color:var(--tinta-2); }
+.lectura .etq { font-size:15px; color:var(--tinta-2); }
+.lectura .grande { font-size:34px; font-weight:800; font-variant-numeric:tabular-nums; line-height:1.1; }
+.lectura .capa { font-size:17px; font-weight:600; margin-top:2px; }
+.recuadro { background:var(--recuadro-fondo); border-radius:16px; padding:12px 14px; display:flex; gap:10px; }
+.recuadro svg { flex:none; color:var(--recuadro-icono); margin-top:2px; }
+.mapa { position:relative; border-radius:20px; overflow:hidden; border:1px solid var(--divisor); background:var(--m-tierra);
+  height:min(62vh, 520px); min-height:340px; }
+.mapa svg { display:block; width:100%; height:100%; touch-action:none; cursor:grab; user-select:none; }
+.mapa.marcando svg { cursor:crosshair; }
+.mapa text { font-family:var(--fuente); paint-order:stroke; stroke:var(--m-halo); stroke-linejoin:round; fill:var(--m-texto); }
+.btns { position:absolute; right:calc(10px + env(safe-area-inset-right, 0px)); top:10px; display:flex; flex-direction:column; gap:6px; }
+.btns button { width:48px; height:48px; border-radius:12px; border:1px solid var(--borde-control); background:var(--superficie);
+  color:var(--primario); font:800 24px var(--fuente); cursor:pointer; display:grid; place-items:center; padding:0; }
+.creditos { position:absolute; left:0; bottom:0; font-size:11px; padding:3px 8px; background:var(--superficie); color:var(--tinta-2);
+  border-top-right-radius:10px; opacity:.92; }
+.aviso-marcar { position:absolute; left:10px; right:68px; top:10px; background:var(--superficie); border:2px solid var(--primario);
+  border-radius:14px; padding:8px 12px; font-size:15px; }
+.control { display:flex; align-items:center; gap:8px; }
+.paso { width:56px; height:56px; flex:none; border-radius:12px; border:1.5px solid var(--primario); background:var(--superficie);
+  color:var(--primario); font:800 26px var(--fuente); cursor:pointer; }
+input[type=range] { flex:1; min-width:0; height:56px; accent-color:var(--primario); }
+.marcas { display:flex; justify-content:space-between; font-size:13px; color:var(--tinta-2); margin:-6px 64px 0; font-variant-numeric:tabular-nums; }
+.chips { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:8px; }
+.chip { min-height:56px; border-radius:12px; border:1.5px solid var(--borde-control); background:var(--superficie); color:var(--tinta);
+  text-align:left; padding:6px 10px; cursor:pointer; font-family:inherit; display:flex; flex-direction:column; justify-content:center; }
+.chip .c1 { font-size:15px; font-weight:600; line-height:1.2; }
+.chip .c2 { font-size:13px; color:var(--tinta-2); }
+.chip[aria-pressed="true"] { background:var(--primario); color:var(--sobre-primario); border-color:var(--primario); }
+.chip[aria-pressed="true"] .c2 { color:var(--sobre-primario); }
+button:focus-visible, input:focus-visible { outline:3px solid var(--primario); outline-offset:2px; }
+.tarjeta { background:var(--superficie); border-radius:20px; padding:14px 16px; display:flex; flex-direction:column; gap:8px; }
+.tarjeta h2 { font-size:18px; margin:0; }
+.tarjeta p { margin:0; }
+.btn { font:600 16px var(--fuente); min-height:48px; padding:0 16px; border-radius:12px; cursor:pointer;
+  background:transparent; color:var(--primario); border:1.5px solid var(--primario); align-self:flex-start; }
+.lista { margin:0; padding-left:20px; display:flex; flex-direction:column; gap:2px; }
+.leyenda { display:grid; gap:8px; font-size:15px; }
+.leyenda div { display:flex; gap:10px; align-items:center; }
+.leyenda svg { flex:none; border-radius:4px; }
+.nota { font-size:14px; color:var(--tinta-2); margin:0; }
+h3 { font-size:15px; margin:6px 0 0; }
+</style>
+
+<div class="col">
+  <header>
+    <h1>Mapa del agua · Paysandú</h1>
+    <p class="intro">Vista previa con <b>calles reales</b> de OpenStreetMap y las <b>curvas oficiales de inundación</b> que publica Dinagua. Arrastrá o usá + y − para moverte. Es una prueba de la rama <code>mapa-inundacion</code>, no la app.</p>
+  </header>
+
+  <section class="hoy" aria-label="Altura del río">
+    <span>Río hoy:</span><span class="valor">5,68 m</span><span class="nivel">Alerta</span>
+    <span class="meta">CARU, estación automática Paysandú · 19/10/2026 14:00 (dato fijo de esta vista previa)</span>
+  </section>
+
+  <div class="lectura" aria-live="polite">
+    <div class="etq">Viendo el agua con el río en</div>
+    <div class="grande" id="lh"></div>
+    <div class="capa" id="lcapa"></div>
+  </div>
+
+  <div class="recuadro" id="rsin" hidden>
+    <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5L23 21.5H1z" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/><path d="M12 9.5v5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="12" cy="18" r="1.3" fill="currentColor"/></svg>
+    <div id="rsintxt"></div>
+  </div>
+
+  <figure class="mapa" id="mapa" style="margin:0">
+    <svg id="svg" role="img" aria-labelledby="mt md">
+      <title id="mt">Mapa de la costa de Paysandú</title><desc id="md"></desc>
+      <defs><pattern id="ray" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+        <line x1="0" y1="0" x2="0" y2="8" stroke="var(--m-rayado)" stroke-width="1.6" stroke-opacity=".5"/></pattern></defs>
+      <rect id="fondo" fill="var(--m-tierra)" x="-5000" y="-5000" width="15000" height="15000"/>
+      <g id="g-calles"></g>
+      <path id="p-rio" fill="var(--m-rio)" fill-rule="evenodd"/>
+      <path id="p-cursos" fill="none" stroke="var(--m-rio)" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+      <g id="g-agua">
+        <path id="p-agua" fill="var(--m-agua)" fill-opacity="var(--m-agua-op)" fill-rule="evenodd"/>
+        <path id="p-ray" fill="url(#ray)" fill-rule="evenodd"/>
+        <path id="p-borde" fill="none" stroke="var(--m-rayado)" stroke-width="1.6" vector-effect="non-scaling-stroke"/>
+      </g>
+      <g id="g-textos"></g>
+      <g id="g-casa" hidden></g>
+    </svg>
+    <div class="btns">
+      <button type="button" id="bmas" aria-label="Acercar">+</button>
+      <button type="button" id="bmenos" aria-label="Alejar">−</button>
+    </div>
+    <div class="aviso-marcar" id="amarcar" role="status" hidden>Tocá el mapa donde está tu casa.</div>
+    <div class="creditos">© colaboradores de OpenStreetMap (ODbL) · Curvas: Dinagua / MA</div>
+  </figure>
+
+  <div>
+    <label for="rng" style="position:absolute;left:-9999px">Altura del río para el mapa</label>
+    <div class="control">
+      <button class="paso" type="button" id="bbaja" aria-label="Bajar 10 centímetros">−</button>
+      <input id="rng" type="range" min="4" max="10" step="0.1">
+      <button class="paso" type="button" id="bsube" aria-label="Subir 10 centímetros">+</button>
+    </div>
+    <div class="marcas" aria-hidden="true"><span>4 m</span><span>6 m</span><span>8 m</span><span>10 m</span></div>
+  </div>
+
+  <div class="chips" id="chips" role="group" aria-label="Alturas para ver en el mapa"></div>
+
+  <section class="tarjeta">
+    <h2>¿Llegó el agua a mi casa?</h2>
+    <p id="casatxt">Marcá un punto en el mapa y te digo cuáles de las crecidas registradas llegaron hasta ahí. El punto queda solo en esta página.</p>
+    <button class="btn" type="button" id="bmarcar">Marcar mi casa</button>
+  </section>
+
+  <section class="tarjeta">
+    <h2>Cómo leer esta vista previa</h2>
+    <div class="leyenda">
+      <div><svg width="36" height="22" aria-hidden="true"><rect width="36" height="22" fill="var(--m-rio)"/></svg>Río y arroyos en su cauce (OpenStreetMap)</div>
+      <div><svg width="36" height="22" aria-hidden="true"><rect width="36" height="22" fill="var(--m-tierra)"/><rect width="36" height="22" fill="var(--m-agua)" fill-opacity="var(--m-agua-op)"/><rect width="36" height="22" fill="url(#ray)"/></svg>Hasta dónde llegó el agua en la curva de Dinagua elegida</div>
+    </div>
+    <p>Por ahora el mapa muestra, para cada altura, <b>la curva oficial más alta que no la supera</b>. Hay siete curvas: cinco crecidas reales y dos estimadas por período de retorno.</p>
+    <p class="nota">Cada crecida se relevó en una zona algo distinta, así que subir la altura no siempre agranda el área. Por debajo de 6,58 m no hay curvas oficiales. La app final llenaría esos huecos con el modelo del terreno de IDE Uruguay, calculado cada 10 cm y comparado contra estas curvas.</p>
+    <h3>Fuentes</h3>
+    <p class="nota">Calles, río y barrios: © colaboradores de OpenStreetMap, licencia ODbL (extracto de Geofabrik del 18/10/2026). Curvas de inundación: Dirección Nacional de Aguas (Dinagua), Ministerio de Ambiente, servicio WFS público; geometría simplificada. Las alturas están en el cero local de la escala de Paysandú (campo <code>cota_local</code>).</p>
+    <p class="nota"><b>Este mapa es aproximado y no reemplaza la alerta oficial.</b> Ante la duda, seguí las indicaciones del Cecoed.</p>
+  </section>
+</div>
+
+<script>
+const OSM = /*OSM*/null;
+const CURVAS = /*CURVAS*/null;
+const HOY = 5.68;
+
+/* ---- proyección: grados -> unidades del mapa ---- */
+const [O, S, E, N] = OSM.caja, KX = Math.cos(32.3 * Math.PI / 180), K = 10000;
+const px = lon => (lon - O) * KX * K, py = lat => (N - lat) * K;
+const anillo = r => 'M' + r.map(([x, y]) => px(x).toFixed(1) + ' ' + py(y).toFixed(1)).join('L');
+function camino(g) {
+  const t = g.type, c = g.coordinates;
+  if (t === 'LineString') return anillo(c);
+  if (t === 'MultiLineString') return c.map(anillo).join('');
+  if (t === 'Polygon') return c.map(r => anillo(r) + 'Z').join('');
+  if (t === 'MultiPolygon') return c.map(p => p.map(r => anillo(r) + 'Z').join('')).join('');
+  if (t === 'GeometryCollection') return g.geometries.map(camino).join('');
+  return '';
+}
+const $ = id => document.getElementById(id);
+const NS = 'http://www.w3.org/2000/svg';
+const fmt = m => m.toFixed(2).replace('.', ',');
+
+/* ---- fondo de OpenStreetMap ---- */
+const calles = {1: '', 2: '', 3: ''}; let rio = '', cursos = '';
+for (const f of OSM.features) {
+  const p = f.properties;
+  if (p.t === 'agua') rio += camino(f.geometry);
+  else if (p.t === 'curso') cursos += camino(f.geometry);
+  else calles[p.k] += camino(f.geometry);
+}
+const ESTILO_CALLE = {3: ['var(--m-calle)', 2.2], 2: ['var(--m-avenida)', 3.4], 1: ['var(--m-avenida)', 4.6]};
+for (const k of [3, 2, 1]) {
+  const casing = document.createElementNS(NS, 'path');
+  casing.setAttribute('d', calles[k]); casing.setAttribute('fill', 'none');
+  casing.setAttribute('stroke', 'var(--m-calle-borde)'); casing.setAttribute('stroke-width', ESTILO_CALLE[k][1] + 1.4);
+  casing.setAttribute('stroke-linecap', 'round'); casing.setAttribute('vector-effect', 'non-scaling-stroke');
+  const p = casing.cloneNode(); p.setAttribute('stroke', ESTILO_CALLE[k][0]); p.setAttribute('stroke-width', ESTILO_CALLE[k][1]);
+  $('g-calles').append(casing, p);
+}
+$('p-rio').setAttribute('d', rio);
+$('p-cursos').setAttribute('d', cursos); $('p-cursos').setAttribute('stroke-width', 3);
+
+/* nombres de calles: un rótulo cada ~500 m por nombre, en el tramo más largo, siguiendo su dirección */
+const ROTULOS_CALLE = [];
+{
+  const tramos = {};
+  for (const f of OSM.features) {
+    const p = f.properties; if (p.t !== 'calle' || !p.n) continue;
+    const g = f.geometry, lineas = g.type === 'LineString' ? [g.coordinates] : g.type === 'MultiLineString' ? g.coordinates : [];
+    for (const l of lineas) for (let i = 1; i < l.length; i++) {
+      const x1 = px(l[i - 1][0]), y1 = py(l[i - 1][1]), x2 = px(l[i][0]), y2 = py(l[i][1]);
+      const largo = Math.hypot(x2 - x1, y2 - y1); if (largo < 9) continue;
+      let ang = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI; if (ang > 90) ang -= 180; if (ang < -90) ang += 180;
+      (tramos[p.n] ??= []).push({x: (x1 + x2) / 2, y: (y1 + y2) / 2, largo, ang, k: p.k});
+    }
+  }
+  for (const [nombre, ts] of Object.entries(tramos)) {
+    ts.sort((a, b) => b.largo - a.largo);
+    const elegidos = [];
+    for (const t of ts) if (elegidos.every(e => Math.hypot(e.x - t.x, e.y - t.y) > 50)) elegidos.push(t);
+    for (const t of elegidos.slice(0, 6)) ROTULOS_CALLE.push({t: nombre, x: t.x, y: t.y + 0.01, rot: t.ang, tam: t.k < 3 ? 11.5 : 10.5,
+      peso: t.k < 3 ? 600 : 400, max: t.k < 3 ? 600 : 200, calle: true});
+  }
+}
+const TEXTOS = ROTULOS_CALLE.concat(OSM.lugares.map(l => ({t: l.n.replace(/^Barrio /, ''), x: px(l.c[0]), y: py(l.c[1]), tam: 12, peso: 600})));
+TEXTOS.push({t: 'RÍO URUGUAY', x: px(-58.118), y: py(-32.318), tam: 15, peso: 800, rot: -72});
+TEXTOS.push({t: 'Centro', x: px(-58.0805), y: py(-32.3215), tam: 14, peso: 800});
+for (const t of TEXTOS) {
+  const e = document.createElementNS(NS, 'text');
+  e.textContent = t.t; e.setAttribute('text-anchor', 'middle'); e.setAttribute('font-weight', t.peso); e.setAttribute('dominant-baseline', 'central'); if (t.calle) e.setAttribute('fill-opacity', '.9');
+  t.el = e; $('g-textos').append(e);
+}
+
+/* ---- curvas de Dinagua ---- */
+const CAPAS = CURVAS.features.map(f => ({
+  etq: f.properties.etq, cota: f.properties.cota, real: f.properties.real,
+  d: camino(f.geometry), geo: f.geometry,
+}));
+const capaPara = h => { let c = null; for (const k of CAPAS) if (k.cota <= h + 1e-6) c = k; return c; };
+
+/* ---- vista (viewBox) ---- */
+const svg = $('svg');
+let vb = {x: px(-58.118), y: py(-32.292), w: px(-58.058) - px(-58.118), h: 0};
+function ajustar() {
+  const r = svg.getBoundingClientRect();
+  vb.h = vb.w * r.height / r.width;
+  svg.setAttribute('viewBox', `${vb.x} ${vb.y} ${vb.w} ${vb.h}`);
+  const u = vb.w / r.width; // unidades por píxel
+  for (const t of TEXTOS) {
+    const e = t.el; e.setAttribute('x', t.x); e.setAttribute('y', t.y); e.style.display = t.max && vb.w > t.max ? 'none' : '';
+    e.setAttribute('font-size', t.tam * u); e.setAttribute('stroke-width', 3.5 * u);
+    if (t.rot) e.setAttribute('transform', `rotate(${t.rot} ${t.x} ${t.y})`);
+  }
+  // que los nombres no se pisen: entran por prioridad (barrios y río, avenidas, calles)
+  const puestos = [], ancho = r.width, alto = r.height;
+  const orden = TEXTOS.map((t, i) => i).sort((a, b) => prio(TEXTOS[a]) - prio(TEXTOS[b]));
+  for (const i of orden) {
+    const t = TEXTOS[i]; if (t.el.style.display === 'none') continue;
+    const cx = (t.x - vb.x) / u, cy = (t.y - vb.y) / u;
+    if (cx < -60 || cy < -20 || cx > ancho + 60 || cy > alto + 20) { t.el.style.display = 'none'; continue; }
+    const med = t.t.length * t.tam * 0.29, rad = (t.rot || 0) * Math.PI / 180, rr = t.tam * 0.75;
+    const pts = [-1, -0.5, 0, 0.5, 1].map(f => [cx + Math.cos(rad) * med * f, cy + Math.sin(rad) * med * f]);
+    if (puestos.some(q => pts.some(a => Math.hypot(a[0] - q.p[0], a[1] - q.p[1]) < rr + q.r))) { t.el.style.display = 'none'; continue; }
+    for (const a of pts) puestos.push({p: a, r: rr});
+  }
+  $('ray').setAttribute('width', 8 * u); $('ray').setAttribute('height', 8 * u);
+  $('ray').querySelector('line').setAttribute('y2', 8 * u); $('ray').querySelector('line').setAttribute('stroke-width', 1.6 * u);
+  dibujarCasa();
+}
+const prio = t => t.calle ? (t.peso > 400 ? 1 : 2) : 0;
+function zoom(f, cx, cy) {
+  const nw = Math.min(1600, Math.max(40, vb.w * f));
+  if (cx == null) { cx = vb.x + vb.w / 2; cy = vb.y + vb.h / 2; }
+  vb.x = cx - (cx - vb.x) * nw / vb.w; vb.y = cy - (cy - vb.y) * nw / vb.w; vb.w = nw; ajustar();
+}
+const aMapa = (cx, cy) => { const r = svg.getBoundingClientRect(); return [vb.x + (cx - r.left) / r.width * vb.w, vb.y + (cy - r.top) / r.height * vb.h]; };
+$('bmas').onclick = () => zoom(0.7); $('bmenos').onclick = () => zoom(1 / 0.7);
+svg.addEventListener('wheel', e => { e.preventDefault(); const [x, y] = aMapa(e.clientX, e.clientY); zoom(e.deltaY < 0 ? 0.85 : 1 / 0.85, x, y); }, {passive: false});
+const punteros = new Map(); let arrastre = null, movido = false, pinza = null;
+svg.addEventListener('pointerdown', e => {
+  svg.setPointerCapture(e.pointerId); punteros.set(e.pointerId, [e.clientX, e.clientY]); movido = false;
+  if (punteros.size === 1) arrastre = {x: e.clientX, y: e.clientY, vx: vb.x, vy: vb.y};
+  if (punteros.size === 2) { const [a, b] = [...punteros.values()]; pinza = {d: Math.hypot(a[0] - b[0], a[1] - b[1]), w: vb.w}; }
+});
+svg.addEventListener('pointermove', e => {
+  if (!punteros.has(e.pointerId)) return;
+  punteros.set(e.pointerId, [e.clientX, e.clientY]);
+  const r = svg.getBoundingClientRect();
+  if (punteros.size === 2 && pinza) {
+    const [a, b] = [...punteros.values()]; const d = Math.hypot(a[0] - b[0], a[1] - b[1]);
+    const [cx, cy] = aMapa((a[0] + b[0]) / 2, (a[1] + b[1]) / 2); zoom(pinza.w * pinza.d / d / vb.w, cx, cy); movido = true; return;
+  }
+  if (!arrastre) return;
+  const dx = e.clientX - arrastre.x, dy = e.clientY - arrastre.y;
+  if (Math.abs(dx) + Math.abs(dy) > 6) movido = true;
+  vb.x = arrastre.vx - dx / r.width * vb.w; vb.y = arrastre.vy - dy / r.height * vb.h; ajustar();
+});
+function soltar(e) {
+  if (!punteros.has(e.pointerId)) return;
+  punteros.delete(e.pointerId);
+  if (punteros.size < 2) pinza = null;
+  if (punteros.size === 0) {
+    if (!movido && marcando) { casa = aMapa(e.clientX, e.clientY); marcando = false; $('mapa').classList.remove('marcando'); $('amarcar').hidden = true; dibujarCasa(); describirCasa(); }
+    arrastre = null;
+  } else { const [p] = [...punteros.values()]; arrastre = {x: p[0], y: p[1], vx: vb.x, vy: vb.y}; }
+}
+svg.addEventListener('pointerup', soltar); svg.addEventListener('pointercancel', soltar);
+new ResizeObserver(ajustar).observe(svg);
+
+/* ---- mi casa ---- */
+let casa = null, marcando = false;
+$('bmarcar').onclick = () => { marcando = true; $('mapa').classList.add('marcando'); $('amarcar').hidden = false; $('mapa').scrollIntoView({block: 'center', behavior: 'smooth'}); };
+function dibujarCasa() {
+  const g = $('g-casa'); if (!casa) { g.hidden = true; return; }
+  const u = vb.w / svg.getBoundingClientRect().width;
+  g.hidden = false;
+  g.innerHTML = `<circle cx="${casa[0]}" cy="${casa[1]}" r="${9 * u}" fill="var(--m-casa)" stroke="var(--m-halo)" stroke-width="${3 * u}"/>
+    <text x="${casa[0] + 13 * u}" y="${casa[1] + 5 * u}" font-size="${14 * u}" font-weight="800" stroke-width="${3.5 * u}">Mi casa</text>`;
+}
+function enAnillo(x, y, r) {
+  let d = false;
+  for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+    const [xi, yi] = r[i], [xj, yj] = r[j];
+    if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) d = !d;
+  }
+  return d;
+}
+const enPoligono = (lon, lat, g) => (g.type === 'Polygon' ? [g.coordinates] : g.coordinates)
+  .some(p => enAnillo(lon, lat, p[0]) && !p.slice(1).some(h => enAnillo(lon, lat, h)));
+function describirCasa() {
+  const lon = casa[0] / (KX * K) + O, lat = N - casa[1] / K;
+  const si = CAPAS.filter(c => enPoligono(lon, lat, c.geo)), no = CAPAS.filter(c => !si.includes(c));
+  const item = c => `<li>${c.etq} (${fmt(c.cota)} m)${c.real ? '' : ', estimada'}</li>`;
+  let html = si.length
+    ? `<p><b>Según las curvas de Dinagua, el agua llegó a este punto en:</b></p><ul class="lista">${si.map(item).join('')}</ul>`
+    : `<p><b>Ninguna de las siete curvas de Dinagua llega a este punto.</b> Eso no quiere decir que sea un lugar a salvo: las curvas no cubren toda la ciudad ni el agua de los pluviales.</p>`;
+  if (si.length && no.length) html += `<p>No llegó en: ${no.map(c => c.etq + ' (' + fmt(c.cota) + ' m)').join(', ')}.</p>`;
+  html += `<p class="nota">Es una estimación sobre un punto marcado a mano. Ante la duda, seguí las indicaciones del Cecoed.</p>`;
+  $('casatxt').outerHTML = `<div id="casatxt" style="display:flex;flex-direction:column;gap:8px">${html}</div>`;
+  $('bmarcar').textContent = 'Mover el punto';
+}
+
+/* ---- altura elegida ---- */
+let h = HOY;
+const CHIPS = [{t: 'Hoy', h: HOY}, {t: 'Alerta', h: 4.39}, {t: 'Evacuación', h: 6.89}]
+  .concat(CAPAS.map(c => ({t: c.etq, h: c.cota, sub: c.real ? 'crecida real' : 'estimada'})));
+$('chips').innerHTML = CHIPS.map((c, i) => `<button class="chip" type="button" data-i="${i}" aria-pressed="false"><span class="c1">${c.t}</span><span class="c2">${fmt(c.h)} m${c.sub ? ' · ' + c.sub : ''}</span></button>`).join('');
+$('chips').addEventListener('click', e => { const b = e.target.closest('.chip'); if (b) poner(CHIPS[+b.dataset.i].h); });
+$('rng').addEventListener('input', e => poner(+e.target.value));
+$('bbaja').onclick = () => poner(Math.max(4, Math.round(h * 10 - 1) / 10));
+$('bsube').onclick = () => poner(Math.min(10, Math.round(h * 10 + 1) / 10));
+function poner(v) {
+  h = Math.round(v * 100) / 100; $('rng').value = h;
+  $('rng').setAttribute('aria-valuetext', fmt(h).replace(',', ' coma ') + ' metros');
+  $('lh').textContent = fmt(h) + ' m' + (Math.abs(h - HOY) < 0.005 ? ' (hoy)' : '');
+  const c = capaPara(h);
+  for (const id of ['p-agua', 'p-ray', 'p-borde']) $(id).setAttribute('d', c ? c.d : '');
+  $('lcapa').textContent = c ? `Se muestra: ${c.etq}, ${fmt(c.cota)} m${c.real ? ' (crecida real)' : ' (estimada por período de retorno)'}` : 'Sin curva oficial para esta altura';
+  $('rsin').hidden = !!c;
+  $('rsintxt').textContent = `Con ${fmt(h)} m todavía no hay una curva oficial. La más baja que publicó Dinagua es la de julio de 2025 (6,58 m). Para alturas como esta hace falta el cálculo con el modelo del terreno, que es el paso siguiente.`;
+  $('md').textContent = c ? `Calles de Paysandú con el área que cubrió el agua en ${c.etq} (${fmt(c.cota)} metros).` : 'Calles de Paysandú y el río en su cauce. No hay curva de agua para esta altura.';
+  document.querySelectorAll('.chip').forEach(b => b.setAttribute('aria-pressed', Math.abs(CHIPS[+b.dataset.i].h - h) < 0.005 ? 'true' : 'false'));
+}
+poner(HOY);
+ajustar();
+</script>
