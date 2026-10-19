@@ -4,6 +4,7 @@ Uso (desde la raíz del repositorio):
     python lector/lector.py
 """
 import json
+import math
 import os
 import sys
 import time
@@ -15,7 +16,7 @@ import red
 import validar
 from fuentes import caru_informes, caru_registro
 from fuentes.caru_registro import TZ_UY
-from nivel import NIVELES_CON_DATO, UMBRALES_PROVISORIOS, calcular_nivel, umbrales_validos
+from nivel import NIVELES_CON_DATO, UMBRALES_PROVISORIOS, nivel_con_margen, umbrales_validos
 
 RAIZ = Path(__file__).resolve().parent.parent
 DATA = RAIZ / "data"
@@ -184,7 +185,9 @@ def armar_actual(registro, pronostico, umbrales, anterior, ahora, cfg):
         nivel = "sin_dato"
         avisos.append("umbrales_invalidos")
     else:
-        nivel = calcular_nivel(altura["valor_m"], umbrales)
+        # El margen al bajar va antes de la retención: así la retención compara el
+        # nivel ya con margen, y una oscilación dentro del margen no retiene nada.
+        nivel = nivel_con_margen(altura["valor_m"], umbrales, anterior.get("nivel"), cfg["margen_bajada_m"])
     retenido = None
     if salto and nivel != "sin_dato" and anterior.get("nivel") in NIVELES_CON_DATO and nivel != anterior["nivel"]:
         nivel, retenido = retener_nivel(nivel, fecha_principal, anterior, ahora, cfg)
@@ -403,6 +406,10 @@ def main():
     cfg = leer_json(Path(__file__).parent / "config.json")
     if cfg["cero"] != "Local":
         print(f"ERROR: el cero '{cfg['cero']}' todavía no está soportado; usá 'Local'.")
+        return 1
+    margen = cfg.get("margen_bajada_m")
+    if type(margen) not in (int, float) or not math.isfinite(margen) or not 0 <= margen <= 0.5:
+        print(f"ERROR: margen_bajada_m tiene que ser un número de 0 a 0,5 m (0 lo desactiva); vino {margen!r}.")
         return 1
     red.permitir_origen_de(cfg["registro_url"], "registro")
     red.permitir_origen_de(cfg["informes_indice_url"], "informes")

@@ -6,6 +6,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'datos.dart';
+import 'ejemplo.dart';
 import 'enlaces.dart';
 import 'notificaciones.dart';
 import 'pantallas/ajustes.dart';
@@ -19,13 +20,21 @@ Future<void> main() async {
   final config = await Config.cargar();
   permitirOrigenes(config.enlacesPermitidos);
   final prefs = await SharedPreferences.getInstance();
-  try {
-    await Notificaciones.iniciar(config, prefs);
-  } catch (_) {
-    // Si los avisos no se pueden preparar en este teléfono, la app igual
-    // tiene que abrir y mostrar el nivel del río.
+  // Datos de ejemplo por nivel: solo con --dart-define=DATOS_EJEMPLO o en debug (ver ejemplo.dart).
+  // Con ellos no se preparan los avisos ni se toca la copia guardada.
+  final ejemplo = nivelDeEjemplo();
+  if (ejemplo == null) {
+    try {
+      await Notificaciones.iniciar(config, prefs);
+    } catch (_) {
+      // Si los avisos no se pueden preparar en este teléfono, la app igual
+      // tiene que abrir y mostrar el nivel del río.
+    }
   }
-  runApp(RioPaysanduApp(config: config, prefs: prefs, repositorio: Repositorio(config.urlBase)));
+  final repositorio = ejemplo == null
+      ? Repositorio(config.urlBase)
+      : Repositorio(config.urlBase, cliente: clienteDeEjemplo(ejemplo), soloLectura: true);
+  runApp(RioPaysanduApp(config: config, prefs: prefs, repositorio: repositorio));
 }
 
 /// Preferencia guardada del modo: 'claro', 'oscuro' o nada (seguir al teléfono).
@@ -78,7 +87,7 @@ class _RioPaysanduAppState extends State<RioPaysanduApp> with WidgetsBindingObse
   Widget build(BuildContext context) {
     Colores.oscuro = _oscuro; // todos los colores salen de la paleta elegida
     return MaterialApp(
-      title: 'Río Paysandú',
+      title: 'Mi Río UY',
       debugShowCheckedModeBanner: false,
       locale: const Locale('es'),
       supportedLocales: const [Locale('es')],
@@ -166,7 +175,8 @@ class _PaginaPrincipalState extends State<PaginaPrincipal> with WidgetsBindingOb
           ..hideCurrentSnackBar()
           ..showSnackBar(SnackBar(content: Text(mensaje), duration: const Duration(seconds: 3)));
       }
-      if (!datos.sinConexion) await revisarNivel(datos.actual, widget.prefs);
+      // Con datos de ejemplo nunca se avisa: serían avisos inventados.
+      if (!datos.sinConexion && !widget.repositorio.soloLectura) await revisarNivel(datos.actual, widget.prefs);
     } catch (_) {
       // Pase lo que pase, la pantalla no puede quedar en "Cargando…".
       if (mounted && _datos == null) setState(() => _datos = const Datos(sinConexion: true));
@@ -194,6 +204,7 @@ class _PaginaPrincipalState extends State<PaginaPrincipal> with WidgetsBindingOb
         avisosActivos: widget.prefs.getBool(claveActivos) ?? false,
         alPedirAvisos: () => setState(() => _pestana = 3),
         alVerQueHacer: _irAQueHacer,
+        alVerGrafico: () => setState(() => _pestana = 1),
       ),
       PantallaGrafico(datos: datos),
       PantallaQueHacer(config: widget.config, controlador: _scrollQueHacer),
@@ -205,8 +216,13 @@ class _PaginaPrincipalState extends State<PaginaPrincipal> with WidgetsBindingOb
         alCambiar: () => _cargar(),
       ),
     ];
+    // En Inicio la pantalla se tiñe con el color del nivel, barra de arriba incluida.
+    final enInicio = _pestana == 0;
+    final tinte = enInicio ? tinteInicio(datos, widget.config, DateTime.now()) : null;
     return Scaffold(
       appBar: AppBar(
+        backgroundColor: tinte,
+        shape: enInicio ? const Border() : null,
         title: const FittedBox(fit: BoxFit.scaleDown, child: Text('Río Uruguay en Paysandú')),
         actions: [
           if (widget.alCambiarTema != null)
@@ -229,12 +245,21 @@ class _PaginaPrincipalState extends State<PaginaPrincipal> with WidgetsBindingOb
           ),
         ],
       ),
-      body: SafeArea(
-        // En pantallas anchas (tablet, apaisado) el contenido no se estira de más.
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 600),
-            child: IndexedStack(index: _pestana, children: paginas),
+      body: DecoratedBox(
+        decoration: BoxDecoration(gradient: tinte == null ? null : degradeInicio(tinte)),
+        child: SafeArea(
+          // En pantallas anchas (tablet, apaisado) el contenido no se estira de más.
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 600),
+              child: IndexedStack(
+                index: _pestana,
+                children: [
+                  // Lo que se mueve (las olas de Inicio) se detiene en las pestañas que no están a la vista.
+                  for (final (i, pagina) in paginas.indexed) TickerMode(enabled: i == _pestana, child: pagina),
+                ],
+              ),
+            ),
           ),
         ),
       ),

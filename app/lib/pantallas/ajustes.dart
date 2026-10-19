@@ -24,14 +24,25 @@ class PantallaAjustes extends StatefulWidget {
 
 class _PantallaAjustesState extends State<PantallaAjustes> {
   bool _sinPermiso = false;
+  bool _fallo = false;
 
   bool get _activos => widget.prefs.getBool(claveActivos) ?? false;
   Nivel get _desde => nivelDesdeTexto(widget.prefs.getString(claveDesde) ?? 'alerta');
 
   Future<void> _cambiarActivos(bool valor) async {
-    final ok = await Notificaciones.activar(valor, widget.prefs);
+    bool ok;
+    try {
+      ok = await Notificaciones.activar(valor, widget.prefs);
+    } catch (_) {
+      // El interruptor tiene que mostrar siempre el estado real, aunque falle.
+      if (mounted) setState(() => _fallo = true);
+      return;
+    }
     if (!mounted) return;
-    setState(() => _sinPermiso = valor && !ok);
+    setState(() {
+      _sinPermiso = valor && !ok;
+      _fallo = false;
+    });
     if (ok) widget.alCambiar?.call();
   }
 
@@ -97,6 +108,14 @@ class _PantallaAjustesState extends State<PantallaAjustes> {
             texto: kIsWeb
                 ? 'Los avisos solo funcionan en la app para Android.'
                 : 'Para recibir avisos tenés que permitir las notificaciones de esta app en los ajustes del teléfono.',
+          ),
+          const SizedBox(height: 12),
+        ],
+        if (_fallo) ...[
+          const Recuadro(
+            icono: Icons.error_outline,
+            texto: 'No se pudieron cambiar los avisos en este teléfono. Probá de nuevo; si sigue igual, '
+                'cerrá y volvé a abrir la app.',
           ),
           const SizedBox(height: 12),
         ],

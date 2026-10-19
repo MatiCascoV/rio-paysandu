@@ -31,6 +31,10 @@ String resumenHistorial(List<PuntoHistorial> puntos) {
       'Máximo: ${formatoAltura(maximo.valorM)} m el ${formatoDiaCorto(maximo.fecha)}.';
 }
 
+/// Las lecturas posteriores a [desde].
+List<PuntoHistorial> puntosDesde(List<PuntoHistorial> historial, DateTime desde) =>
+    historial.where((p) => p.fecha.isAfter(desde)).toList();
+
 class PantallaGrafico extends StatefulWidget {
   final Datos? datos;
 
@@ -64,7 +68,7 @@ class _PantallaGraficoState extends State<PantallaGrafico> {
     final umbrales = widget.datos?.umbrales;
     final ahora = widget.ahora ?? DateTime.now();
     final desde = ahora.subtract(Duration(days: _dias));
-    final puntos = historial.where((p) => p.fecha.isAfter(desde)).toList();
+    final puntos = puntosDesde(historial, desde);
     final diasConDatos = historial.isEmpty ? 0 : ahora.difference(historial.first.fecha).inDays;
 
     return ListView(
@@ -105,7 +109,7 @@ class _PantallaGraficoState extends State<PantallaGrafico> {
               maxScaleFactor: 1.3,
               // Suelto sobre el fondo, sin tarjeta alrededor.
               child: SizedBox(
-                  height: 320, child: _Grafico(puntos: puntos, umbrales: umbrales, desde: desde, hasta: ahora)),
+                  height: 320, child: GraficoAltura(puntos: puntos, umbrales: umbrales, desde: desde, hasta: ahora)),
             ),
           ),
           const SizedBox(height: 16),
@@ -127,13 +131,27 @@ class _PantallaGraficoState extends State<PantallaGrafico> {
   }
 }
 
-class _Grafico extends StatelessWidget {
+/// Gráfico de la altura con las líneas de los niveles. Lo usan la pestaña
+/// Gráfico y, en versión [compacto], la pantalla de Inicio.
+///
+/// El compacto es para mirar de un vistazo: solo alerta y evacuación (con
+/// rótulos cortos), la zona por encima de alerta sombreada, un punto en el
+/// último valor y nada que se toque (sin cartelito).
+class GraficoAltura extends StatelessWidget {
   final List<PuntoHistorial> puntos;
   final Umbrales? umbrales;
   final DateTime desde;
   final DateTime hasta;
+  final bool compacto;
 
-  const _Grafico({required this.puntos, required this.umbrales, required this.desde, required this.hasta});
+  const GraficoAltura({
+    super.key,
+    required this.puntos,
+    required this.umbrales,
+    required this.desde,
+    required this.hasta,
+    this.compacto = false,
+  });
 
   // El eje X va en horas contadas desde la medianoche (hora de Uruguay) del
   // primer día, para que las marcas del eje caigan justo en el cambio de día.
@@ -149,20 +167,25 @@ class _Grafico extends StatelessWidget {
   Widget build(BuildContext context) {
     final estacion = [for (final p in puntos) if (p.fuente == 'estacion') FlSpot(_x(p.fecha), p.valorM)];
     final prefectura = [for (final p in puntos) if (p.fuente == 'prefectura') FlSpot(_x(p.fecha), p.valorM)];
+    // Lo que queda detrás del gráfico: el fondo de la app o la tarjeta de Inicio.
+    final detras = compacto ? Colores.superficie : Colores.fondo;
 
     // Cada nivel tiene su color y además un punteado distinto (no depender solo del color).
     final lineas = <(double, Color, String, List<int>)>[
-      if (umbrales?.atencionM != null) (umbrales!.atencionM!, _colorAtencion, 'Atención', _rayaAtencion),
+      if (!compacto && umbrales?.atencionM != null)
+        (umbrales!.atencionM!, _colorAtencion, 'Atención', _rayaAtencion),
       if (umbrales?.alertaM != null) (umbrales!.alertaM!, _colorAlerta, 'Alerta', _rayaAlerta),
       if (umbrales?.evacuacionM != null) (umbrales!.evacuacionM!, _colorEvacuacion, 'Evacuación', _rayaEvacuacion),
     ];
-    final letraEtiqueta = MediaQuery.textScalerOf(context).scale(16);
+    final letraEtiqueta = MediaQuery.textScalerOf(context).scale(compacto ? 12 : 16);
     final valores = [...puntos.map((p) => p.valorM), ...lineas.map((l) => l.$1)];
     final minY = (valores.reduce(math.min) - 0.3).floorToDouble().clamp(0.0, 20.0);
     final maxY = (valores.reduce(math.max) + 0.6).ceilToDouble();
     final dias = (hasta.difference(desde).inMinutes / 60 / 24).round();
-    final cadaDias = dias <= 7 ? 1 : (dias <= 30 ? 5 : 15);
-    final estiloEje = TextStyle(fontSize: 14, color: Colores.tinta);
+    final cadaDias = compacto ? 2 : (dias <= 7 ? 1 : (dias <= 30 ? 5 : 15));
+    final estiloEje =
+        TextStyle(fontSize: compacto ? 12 : 14, color: compacto ? Colores.tintaSecundaria : Colores.tinta);
+    final alerta = umbrales?.alertaM;
 
     return LineChart(
       LineChartData(
@@ -170,7 +193,8 @@ class _Grafico extends StatelessWidget {
         maxX: _x(hasta),
         minY: minY,
         maxY: maxY,
-        clipData: const FlClipData.all(),
+        // En el compacto no se recorta, para que el punto del último valor se vea entero.
+        clipData: compacto ? const FlClipData.none() : const FlClipData.all(),
         gridData: FlGridData(
           horizontalInterval: 1,
           drawVerticalLine: false,
@@ -181,13 +205,18 @@ class _Grafico extends StatelessWidget {
             bottom: BorderSide(color: Colores.bordeControl),
           ),
         ),
+        // En el compacto, la zona por encima de alerta va apenas sombreada.
+        rangeAnnotations: RangeAnnotations(horizontalRangeAnnotations: [
+          if (compacto && alerta != null && alerta < maxY)
+            HorizontalRangeAnnotation(y1: alerta, y2: maxY, color: const Color(0xFFEF6C00).withValues(alpha: 0.10)),
+        ]),
         titlesData: FlTitlesData(
           topTitles: const AxisTitles(),
           rightTitles: const AxisTitles(),
           leftTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
-              reservedSize: 50,
+              reservedSize: compacto ? 40 : 50,
               interval: 1,
               getTitlesWidget: (v, meta) => v == meta.min || v == meta.max
                   ? const SizedBox.shrink()
@@ -197,7 +226,7 @@ class _Grafico extends StatelessWidget {
           bottomTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
-              reservedSize: 38,
+              reservedSize: compacto ? 26 : 38,
               interval: 24.0 * cadaDias,
               getTitlesWidget: (v, meta) => v == meta.min || v == meta.max
                   ? const SizedBox.shrink()
@@ -217,39 +246,50 @@ class _Grafico extends StatelessWidget {
               HorizontalLine(
                 y: y,
                 color: color,
-                strokeWidth: 2,
+                strokeWidth: compacto ? 1.5 : 2,
                 dashArray: raya,
                 label: HorizontalLineLabel(
                   show: true,
                   alignment: Alignment.topRight,
                   padding: const EdgeInsets.only(right: 6, bottom: 2),
                   style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: letraEtiqueta),
-                  labelResolver: (_) => '$nombre ${formatoAltura(y)} m',
+                  // En el compacto, rótulo corto: "Alerta 4,39".
+                  labelResolver: (_) => compacto ? '$nombre ${formatoAltura(y)}' : '$nombre ${formatoAltura(y)} m',
                 ),
               ),
           ],
         ),
-        lineTouchData: LineTouchData(
-          touchTooltipData: LineTouchTooltipData(
-            getTooltipColor: (_) => Colores.tinta,
-            getTooltipItems: (tocados) => [
-              for (final t in tocados)
-                LineTooltipItem(
-                  '${formatoAltura(t.y)} m\n'
-                  '${formatoFecha(_fechaDe(t.x), hasta)}',
-                  TextStyle(color: Colores.fondo, fontSize: 16),
+        lineTouchData: compacto
+            ? const LineTouchData(enabled: false)
+            : LineTouchData(
+                touchTooltipData: LineTouchTooltipData(
+                  getTooltipColor: (_) => Colores.tinta,
+                  getTooltipItems: (tocados) => [
+                    for (final t in tocados)
+                      LineTooltipItem(
+                        '${formatoAltura(t.y)} m\n'
+                        '${formatoFecha(_fechaDe(t.x), hasta)}',
+                        TextStyle(color: Colores.fondo, fontSize: 16),
+                      ),
+                  ],
                 ),
-            ],
-          ),
-        ),
+              ),
         lineBarsData: [
           if (estacion.isNotEmpty)
             LineChartBarData(
               spots: estacion,
               color: _colorEstacion,
-              barWidth: 3,
-              dotData: const FlDotData(show: false),
-              belowBarData: BarAreaData(show: true, color: _colorEstacion.withValues(alpha: 0.08)),
+              barWidth: compacto ? 2.5 : 3,
+              // En el compacto, un punto marca el último valor de la estación.
+              dotData: compacto
+                  ? FlDotData(
+                      checkToShowDot: (spot, barra) => spot == barra.spots.last,
+                      getDotPainter: (_, _, _, _) =>
+                          FlDotCirclePainter(radius: 5, color: _colorEstacion, strokeWidth: 2, strokeColor: detras),
+                    )
+                  : const FlDotData(show: false),
+              belowBarData:
+                  BarAreaData(show: true, color: _colorEstacion.withValues(alpha: compacto ? 0.10 : 0.08)),
             ),
           if (prefectura.isNotEmpty)
             // Prefectura mide una vez por día: se dibuja como puntos sueltos.
@@ -259,7 +299,7 @@ class _Grafico extends StatelessWidget {
               barWidth: 0.1,
               dotData: FlDotData(
                 getDotPainter: (_, _, _, _) =>
-                    FlDotCirclePainter(radius: 4.5, color: Colores.fondo, strokeWidth: 2, strokeColor: Colores.tinta),
+                    FlDotCirclePainter(radius: 4.5, color: detras, strokeWidth: 2, strokeColor: Colores.tinta),
               ),
             ),
         ],

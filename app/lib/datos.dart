@@ -81,7 +81,13 @@ class Repositorio {
   /// Tiempo máximo para bajar cada archivo.
   final Duration tiempoMaximo;
 
-  Repositorio(this.urlBase, {http.Client? cliente, this.tiempoMaximo = const Duration(seconds: 15)})
+  /// true con los datos de ejemplo: no se lee ni se guarda la copia en el
+  /// teléfono (los datos inventados no pueden pisar los reales) y la app no
+  /// revisa el nivel para avisar.
+  final bool soloLectura;
+
+  Repositorio(this.urlBase,
+      {http.Client? cliente, this.tiempoMaximo = const Duration(seconds: 15), this.soloLectura = false})
       : _cliente = cliente ?? http.Client();
 
   static const _archivos = ['actual', 'umbrales', 'historial'];
@@ -162,7 +168,7 @@ class Repositorio {
           final texto = utf8.decode(bytes);
           final json = jsonDecode(texto); // si no es JSON válido, no se guarda
           if (esValido(nombre, json)) {
-            await prefs.setString('cache_$nombre', texto);
+            if (!soloLectura) await prefs.setString('cache_$nombre', texto);
             return (json, true);
           }
         }
@@ -170,6 +176,7 @@ class Repositorio {
         // sin conexión, tiempo agotado o respuesta rota: seguimos con la copia
       }
     }
+    if (soloLectura) return (null, false);
     final guardado = prefs.getString('cache_$nombre');
     if (guardado == null) return (null, false);
     try {
