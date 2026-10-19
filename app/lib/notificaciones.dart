@@ -59,7 +59,7 @@ bool debeAvisar(Nivel? anterior, Nivel nuevo, Nivel minimo) {
 final _plugin = FlutterLocalNotificationsPlugin();
 
 Future<void> _iniciarPlugin() => _plugin.initialize(
-      settings: const InitializationSettings(android: AndroidInitializationSettings('@mipmap/ic_launcher')),
+      settings: const InitializationSettings(android: AndroidInitializationSettings('@drawable/ic_notificacion')),
     );
 
 /// Compara el nivel con el último conocido, lo recuerda y devuelve el aviso a
@@ -142,6 +142,8 @@ class Notificaciones {
       );
 
   /// Activa o desactiva los avisos. Devuelve false si el usuario no dio permiso.
+  /// Si la revisión periódica no se puede programar, lanza la excepción y los
+  /// avisos quedan apagados: no se muestran prendidos si no van a llegar.
   static Future<bool> activar(bool activar, SharedPreferences prefs) async {
     if (kIsWeb) return false;
     if (!activar) {
@@ -152,11 +154,11 @@ class Notificaciones {
     final android = _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
     final permitido = await android?.requestNotificationsPermission() ?? true;
     if (!permitido) return false;
-    await prefs.setBool(claveActivos, true);
+    await _programar();
     // Se olvida el último nivel para que la próxima revisión avise el nivel de
     // ahora: sirve de confirmación a quien activa los avisos en plena crecida.
     await prefs.remove(_claveUltimo);
-    await _programar();
+    await prefs.setBool(claveActivos, true);
     return true;
   }
 }
