@@ -255,6 +255,10 @@ rio-paysandu/
 - Proyecto Firebase; el workflow envía mensaje FCM al tema `paysandu` solo cuando cambia el nivel (o aparece un pronóstico que supera un umbral). Credenciales en secretos de GitHub.
 - **Aceptación:** la notificación llega con la app cerrada.
 
+### Fase 4.b — Varias ciudades
+- Lector, datos y app para todas las ciudades de CARU, con selector de ciudad, y enlace a Google Flood Hub. Detalle e investigación en `docs/proxima-etapa-ciudades.md`.
+- **Aceptación:** la app muestra Salto o Bella Unión con su dato, su frecuencia y sus umbrales (o sin colores si no hay).
+
 ### Fase 5 — Publicación
 - Ícono, nombre, política de privacidad, textos de Google Play, pruebas con usuarios del Cecoed y vecinos.
 

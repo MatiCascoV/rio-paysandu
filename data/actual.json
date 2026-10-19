@@ -1,31 +1,33 @@
 {
-  "generado": "2026-10-14T12:15:44-03:00",
+  "generado": "2026-10-19T13:16:38-03:00",
   "cero": "Local",
   "altura_actual": {
-    "valor_m": 6.06,
-    "fecha": "2026-10-14T12:00:00-03:00",
-    "variacion_m": -0.01,
+    "valor_m": 5.69,
+    "fecha": "2026-10-19T13:00:00-03:00",
+    "variacion_m": 0.01,
     "periodo": "30 min",
-    "estado": "baja",
+    "estado": "crece",
     "fuente": "CARU – estación automática Paysandú",
     "url": "http://190.0.152.194:8080/alturas/web/user/estacion/19/0"
   },
   "lectura_prefectura": {
-    "valor_m": 6.06,
-    "fecha": "2026-10-14T06:00:00-03:00",
-    "variacion_m": -0.18,
+    "valor_m": 5.77,
+    "fecha": "2026-10-18T06:00:00-03:00",
+    "variacion_m": -0.05,
     "periodo": "24 hs",
     "estado": "baja",
     "url": "http://190.0.152.194:8080/alturas/web/user/altura/24"
   },
   "pronostico": {
-    "vigente": true,
-    "informe_fecha": "2026-10-13",
-    "altura_esperada_m": 6.5,
-    "texto": "Debido al descenso pronosticado en la erogación, se espera que durante los próximos días continúen descendiendo los niveles observados.",
-    "caudal_salto_grande_m3s": 17000,
-    "url_informe": "https://caru.org.uy/nuevositio/wp-content/uploads/2026/10/20261013-Crecida-1.pdf"
+    "vigente": false,
+    "informe_fecha": "2026-10-16",
+    "altura_esperada_m": 5.83,
+    "texto": "Debido al caudal de erogación pronosticado, se espera un descenso leve y lento de los niveles.",
+    "caudal_salto_grande_m3s": 16800,
+    "url_informe": "https://caru.org.uy/nuevositio/wp-content/uploads/2026/10/20261016-Crecida-1.pdf"
   },
   "nivel": "alerta",
-  "avisos": []
+  "avisos": [
+    "pronostico_no_disponible"
+  ]
 }
