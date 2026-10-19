@@ -1,5 +1,5 @@
 {
-  "generado": "2026-10-19T14:17:46-03:00",
+  "generado": "2026-10-19T16:09:48-03:00",
   "cero": "Local",
   "altura_actual": {
     "valor_m": 5.68,
@@ -11,9 +11,9 @@
     "url": "http://190.0.152.194:8080/alturas/web/user/estacion/19/0"
   },
   "lectura_prefectura": {
-    "valor_m": 5.77,
-    "fecha": "2026-10-18T06:00:00-03:00",
-    "variacion_m": -0.05,
+    "valor_m": 5.74,
+    "fecha": "2026-10-19T06:00:00-03:00",
+    "variacion_m": -0.03,
     "periodo": "24 hs",
     "estado": "baja",
     "url": "http://190.0.152.194:8080/alturas/web/user/altura/24"
