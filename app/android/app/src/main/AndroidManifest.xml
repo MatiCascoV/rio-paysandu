@@ -4,7 +4,7 @@
     <!-- Mostrar avisos (Android 13 o superior lo pregunta al usuario) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <application
-        android:label="Río Paysandú"
+        android:label="Mi Río UY"
         android:name="${applicationName}"
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher">

@@ -1,4 +1,4 @@
-package uy.paysandu.rio_paysandu
+package uy.miriouy.app
 
 import io.flutter.embedding.android.FlutterActivity
 

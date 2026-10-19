@@ -1,6 +1,6 @@
-/// Colores y tema de la app. Diseño liviano: fondo liso, muy pocas superficies
-/// (rellenas, sin contorno) y separación con aire o una línea fina. El único
-/// color fuerte de cada pantalla es el del nivel del río.
+/// Colores y tema de la app. Diseño liviano: fondo azulado liso, pocas
+/// superficies (blancas, sin contorno) y separación con aire o una línea fina.
+/// El único color fuerte de cada pantalla es el del nivel del río.
 ///
 /// Hay dos paletas, clara y oscura. La app elige una ([Colores.oscuro]) antes
 /// de dibujar y todos los colores salen de acá.
@@ -19,21 +19,22 @@ abstract final class Colores {
 
   /// Texto e íconos que van encima de [primario].
   static Color get sobrePrimario => _c(0xFFFFFFFF, 0xFF06283D);
-  static Color get primarioSuave => _c(0xFFDCEAF4, 0xFF1D3446);
+  static Color get primarioSuave => _c(0xFFD6E6F2, 0xFF1D3A50);
 
-  /// Fondo de la pantalla y de las barras superior e inferior.
-  static Color get fondo => _c(0xFFFFFFFF, 0xFF0E151B);
+  /// Fondo de la pantalla y de las barras superior e inferior: azul muy
+  /// claro (o azul noche), de la misma familia que [primario].
+  static Color get fondo => _c(0xFFEEF4F8, 0xFF0E1A24);
 
-  /// Tarjeta rellena, sin contorno: apenas distinta del fondo.
-  static Color get superficie => _c(0xFFEEF2F6, 0xFF1D2A36);
+  /// Tarjeta rellena, sin contorno: blanca sobre el fondo azulado.
+  static Color get superficie => _c(0xFFFFFFFF, 0xFF16283A);
 
   /// Zona destacada dentro de una tarjeta (la fila "Ahora" de la escalera).
-  static Color get superficieAlta => _c(0xFFFFFFFF, 0xFF2A3947);
-  static Color get tinta => _c(0xFF111B24, 0xFFF1F5F8);
-  static Color get tintaSecundaria => _c(0xFF44525E, 0xFFB4C0CB);
-  static Color get bordeControl => _c(0xFF5B6770, 0xFF8A98A5);
-  static Color get bordeSuave => _c(0xFFC3CDD6, 0xFF34424E);
-  static Color get divisor => _c(0xFFDDE3E8, 0xFF2A3640);
+  static Color get superficieAlta => _c(0xFFE4EEF5, 0xFF22374B);
+  static Color get tinta => _c(0xFF0B2A3F, 0xFFEAF2F8);
+  static Color get tintaSecundaria => _c(0xFF3F5566, 0xFFA9BCCB);
+  static Color get bordeControl => _c(0xFF566B7B, 0xFF8A9DAE);
+  static Color get bordeSuave => _c(0xFFC3D2DE, 0xFF2E4457);
+  static Color get divisor => _c(0xFFD2DEE7, 0xFF26394A);
 }
 
 const _radioBoton = BorderRadius.all(Radius.circular(12));

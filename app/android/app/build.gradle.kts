@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
@@ -5,7 +7,7 @@ plugins {
 }
 
 android {
-    namespace = "uy.paysandu.rio_paysandu"
+    namespace = "uy.miriouy.app"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -17,8 +19,8 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "uy.paysandu.rio_paysandu"
+        // No cambiar después del primer APK repartido: Android lo trataría como otra app.
+        applicationId = "uy.miriouy.app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
@@ -31,11 +33,34 @@ android {
         versionName = flutter.versionName
     }
 
+    // Clave de firma propia: app/android/key.properties (fuera de git) apunta al .jks.
+    // Sin ese archivo, el release se firma con la clave de depuración: sirve para probar,
+    // nunca para repartir.
+    val propiedadesFirma = Properties()
+    val archivoFirma = rootProject.file("key.properties")
+    if (archivoFirma.exists()) {
+        archivoFirma.inputStream().use { propiedadesFirma.load(it) }
+    }
+
+    signingConfigs {
+        if (archivoFirma.exists()) {
+            create("release") {
+                storeFile = file(propiedadesFirma.getProperty("storeFile"))
+                storePassword = propiedadesFirma.getProperty("storePassword")
+                keyAlias = propiedadesFirma.getProperty("keyAlias")
+                keyPassword = propiedadesFirma.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (archivoFirma.exists()) {
+                signingConfigs.getByName("release")
+            } else {
+                logger.warn("AVISO: no hay app/android/key.properties; el APK se firma con la clave de depuración. No repartirlo.")
+                signingConfigs.getByName("debug")
+            }
         }
     }
 }
