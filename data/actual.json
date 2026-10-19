@@ -1,5 +1,5 @@
 {
-  "generado": "2026-10-18T23:27:10-03:00",
+  "generado": "2026-10-19T00:07:41-03:00",
   "cero": "Local",
   "altura_actual": {
     "valor_m": 5.72,
@@ -19,7 +19,7 @@
     "url": "http://190.0.152.194:8080/alturas/web/user/altura/24"
   },
   "pronostico": {
-    "vigente": true,
+    "vigente": false,
     "informe_fecha": "2026-10-16",
     "altura_esperada_m": 5.83,
     "texto": "Debido al caudal de erogación pronosticado, se espera un descenso leve y lento de los niveles.",
