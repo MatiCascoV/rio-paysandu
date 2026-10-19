@@ -67,4 +67,4 @@ const textoDeslinde = 'Esta app es una ayuda a la comunidad. No tiene vínculo c
     'el Cecoed (centro de emergencias de Paysandú) o el Sinae.';
 
 /// Deslinde corto, para el pie de Inicio (lleva a "Qué hacer", donde está completo).
-const textoDeslindeCorto = 'App comunitaria, sin vínculo oficial';
+const textoDeslindeCorto = 'App comunitaria, sin vínculo oficial. No reemplaza la alerta oficial';

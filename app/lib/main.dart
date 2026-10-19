@@ -20,17 +20,20 @@ Future<void> main() async {
   final config = await Config.cargar();
   permitirOrigenes(config.enlacesPermitidos);
   final prefs = await SharedPreferences.getInstance();
-  try {
-    await Notificaciones.iniciar(config, prefs);
-  } catch (_) {
-    // Si los avisos no se pueden preparar en este teléfono, la app igual
-    // tiene que abrir y mostrar el nivel del río.
-  }
   // Datos de ejemplo por nivel: solo con --dart-define=DATOS_EJEMPLO o en debug (ver ejemplo.dart).
+  // Con ellos no se preparan los avisos ni se toca la copia guardada.
   final ejemplo = nivelDeEjemplo();
+  if (ejemplo == null) {
+    try {
+      await Notificaciones.iniciar(config, prefs);
+    } catch (_) {
+      // Si los avisos no se pueden preparar en este teléfono, la app igual
+      // tiene que abrir y mostrar el nivel del río.
+    }
+  }
   final repositorio = ejemplo == null
       ? Repositorio(config.urlBase)
-      : Repositorio(config.urlBase, cliente: clienteDeEjemplo(ejemplo));
+      : Repositorio(config.urlBase, cliente: clienteDeEjemplo(ejemplo), soloLectura: true);
   runApp(RioPaysanduApp(config: config, prefs: prefs, repositorio: repositorio));
 }
 
@@ -172,7 +175,8 @@ class _PaginaPrincipalState extends State<PaginaPrincipal> with WidgetsBindingOb
           ..hideCurrentSnackBar()
           ..showSnackBar(SnackBar(content: Text(mensaje), duration: const Duration(seconds: 3)));
       }
-      if (!datos.sinConexion) await revisarNivel(datos.actual, widget.prefs);
+      // Con datos de ejemplo nunca se avisa: serían avisos inventados.
+      if (!datos.sinConexion && !widget.repositorio.soloLectura) await revisarNivel(datos.actual, widget.prefs);
     } catch (_) {
       // Pase lo que pase, la pantalla no puede quedar en "Cargando…".
       if (mounted && _datos == null) setState(() => _datos = const Datos(sinConexion: true));

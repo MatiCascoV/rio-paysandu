@@ -180,9 +180,17 @@ abstract final class ColoresNivel {
   /// Opacidad base de cada una de las tres capas de agua.
   static double get opacidadBase => Colores.oscuro ? 0.26 : 0.18;
 
-  /// Color que queda donde se superponen [opacidades] capas de agua sobre el tinte.
-  static Color bajoElAgua(Nivel n, List<double> opacidades) {
-    var c = tinte(n);
+  /// Lo que puede haber detrás del bloque de la altura: el degradé de Inicio va
+  /// del tinte (arriba) al fondo de la app, y según el largo de lo de arriba
+  /// (avisos, letra grande) el bloque cae en cualquier punto del camino. Se
+  /// toman los dos extremos y el punto medio.
+  static List<Color> fondosDelBloque(Nivel n) =>
+      [tinte(n), Color.lerp(tinte(n), Colores.fondo, 0.5)!, Colores.fondo];
+
+  /// Color que queda donde se superponen [opacidades] capas de agua sobre
+  /// [sobre] (por omisión, el tinte).
+  static Color bajoElAgua(Nivel n, List<double> opacidades, {Color? sobre}) {
+    var c = sobre ?? tinte(n);
     for (final a in opacidades) {
       c = Color.lerp(c, ola(n), a)!;
     }
@@ -196,15 +204,17 @@ abstract final class ColoresNivel {
 
   /// Opacidad de las tres capas de agua (de atrás hacia adelante). El agua
   /// puede quedar detrás del número, así que los [textosSobreElAgua] tienen
-  /// que leerse a 4,5:1 sobre las tres capas juntas. Si no alcanza, se bajan
-  /// primero las dos de adelante y, solo si hace falta, la primera.
+  /// que leerse a 4,5:1 sobre las tres capas juntas, con cualquiera de los
+  /// [fondosDelBloque] detrás. Si no alcanza, se bajan primero las dos de
+  /// adelante y, solo si hace falta, la primera.
   static List<double> opacidadesOlas(Nivel n) {
     final base = opacidadBase;
     final textos = textosSobreElAgua(n);
-    bool pasa(List<double> a) {
-      final fondo = bajoElAgua(n, a);
-      return textos.every((t) => contraste(t, fondo) >= 4.5);
-    }
+    final fondos = fondosDelBloque(n);
+    bool pasa(List<double> a) => fondos.every((detras) {
+          final agua = bajoElAgua(n, a, sobre: detras);
+          return textos.every((t) => contraste(t, agua) >= 4.5);
+        });
 
     var a = [base, base, base];
     for (var paso = 0; !pasa(a) && a[1] > 0; paso++) {

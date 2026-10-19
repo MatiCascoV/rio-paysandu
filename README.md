@@ -1,6 +1,6 @@
-# Río Paysandú
+# Mi Río UY
 
-App Android que muestra el nivel del río Uruguay en Paysandú, su tendencia y el pronóstico
+App Android (antes "Río Paysandú"; el repositorio conserva ese nombre) que muestra el nivel del río Uruguay en Paysandú, su tendencia y el pronóstico
 publicado por CARU, y avisa cuando el río se acerca a los niveles de alerta o evacuación.
 
 Los datos salen siempre de la fuente oficial (CARU). Esta app es una ayuda a la comunidad:
@@ -11,7 +11,8 @@ Ante cualquier duda hay que comunicarse con los canales oficiales (Cecoed Paysan
 
 - `lector/` — programa en Python que lee los datos de CARU, los valida y genera los JSON.
 - `data/` — JSON generados por el lector (se publican con GitHub Pages).
-- `.github/workflows/` — automatización que corre el lector cada unos 10 minutos (bucle que se relanza solo).
+- `.github/workflows/` — automatización que corre el lector cada unos 10 minutos (bucle que se relanza solo)
+  y los tests del lector y de la app.
 - `app/` — app Flutter que lee los JSON publicados.
 
 El detalle del proyecto y sus fases está en [PROMPT_MAESTRO.md](PROMPT_MAESTRO.md).
@@ -74,6 +75,14 @@ Los umbrales de nivel están en `data/umbrales.json` y son **provisorios** hasta
 Lo de los pasos 2 y 3 se pide con un solo intento, solo si pasaron menos de 90 s desde el arranque
 (`presupuesto_secundarias_s`) y nunca después de los 150 s (`limite_descargas_s`). Los tiempos están en
 `lector/config.json`.
+
+**Margen al bajar de nivel.** Para que `nivel` pase a uno menor que el publicado antes, la altura tiene
+que quedar 5 cm o más por debajo del umbral (`margen_bajada_m` en `lector/config.json`; justo 5 cm ya
+baja). Al subir no hay margen: al tocar el umbral, sube. Puede bajar varios niveles de una, pero solo hasta
+donde lo permita el margen. Evita avisos "subió" y "bajó" seguidos cuando el río está justo en el umbral.
+Sin un nivel anterior con dato (primer arranque, `sin_dato`) no se aplica. El margen va antes de la
+retención por salto, así que una oscilación dentro del margen no crea `nivel_retenido`. El valor se
+confirma con el Cecoed; tiene que ser de 0 a 0,5 m (0 lo desactiva), si no el lector sale con código `1`.
 
 Código de salida de `lector.py`: `0` bien; `3` no se pudo leer el registro de CARU o vino sin el dato de
 Paysandú (se publicó el último dato con `fuente_no_disponible`); `4` `data/umbrales.json` inválido (además
@@ -138,10 +147,38 @@ flutter run                  # con un celular conectado por USB
 flutter build apk --release  # genera build/app/outputs/flutter-apk/app-release.apk
 ```
 
+En GitHub Actions (`.github/workflows/app.yml`, con cada cambio en `app/`) corren `flutter analyze` y
+`flutter test`, y se compila el APK de release para controlar que siga adentro todo recurso que el código
+Dart nombra como texto (`'@drawable/...'`, `'@mipmap/...'`): la reducción de recursos del release los borra
+si no están en `tools:keep` de `app/android/app/src/main/res/raw/keep.xml`. Ese APK no se guarda (está
+firmado con la clave de depuración). Igual conviene correr `flutter test` y `flutter analyze` antes de subir.
+
+- **Identificador:** `uy.miriouy.app`. No se cambia más: Android trataría otro identificador como otra app.
+- **Firma:** el APK de release se firma con la clave propia si existe `app/android/key.properties`
+  (fuera de git, igual que el `.jks`). Sin ese archivo se firma con la clave de depuración y la compilación
+  lo avisa: ese APK sirve para probar, **no para repartir**. La clave y su contraseña tienen respaldo fuera
+  de la PC; sin ellas no se pueden publicar actualizaciones.
+- **Ícono:** fuentes SVG en `app/assets_fuente/icono/` (ícono adaptativo, monocromo y el de notificación).
+- **Datos de ejemplo** para revisar el diseño en cada nivel: `flutter build web --dart-define=DATOS_EJEMPLO=url`
+  y abrir con `?ejemplo=normal|atencion|alerta|evacuacion|sindato`. Con datos de ejemplo la app no guarda
+  nada ni manda avisos. **Nunca publicar una compilación hecha con `DATOS_EJEMPLO`.**
 
 ## Estado
 
 - Fase 0 (entorno): hecha (`flutter doctor` sin problemas).
 - Fase 1 (lector local): hecha.
 - Fase 2 (automatización y publicación): hecha.
-- Fase 3 (app): hecha y probada con tests y capturas; falta probarla en un celular real.
+- Fase 3 (app): hecha y probada en un celular real (Redmi), del 9 al 14/10/2026 sin fallas del lector.
+  - 16/10/2026: nombre "Mi Río UY", identificador `uy.miriouy.app`, firma con clave propia e ícono nuevo.
+  - 16/10/2026: rediseño de Inicio: fondo teñido según el nivel, agua que sube con la altura del río,
+    gráfico de 7 días en Inicio y paleta azulada en modo claro y oscuro.
+- Fase 4 (notificaciones push): en curso. Hechos el margen al bajar y el lector de avisos (`lector/avisos.py`
+  y `avisos.yml`, sin probar contra FCM). Falta el proyecto de Firebase, la prueba de entrega en el celular,
+  la app, la rama `datos` y la identidad federada. Ver [docs/fase-4-avisos-push.md](docs/fase-4-avisos-push.md).
+  - 17/10/2026: arreglados los avisos locales en el APK de release (la reducción de recursos borraba el ícono
+    de notificación).
+- Fase 4.b (varias ciudades y enlace a Google Flood Hub): investigada, sin empezar. Ver
+  [docs/proxima-etapa-ciudades.md](docs/proxima-etapa-ciudades.md).
+- Fase 5 (publicación): sin empezar.
+- Umbrales de Paysandú: provisorios hasta que los valide el Cecoed. Pendiente consultar a CARU si el
+  registro de alturas tiene acceso por HTTPS.

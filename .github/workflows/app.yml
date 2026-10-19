@@ -1,0 +1,89 @@
+name: Tests de la app
+
+on:
+  push:
+    paths: ["app/**", ".github/workflows/app.yml"]
+  pull_request:
+    paths: ["app/**", ".github/workflows/app.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: app
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: 3.47.7
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+          cache-dependency-path: |
+            app/android/**/*.gradle*
+            app/android/gradle/wrapper/gradle-wrapper.properties
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: 3.47.7
+          cache: true
+      - run: flutter pub get
+      # Sin key.properties firma con la clave de depuración: por eso no se sube como artifact.
+      - run: flutter build apk --release
+      # La reducción de recursos borra lo que solo se nombra como texto desde Dart.
+      - name: Recursos nombrados desde Dart presentes en el APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          aapt2=$(ls "$ANDROID_HOME"/build-tools/*/aapt2 2>/dev/null | sort -V | tail -n 1 || true)
+          if [ -z "$aapt2" ]; then
+            echo "::error::No hay aapt2 en $ANDROID_HOME/build-tools"
+            exit 1
+          fi
+          recursos=$(grep -rhoE "@(drawable|mipmap)/[A-Za-z0-9_]+" lib --include='*.dart' | sort -u || true)
+          if [ -z "$recursos" ]; then
+            echo "::error::No se halló ningún @drawable/ o @mipmap/ en lib: el control quedaría vacío sin avisar"
+            exit 1
+          fi
+          "$aapt2" dump resources build/app/outputs/flutter-apk/app-release.apk > "$RUNNER_TEMP/recursos.txt"
+          faltan=0
+          for r in $recursos; do
+            tipo_nombre=${r#@}
+            # Línea "resource 0x7f080001 drawable/nombre": el ( |$) evita que ic_notificacion_grande valga por ic_notificacion.
+            if ! grep -qE "^ *resource 0x[0-9a-f]+ ${tipo_nombre}( |$)" "$RUNNER_TEMP/recursos.txt"; then
+              echo "::error file=app/android/app/src/main/res/raw/keep.xml::Falta $r en el APK release: la reducción de recursos lo borró porque solo se nombra como texto desde Dart. Se arregla agregándolo a tools:keep en app/android/app/src/main/res/raw/keep.xml (separado por comas)."
+              faltan=1
+            fi
+          done
+          if [ "$faltan" -ne 0 ]; then
+            exit 1
+          fi
+          echo "Presentes en el APK:"
+          echo "$recursos"

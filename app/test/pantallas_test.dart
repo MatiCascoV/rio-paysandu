@@ -11,7 +11,6 @@ import 'package:rio_paysandu/enlaces.dart';
 import 'package:rio_paysandu/main.dart';
 import 'package:rio_paysandu/modelos.dart';
 import 'package:rio_paysandu/pantallas/ajustes.dart';
-import 'package:rio_paysandu/pantallas/comunes.dart';
 import 'package:rio_paysandu/pantallas/grafico.dart';
 import 'package:rio_paysandu/pantallas/inicio.dart';
 import 'package:rio_paysandu/pantallas/que_hacer.dart';
@@ -79,7 +78,7 @@ void main() {
         expect(find.text('Hoy 12:00'), findsOneWidget);
         expect(find.text('· CARU, estación automática'), findsOneWidget);
         expect(find.text('Crece 1 cm en 30 min'), findsOneWidget);
-        expect(find.text(textoDeslindeCorto), findsOneWidget);
+        expect(find.text('App comunitaria, sin vínculo oficial. No reemplaza la alerta oficial'), findsOneWidget);
         // el enlace a CARU y las notas van plegados en "Más datos"
         expect(find.text('Ver en la página de CARU'), findsNothing);
         await abrir(t, find.text('Más datos'));
