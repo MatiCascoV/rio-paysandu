@@ -33,8 +33,8 @@ Future<void> cargarRoboto() async {
     fail('No se encontró la letra Roboto del SDK de Flutter (FLUTTER_ROOT=$raiz).');
   }
   final cargador = FontLoader('Roboto');
-  for (final peso in ['regular', 'medium', 'bold', 'black']) {
-    final bytes = File('${carpeta.path}/roboto-$peso.ttf').readAsBytesSync();
+  for (final peso in ['Regular', 'Medium', 'Bold', 'Black']) {
+    final bytes = File('${carpeta.path}/Roboto-$peso.ttf').readAsBytesSync();
     cargador.addFont(Future.value(ByteData.sublistView(bytes)));
   }
   await cargador.load();
