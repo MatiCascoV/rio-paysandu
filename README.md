@@ -172,7 +172,11 @@ firmado con la clave de depuración). Igual conviene correr `flutter test` y `fl
   - 16/10/2026: nombre "Mi Río UY", identificador `uy.miriouy.app`, firma con clave propia e ícono nuevo.
   - 16/10/2026: rediseño de Inicio: fondo teñido según el nivel, agua que sube con la altura del río,
     gráfico de 7 días en Inicio y paleta azulada en modo claro y oscuro.
-- Fase 4 (notificaciones push): planificada, sin empezar. Ver [docs/fase-4-avisos-push.md](docs/fase-4-avisos-push.md).
+- Fase 4 (notificaciones push): en curso. Hechos el margen al bajar y el lector de avisos (`lector/avisos.py`
+  y `avisos.yml`, sin probar contra FCM). Falta el proyecto de Firebase, la prueba de entrega en el celular,
+  la app, la rama `datos` y la identidad federada. Ver [docs/fase-4-avisos-push.md](docs/fase-4-avisos-push.md).
+  - 17/10/2026: arreglados los avisos locales en el APK de release (la reducción de recursos borraba el ícono
+    de notificación).
 - Fase 4.b (varias ciudades y enlace a Google Flood Hub): investigada, sin empezar. Ver
   [docs/proxima-etapa-ciudades.md](docs/proxima-etapa-ciudades.md).
 - Fase 5 (publicación): sin empezar.
