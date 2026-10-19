@@ -1,9 +1,9 @@
 {
-  "generado": "2026-10-18T23:15:23-03:00",
+  "generado": "2026-10-18T23:27:10-03:00",
   "cero": "Local",
   "altura_actual": {
     "valor_m": 5.72,
-    "fecha": "2026-10-18T22:00:00-03:00",
+    "fecha": "2026-10-18T23:00:00-03:00",
     "variacion_m": 0.0,
     "periodo": "30 min",
     "estado": "estacionado",
@@ -28,7 +28,6 @@
   },
   "nivel": "alerta",
   "avisos": [
-    "fuente_no_disponible",
     "pronostico_no_disponible"
   ]
 }
