@@ -1,5 +1,5 @@
 {
-  "generado": "2026-10-18T22:23:45-03:00",
+  "generado": "2026-10-18T23:15:23-03:00",
   "cero": "Local",
   "altura_actual": {
     "valor_m": 5.72,
@@ -28,6 +28,7 @@
   },
   "nivel": "alerta",
   "avisos": [
+    "fuente_no_disponible",
     "pronostico_no_disponible"
   ]
 }
