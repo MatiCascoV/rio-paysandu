@@ -124,6 +124,12 @@ void main() {
         ),
       ));
       expect(find.text('ALERTA'), findsWidgets);
+      // con "Más datos" y el pronóstico abiertos, que es donde estarían los botones
+      await t.tap(find.text('Más datos'));
+      await t.pumpAndSettle();
+      await t.tap(find.textContaining('CARU espera hasta'));
+      await t.pumpAndSettle();
+      expect(find.textContaining('18.000'), findsOneWidget); // el pronóstico quedó abierto
       expect(find.text('Ver en la página de CARU'), findsNothing);
       expect(find.text('Abrir el informe de CARU (PDF)'), findsNothing);
     });

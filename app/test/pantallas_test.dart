@@ -45,6 +45,12 @@ Future<void> mostrarInicio(WidgetTester t, Datos? datos, {DateTime? cuando}) asy
   await t.pumpWidget(enApp(PantallaInicio(datos: datos, config: config, alActualizar: () async {}, ahora: cuando ?? ahora)));
 }
 
+/// Toca una fila plegable (Más datos, el pronóstico) y espera a que se abra.
+Future<void> abrir(WidgetTester t, Finder fila) async {
+  await t.tap(fila);
+  await t.pumpAndSettle();
+}
+
 Datos datosCon(Map<String, dynamic> actual, {bool sinConexion = false}) =>
     Datos(actual: Actual.desdeJson(actual), umbrales: umbrales, sinConexion: sinConexion);
 
@@ -71,10 +77,16 @@ void main() {
         // toda altura lleva fecha, hora y fuente
         expect(find.text('Hoy 12:00'), findsOneWidget);
         expect(find.text('· CARU, estación automática'), findsOneWidget);
-        expect(find.text('Ver en la página de CARU'), findsOneWidget);
         expect(find.text('Crece 1 cm en 30 min'), findsOneWidget);
+        expect(find.text('App comunitaria, sin vínculo oficial. No reemplaza la alerta oficial'), findsOneWidget);
+        // el enlace a CARU y las notas van plegados en "Más datos"
+        expect(find.text('Ver en la página de CARU'), findsNothing);
+        await abrir(t, find.text('Más datos'));
+        expect(find.text('Ver en la página de CARU'), findsOneWidget);
+        // la nota del puerto, una sola vez: a la vista en alerta y evacuación, en "Más datos" en los demás
         expect(find.textContaining('no es la altura del agua en tu calle'), findsOneWidget);
-        expect(find.text('App de ayuda a la comunidad, sin vínculo oficial. No reemplaza la alerta oficial.'), findsOneWidget);
+        // con todo abierto sigue habiendo un solo número de altura a la vista
+        expect(find.text('${valor.toStringAsFixed(2).replaceAll('.', ',')} m'), findsOneWidget);
       });
     });
 
@@ -88,14 +100,13 @@ void main() {
 
   testWidgets('pronóstico vigente con enlace al PDF', (t) async {
     await mostrarInicio(t, datosCon(actualFalso('alerta', 5.95)));
-    expect(find.text('Máximo esperado por CARU'), findsOneWidget);
-    expect(find.text('Informe del 8/10/2026'), findsOneWidget);
-    expect(find.text('6,66 m'), findsOneWidget);
-    expect(find.text('Queda 23 cm por debajo de evacuación.'), findsOneWidget);
-    // el texto del informe queda plegado hasta que se toca
+    // una fila con el máximo esperado y la fecha del informe
+    expect(find.text('CARU espera hasta 6,66 m · informe del 8/10'), findsOneWidget);
+    // la comparación, el texto del informe y el caudal quedan plegados hasta que se toca
+    expect(find.text('Queda 23 cm por debajo de evacuación.'), findsNothing);
     expect(find.textContaining('18.000 m³'), findsNothing);
-    await t.tap(find.text('Leer el informe'));
-    await t.pumpAndSettle();
+    await abrir(t, find.textContaining('CARU espera hasta'));
+    expect(find.text('Queda 23 cm por debajo de evacuación.'), findsOneWidget);
     expect(find.textContaining('18.000 m³'), findsOneWidget);
     expect(find.text('Abrir el informe de CARU (PDF)'), findsOneWidget);
   });
@@ -153,11 +164,12 @@ void main() {
     final j = actualFalso('alerta', 5.95);
     (j['pronostico'] as Map)['vigente'] = false;
     await mostrarInicio(t, datosCon(j));
-    expect(find.textContaining('Máximo esperado'), findsNothing);
+    expect(find.textContaining('CARU espera'), findsNothing);
   });
 
   testWidgets('umbrales sin validar: se avisa', (t) async {
     await mostrarInicio(t, datosCon(actualFalso('alerta', 5.95)));
+    await abrir(t, find.text('Más datos'));
     expect(find.textContaining('los está revisando'), findsOneWidget); // una sola vez
   });
 
@@ -253,7 +265,7 @@ void main() {
     expect(prefs.getString('avisar_desde'), 'evacuacion');
   });
 
-  testWidgets('los umbrales van en la franja, sin escalera aparte', (t) async {
+  testWidgets('los umbrales van en la frase del nivel, sin escalera aparte', (t) async {
     await mostrarInicio(t, datosCon(actualFalso('alerta', 5.95)));
     expect(find.text('Ahora'), findsNothing);
     expect(find.textContaining('atención'), findsNothing); // atencion_m viene en null
@@ -261,11 +273,24 @@ void main() {
         find.bySemanticsLabel('Nivel: Alerta. El río pasó el nivel de alerta (4,39 metros). '
             'Faltan 94 centímetros para evacuación (6,89 metros).'),
         findsOneWidget);
-    // las dos notas quedan en una sola línea debajo de la tendencia
-    final nota = find.text('Medido en el puerto de Paysandú: no es la altura del agua en tu calle. '
-        'Los niveles son de referencia; el Cecoed todavía los está revisando.');
+    // el nivel y la altura siguen siendo dos nodos aparte para el lector de pantalla
+    expect(find.bySemanticsLabel(RegExp(r'^Altura del río: 5,95 metros\.')), findsOneWidget);
+    // en alerta la nota corta del puerto va a la vista, debajo de la tendencia y del botón
+    final nota = find.text('Medido en el puerto: no es la altura del agua en tu calle.');
     expect(nota, findsOneWidget);
     expect(t.getTopLeft(nota).dy, greaterThan(t.getTopLeft(find.text('Crece 1 cm en 30 min')).dy));
+    expect(t.getTopLeft(nota).dy, greaterThan(t.getTopLeft(find.text('Ver qué hacer')).dy));
+    // la de los niveles de referencia, en "Más datos"
+    expect(find.textContaining('los está revisando'), findsNothing);
+    await abrir(t, find.text('Más datos'));
+    expect(find.text('Los niveles son de referencia; el Cecoed todavía los está revisando.'), findsOneWidget);
+
+    // en normal la nota del puerto va completa y plegada
+    await mostrarInicio(t, datosCon(actualFalso('normal', 3.20)));
+    expect(find.textContaining('no es la altura del agua en tu calle'), findsNothing);
+    expect(find.text('Ver qué hacer'), findsNothing);
+    await abrir(t, find.text('Más datos'));
+    expect(find.text('Medido en el puerto de Paysandú: no es la altura del agua en tu calle.'), findsOneWidget);
 
     await mostrarInicio(t, datosCon(actualFalso('evacuacion', 7.20)));
     expect(find.textContaining('El río pasó el nivel de evacuación (6,89 m) por 31 cm.'), findsOneWidget);
@@ -290,7 +315,7 @@ void main() {
     expect(tocado, isTrue);
   });
 
-  for (final nivel in ['alerta', 'evacuacion', 'sin_dato']) {
+  for (final nivel in ['normal', 'atencion', 'alerta', 'evacuacion', 'sin_dato']) {
     testWidgets('celular angosto con letra grande: nada se desborda ($nivel)', (t) async {
       t.view.physicalSize = const Size(720, 1480); // 360 x 740 dp
       t.view.devicePixelRatio = 2.0;
@@ -299,7 +324,8 @@ void main() {
       addTearDown(t.platformDispatcher.clearTextScaleFactorTestValue);
       SharedPreferences.setMockInitialValues({});
       final prefs = await SharedPreferences.getInstance();
-      final falso = actualFalso(nivel, nivel == 'sin_dato' ? null : (nivel == 'alerta' ? 5.95 : 7.05));
+      final valor = switch (nivel) { 'normal' => 3.20, 'atencion' => 4.10, 'alerta' => 5.95, 'evacuacion' => 7.05, _ => null };
+      final falso = actualFalso(nivel, valor);
       if (falso['altura_actual'] != null) {
         (falso['altura_actual'] as Map)['fecha'] = DateTime.now().toUtc().toIso8601String();
         falso['generado'] = DateTime.now().toUtc().toIso8601String(); // el JSON se armó después de la lectura
@@ -318,6 +344,17 @@ void main() {
         await t.tap(find.text(pestana));
         await t.pumpAndSettle();
         expect(t.takeException(), isNull, reason: 'desborde en $pestana');
+      }
+      // En Inicio, también con el pronóstico y "Más datos" abiertos.
+      final lista = find.descendant(of: find.byType(PantallaInicio), matching: find.byType(Scrollable)).first;
+      for (final fila in [
+        if (valor != null) ...[find.textContaining('CARU espera hasta'), find.text('Más datos')],
+      ]) {
+        await t.scrollUntilVisible(fila, 150, scrollable: lista);
+        await t.pumpAndSettle();
+        await t.tap(fila);
+        await t.pumpAndSettle();
+        expect(t.takeException(), isNull, reason: 'desborde en Inicio abierto');
       }
       await t.pumpWidget(const SizedBox());
     });
