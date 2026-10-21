@@ -1,0 +1,2 @@
+# Datos del mapa: se controlan por sha256, no convertir fines de línea
+app/assets/mapa/** -text
