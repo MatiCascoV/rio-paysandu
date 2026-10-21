@@ -55,6 +55,19 @@ jobs:
           flutter-version: 3.47.7
           cache: true
       - run: flutter pub get
+      # google-services.json no está en el repositorio: se guarda como secreto (también como secreto de
+      # Dependabot, para que compilen sus PR) y el plugin de Google Services lo necesita para compilar.
+      - name: google-services.json desde el secreto
+        shell: bash
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          set -euo pipefail
+          if [ -z "$GOOGLE_SERVICES_JSON" ]; then
+            echo "::error::Falta el secreto GOOGLE_SERVICES_JSON (Settings → Secrets and variables → Actions y Dependabot)"
+            exit 1
+          fi
+          printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
       # Sin key.properties firma con la clave de depuración: por eso no se sube como artifact.
       - run: flutter build apk --release
       # La reducción de recursos borra lo que solo se nombra como texto desde Dart.
