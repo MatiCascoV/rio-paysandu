@@ -44,6 +44,21 @@ int poligonosDelMargen(WidgetTester t) {
       .length;
 }
 
+/// La mención de la zona sin validar en el resumen del mapa: con el texto fijo
+/// o con los nombres del archivo (no la fila de la leyenda, que no nombra
+/// lugar).
+final mencionSinValidar = RegExp('San Francisco.*no se pudo comparar con crecidas reales');
+
+/// Puntos del margen repetidos encima de otra capa (líneas de puntos).
+int puntosDelMargenEncima(WidgetTester t) {
+  final c = ColoresMapa.actuales();
+  return t
+      .widgetList<PolylineLayer>(find.byType(PolylineLayer))
+      .expand((l) => l.polylines)
+      .where((p) => p.color == c.bordeMargen && p.pattern == TrazosMapa.patronMargen)
+      .length;
+}
+
 void main() {
   group('índice: sin_validar opcional', () {
     test('sin el campo, el índice vale igual y no hay zona', () {
@@ -285,12 +300,49 @@ void main() {
       });
     });
 
-    for (final (altura, margen) in [(3.50, 400), (4.00, 450), (7.00, 750), (10.50, 1050), (11.20, 1050)]) {
-      testWidgets('con ${altura.toStringAsFixed(2)} m se dibuja la franja de margen (capa $margen)', (t) async {
+    // BLOQUEANTE (11 §8, condición para publicar): las cinco alturas del
+    // pedido: por debajo del rango, en los dos bordes, en el medio y por
+    // encima. Si alguna deja de dibujar el margen, no se publica.
+    const cincoAlturas = [
+      (3.50, '3,50', SituacionAgua.debajoDelMinimo, 400),
+      (4.00, '4,00', SituacionAgua.enRango, 450),
+      (7.00, '7,00', SituacionAgua.enRango, 750),
+      (10.50, '10,50', SituacionAgua.enRango, 1050),
+      (11.20, '11,20', SituacionAgua.sobreMaximo, 1050),
+    ];
+
+    test('BLOQUEANTE: la elección trae margen en las cinco alturas (3,50 · 4,00 · 7,00 · 10,50 · 11,20)', () {
+      final ind = indiceDe(fuenteReal());
+      for (final (altura, texto, situacion, margen) in cincoAlturas) {
+        final e = elegirAgua(redondearArriba(altura, pasoCm: ind.pasoCm), ind);
+        expect(e.situacion, situacion, reason: texto);
+        expect(e.margenCm, margen, reason: texto);
+        expect(ind.capaDe(e.margenCm), isNotNull, reason: '$texto: el margen tiene que ser una capa que existe');
+        // nunca por debajo del agua pintada
+        expect(e.margenCm, greaterThanOrEqualTo(e.capaCm ?? ind.minCm), reason: texto);
+      }
+    });
+
+    for (final (altura, texto, _, margen) in cincoAlturas) {
+      testWidgets('BLOQUEANTE: con $texto m se dibuja la franja de margen (capa $margen)', (t) async {
         final f = fuenteReal();
         await mostrarMapa(t, datosCon(altura, nivel: 'evacuacion'), fuente: f);
+        // el mapa abre justo en esa altura (hoy), no en otra
+        expect(lectura(texto), findsOneWidget);
         expect(f.lecturas[archivoCapa(margen)], greaterThanOrEqualTo(1));
-        expect(poligonosDelMargen(t), greaterThan(0), reason: 'el margen tiene que estar pintado');
+        // se pintan todos los polígonos de la capa del margen, con su estilo
+        final capaMargen = (await RepositorioMapa(fuenteReal()).capa(margen))!.capa;
+        expect(capaMargen.poligonos, isNotEmpty);
+        expect(
+          poligonosDelMargen(t),
+          capaMargen.poligonos.length,
+          reason: 'el margen tiene que estar pintado entero con $texto m',
+        );
+        // Si el margen coincide con una capa que va encima (la zona baja por
+        // debajo del mínimo, el agua en el máximo o por encima), sus puntos
+        // se repiten arriba: si no, quedaría tapado y no se vería.
+        final tapado = margen == 400 && altura < 4.00 || margen == 1050 && altura >= 10.50;
+        if (tapado) expect(puntosDelMargenEncima(t), greaterThan(0), reason: 'puntos del margen encima con $texto m');
         // y la leyenda lo explica
         expect(find.textContaining('Puede llegar un poco más'), findsOneWidget);
         expect(t.takeException(), isNull);
@@ -391,13 +443,13 @@ void main() {
     testWidgets('con el archivo: fila en la leyenda y mención en el resumen', (t) async {
       await mostrarMapa(t, datosCon(6.95, nivel: 'evacuacion'), fuente: fuenteReal(sinValidar: true));
       expect(find.textContaining(textoLeyendaSinValidar), findsOneWidget);
-      expect(find.bySemanticsLabel(RegExp(RegExp.escape(textoSinValidar))), findsOneWidget);
+      expect(find.bySemanticsLabel(mencionSinValidar), findsOneWidget);
     });
 
     testWidgets('sin el archivo (datos de hoy): ni fila ni mención, y el mapa anda', (t) async {
       await mostrarMapa(t, datosCon(6.95, nivel: 'evacuacion'), fuente: fuenteReal());
       expect(find.textContaining(textoLeyendaSinValidar), findsNothing);
-      expect(find.bySemanticsLabel(RegExp(RegExp.escape(textoSinValidar))), findsNothing);
+      expect(find.bySemanticsLabel(mencionSinValidar), findsNothing);
       expect(lectura('7,00'), findsOneWidget);
     });
 
@@ -416,6 +468,105 @@ void main() {
       );
       expect(lectura('7,00'), findsOneWidget);
       expect(find.textContaining(textoLeyendaSinValidar), findsNothing);
+    });
+  });
+
+  group('leyenda v1.1 (09 §3.9)', () {
+    testWidgets('zona baja siempre; loma solo si la capa pintada tiene alguna; sin validar solo con archivo', (
+      t,
+    ) async {
+      await mostrarMapa(
+        t,
+        datosCon(6.95, nivel: 'evacuacion'),
+        fuente: fuenteReal(
+          aisladas: {
+            700: [lomaDePrueba()],
+          },
+        ),
+      );
+      expect(find.textContaining(textoLeyendaZonaBaja), findsOneWidget);
+      expect(find.textContaining(textoLeyendaAisladas), findsOneWidget);
+      expect(find.textContaining(textoLeyendaSinValidar), findsNothing);
+      await t.tap(find.byTooltip('Subir 10 cm'));
+      await t.pumpAndSettle();
+      expect(find.textContaining(textoLeyendaAisladas), findsNothing);
+      expect(find.textContaining(textoLeyendaZonaBaja), findsOneWidget);
+    });
+
+    test('la zona sin validar se nombra con lo que trae el archivo', () {
+      expect(textoSinValidarDe(const []), textoSinValidar);
+      expect(textoSinValidarDe(const ['  ']), textoSinValidar);
+      expect(
+        textoSinValidarDe(const ['Valle del arroyo San Francisco']),
+        'Zona sin validar: Valle del arroyo San Francisco. Ahí el mapa no se pudo comparar con crecidas reales.',
+      );
+      expect(textoSinValidarDe(const ['A', 'B', 'C']), startsWith('Zonas sin validar: A, B y C.'));
+      final r = resumenMapa(
+        situacion: SituacionAgua.enRango,
+        alturaCm: 700,
+        dibujoCm: 700,
+        margenCm: 750,
+        minCm: 400,
+        maxCm: 1050,
+        sinValidar: true,
+        nombresSinValidar: const ['Otra zona'],
+      );
+      expect(r, contains('Zona sin validar: Otra zona.'));
+      expect(r, isNot(contains('San Francisco')));
+      // sin zona dibujada no se nombra aunque haya nombres
+      final sin = resumenMapa(
+        situacion: SituacionAgua.enRango,
+        alturaCm: 700,
+        dibujoCm: 700,
+        margenCm: 750,
+        minCm: 400,
+        maxCm: 1050,
+        nombresSinValidar: const ['Otra zona'],
+      );
+      expect(sin, isNot(contains('sin validar')));
+    });
+  });
+
+  group('dibujo v1.1 en el mapa', () {
+    for (final (altura, texto) in [(3.20, '3,20'), (4.00, '4,00'), (7.00, '7,00'), (11.20, '11,20')]) {
+      testWidgets('la zona baja se dibuja con su estilo con $texto m', (t) async {
+        await mostrarMapa(t, datosCon(altura, nivel: 'evacuacion'), fuente: fuenteReal());
+        expect(lectura(texto), findsOneWidget);
+        expect(find.byType(CapaZonaBaja), findsOneWidget);
+      });
+    }
+
+    testWidgets('lomas: una marca por punto, solo en la altura que las trae', (t) async {
+      await mostrarMapa(
+        t,
+        datosCon(6.95, nivel: 'evacuacion'),
+        fuente: fuenteReal(
+          aisladas: {
+            700: [lomaDePrueba(), lomaDePrueba(lon: -58.05)],
+          },
+        ),
+      );
+      int marcas() => t.widgetList<MarkerLayer>(find.byType(MarkerLayer)).expand((l) => l.markers).length;
+      expect(marcas(), 2);
+      await t.tap(find.byTooltip('Subir 10 cm'));
+      await t.pumpAndSettle();
+      expect(marcas(), 0);
+    });
+
+    testWidgets('zona sin validar: su borde se dibuja solo si el archivo validó', (t) async {
+      int bordes() {
+        final c = ColoresMapa.actuales();
+        return t
+            .widgetList<PolylineLayer>(find.byType(PolylineLayer))
+            .expand((l) => l.polylines)
+            .where((p) => p.color == c.sinValidar)
+            .length;
+      }
+
+      await mostrarMapa(t, datosCon(6.95, nivel: 'evacuacion'), fuente: fuenteReal(sinValidar: true));
+      expect(bordes(), greaterThan(0));
+      await mostrarMapa(t, datosCon(6.95, nivel: 'evacuacion'), fuente: fuenteReal());
+      expect(bordes(), 0);
     });
   });
 
@@ -447,6 +598,7 @@ void main() {
         textoAvisoAisladas(1),
         textoAvisoAisladas(3),
         textoSinValidar,
+        textoSinValidarDe(const ['Valle del arroyo San Francisco', 'Otra']),
         textoLeyendaSinValidar,
         textoLeyendaAisladas,
       ]) {

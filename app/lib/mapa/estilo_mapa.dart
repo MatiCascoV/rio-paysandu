@@ -217,9 +217,11 @@ abstract final class TrazosMapa {
   static const ribeteSinValidar = 3.0;
   static final patronSinValidar = StrokePattern.dashed(segments: const [14, 5, 3, 5]);
 
-  /// Borde con el río de hoy (v1.1): 3,5 px con 2 px de ribete a cada lado.
-  static const hoy = 3.5;
-  static const ribeteHoy = 4.0;
+  /// Borde con el río de hoy (v1.1): 3 px con 1,5 px de ribete a cada lado
+  /// (6 px en total). Con más, sobre las franjas angostas de la costa tapaba
+  /// la zona baja y el rayado (capturas del 08 §7).
+  static const hoy = 3.0;
+  static const ribeteHoy = 3.0;
 
   /// Puntos del margen dibujados encima de otra capa (v1.1, cuando el margen
   /// coincide con el agua o con la zona baja): ribete de 1 px a cada lado.

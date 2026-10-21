@@ -103,8 +103,25 @@ String textoAvisoAisladas(int cuantas) => cuantas == 1
     : 'Hay $cuantas lomas marcadas en el mapa. Quedarían rodeadas de agua: aunque no se inunden, '
           'pueden quedar aisladas.';
 
-/// Zona sin validar (contrato v1.1 §1): resumen textual.
+/// Zona sin validar (contrato v1.1 §1): resumen textual cuando no se conocen
+/// los nombres de las zonas. Para la v1 hay una sola: el valle del arroyo
+/// San Francisco (contrato 05, v1.1 §1).
 const textoSinValidar = 'En el valle del arroyo San Francisco el mapa no se pudo comparar con crecidas reales.';
+
+/// Resumen textual de la zona sin validar con los nombres que trae
+/// `sin_validar.json`, para no nombrar un lugar que no es si el pipeline
+/// agrega o cambia zonas. Sin nombres, [textoSinValidar].
+String textoSinValidarDe(List<String> nombres) {
+  final n = [
+    for (final x in nombres)
+      if (x.trim().isNotEmpty) x.trim(),
+  ];
+  if (n.isEmpty) return textoSinValidar;
+  final lista = n.length == 1 ? n.single : '${n.sublist(0, n.length - 1).join(', ')} y ${n.last}';
+  return n.length == 1
+      ? 'Zona sin validar: $lista. Ahí el mapa no se pudo comparar con crecidas reales.'
+      : 'Zonas sin validar: $lista. Ahí el mapa no se pudo comparar con crecidas reales.';
+}
 
 /// Fila de la leyenda de la zona sin validar (sin la palabra del dibujo).
 const textoLeyendaSinValidar = 'Zona sin validar: el mapa no se pudo comparar con crecidas reales';
@@ -232,7 +249,9 @@ String _metros(int cm) => '${formatoAltura(cm / 100)} metros';
 ///
 /// [minCm] es la capa más baja (zona baja de la costa); [zonaBajaDibujada]
 /// dice si esa capa se pudo leer. [aisladas] es la cantidad de lomas
-/// marcadas; [hoyCm], la altura de la línea "agua de hoy" si está dibujada.
+/// marcadas; [sinValidar] dice si la zona sin validar está dibujada, y
+/// [nombresSinValidar], sus nombres (de `sin_validar.json`); [hoyCm], la
+/// altura de la línea "agua de hoy" si está dibujada.
 String resumenMapa({
   required SituacionAgua? situacion,
   required int? alturaCm,
@@ -245,6 +264,7 @@ String resumenMapa({
   bool dibujoIlegible = false,
   int aisladas = 0,
   bool sinValidar = false,
+  List<String> nombresSinValidar = const [],
   int? hoyCm,
   String? contorno,
 }) {
@@ -283,7 +303,7 @@ String resumenMapa({
     }
   }
   if (aisladas > 0) partes.add(textoAvisoAisladas(aisladas));
-  if (sinValidar) partes.add(textoSinValidar);
+  if (sinValidar) partes.add(textoSinValidarDe(nombresSinValidar));
   if (hoyCm != null) partes.add('Línea gruesa: hasta dónde llega el agua con el río de hoy, ${_metros(hoyCm)}.');
   if (contorno != null) partes.add('Línea de trazos: el borde medido en la crecida "$contorno".');
   partes.add(

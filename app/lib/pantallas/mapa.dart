@@ -108,6 +108,19 @@ class _PantallaMapaState extends State<PantallaMapa> {
   /// Contorno del agua visible ya proyectado, para el rayado (uno solo).
   (int, TrazadoAgua)? _rayado;
 
+  /// Contorno de la zona baja ya proyectado (para pintarla y para que el
+  /// rayado del agua no entre en ella).
+  (int, TrazadoAgua)? _trazadoZonaBaja;
+
+  /// Líneas armadas una vez por capa (y por paleta): la de hoy y los puntos
+  /// del margen dibujados encima.
+  (int, List<Polyline>)? _lineasHoy;
+  (int, List<Polyline>)? _margenEncima;
+
+  /// Borde de la zona sin validar y dónde puede ir su nombre.
+  List<Polyline> _lineasSinValidar = const [];
+  List<LatLng> _anclasSinValidar = const [];
+
   /// Paleta con la que se armó el fondo (si cambia el tema, se rearma).
   ColoresMapa? _coloresFondo;
   List<Polygon> _cauce = const [];
@@ -178,6 +191,7 @@ class _PantallaMapaState extends State<PantallaMapa> {
     _indice = e.indice;
     _base = base;
     _sinValidar = sinValidar;
+    _anclasSinValidar = sinValidar == null ? const [] : CapaRotuloZona.anclasDe(sinValidar.poligonos);
     _armarFondo(base);
     setState(() => _carga = _Carga.lista);
     _elegirInicial();
@@ -202,7 +216,9 @@ class _PantallaMapaState extends State<PantallaMapa> {
       _contorno = const [];
       _motivoNoDisponible = null;
       _poligonos.clear();
-      _rayado = null;
+      _rayado = _trazadoZonaBaja = _lineasHoy = _margenEncima = null;
+      _lineasSinValidar = const [];
+      _anclasSinValidar = const [];
       _turno++;
       _iniciar();
       return;
@@ -320,8 +336,20 @@ class _PantallaMapaState extends State<PantallaMapa> {
   }
 
   /// La línea "agua de hoy" se dibuja al simular otra altura, si el río de
-  /// hoy tiene capa en el mapa.
-  bool get _lineaHoyVisible => _capaHoy != null && _eleccion != null && _eleccion!.alturaCm != _hoyCm;
+  /// hoy tiene capa en el mapa y es otro dibujo que el del agua (por encima
+  /// del máximo los dos son la capa máxima: la línea no diría nada).
+  bool get _lineaHoyVisible =>
+      _capaHoy != null && _eleccion != null && _eleccion!.alturaCm != _hoyCm && _capaHoy!.alturaCm != _capa?.alturaCm;
+
+  /// Los puntos del margen van también ENCIMA cuando su capa es la misma que
+  /// otra que se dibuja arriba (el agua en el máximo o por encima, la zona
+  /// baja por debajo del mínimo, o la línea de hoy): el margen se ve siempre
+  /// (contrato v1.1 §4).
+  bool get _margenEncimaVisible {
+    final m = _margen?.alturaCm;
+    if (m == null) return false;
+    return m == _capa?.alturaCm || m == _zonaBaja?.alturaCm || (_lineaHoyVisible && m == _capaHoy!.alturaCm);
+  }
 
   /// Lomas aisladas de la capa pintada: la del agua o, por debajo del mínimo,
   /// la de la zona baja (contrato v1.1 §2).
@@ -510,6 +538,15 @@ class _PantallaMapaState extends State<PantallaMapa> {
         MuestraMargen(c),
         'Puede llegar un poco más: hasta ${formatoDiferencia(ind.margenCm / 100)} más de altura (borde de puntos)',
       ),
+      if (_zonaBaja != null) EntradaLeyenda(MuestraZonaBaja(c), '$textoLeyendaZonaBaja (rayas horizontales)'),
+      if (_lineaHoyVisible)
+        EntradaLeyenda(
+          MuestraHoy(c),
+          'Hasta dónde llega el agua con ${_hoy?.esUltimoDato ?? false ? 'el último dato' : 'el río de hoy'} '
+          '(línea gruesa)',
+        ),
+      if (_aisladas.isNotEmpty) EntradaLeyenda(MarcaAislada(c), '$textoLeyendaAisladas (rombo con "!")'),
+      if (_sinValidar != null) EntradaLeyenda(MuestraSinValidar(c), '$textoLeyendaSinValidar (raya y punto)'),
       if (_verContorno && _contorno.isNotEmpty)
         EntradaLeyenda(
           MuestraContorno(c),
@@ -528,6 +565,8 @@ class _PantallaMapaState extends State<PantallaMapa> {
     _calles = lineasCalles(base, c);
     _cursos = lineasCursos(base, c);
     _candidatos = armarRotulos(base);
+    _lineasSinValidar = lineasSinValidar(_sinValidar?.poligonos ?? const [], c);
+    _lineasHoy = _margenEncima = null;
   }
 
   /// Si cambió el modo claro / oscuro desde que se armó el fondo, se vuelve a
@@ -548,6 +587,31 @@ class _PantallaMapaState extends State<PantallaMapa> {
     if (r != null && r.$1 == capa.alturaCm) return r.$2;
     final nuevo = TrazadoAgua(capa.capa.poligonos);
     _rayado = (capa.alturaCm, nuevo);
+    return nuevo;
+  }
+
+  /// El contorno de la zona baja, proyectado una sola vez.
+  TrazadoAgua _trazadoZonaBajaDe(CapaElegida capa) {
+    final r = _trazadoZonaBaja;
+    if (r != null && r.$1 == capa.alturaCm) return r.$2;
+    final nuevo = TrazadoAgua(capa.capa.poligonos);
+    _trazadoZonaBaja = (capa.alturaCm, nuevo);
+    return nuevo;
+  }
+
+  List<Polyline> _lineasHoyDe(CapaElegida capa) {
+    final r = _lineasHoy;
+    if (r != null && r.$1 == capa.alturaCm) return r.$2;
+    final nuevo = lineasHoy(capa.capa.poligonos, ColoresMapa.actuales());
+    _lineasHoy = (capa.alturaCm, nuevo);
+    return nuevo;
+  }
+
+  List<Polyline> _margenEncimaDe(CapaElegida capa) {
+    final r = _margenEncima;
+    if (r != null && r.$1 == capa.alturaCm) return r.$2;
+    final nuevo = lineasMargenEncima(capa.capa.poligonos, ColoresMapa.actuales());
+    _margenEncima = (capa.alturaCm, nuevo);
     return nuevo;
   }
 
@@ -661,7 +725,13 @@ class _PantallaMapaState extends State<PantallaMapa> {
             lugares.map((l) => l.punto.latitude).reduce((a, b) => a + b) / lugares.length,
             lugares.map((l) => l.punto.longitude).reduce((a, b) => a + b) / lugares.length,
           );
-    final margen = _margen, capa = _capa;
+    final margen = _margen, capa = _capa, zonaBaja = _zonaBaja, capaHoy = _capaHoy;
+    final aisladas = _aisladas;
+    // Sin nombres debajo de los botones + / − ni de la atribución.
+    List<Rect> tapadas(Size s) => [
+      Rect.fromLTWH(s.width - 64, 0, 64, 120),
+      Rect.fromLTWH(0, s.height - 26, math.min(s.width, 300), 26),
+    ];
     // El dibujo no se puede recorrer con TalkBack: lo reemplaza este resumen.
     final descripcion = resumenMapa(
       situacion: eleccion?.situacion,
@@ -675,6 +745,7 @@ class _PantallaMapaState extends State<PantallaMapa> {
       dibujoIlegible: eleccion?.capaCm != null && capa == null,
       aisladas: _aisladas.length,
       sinValidar: _sinValidar != null,
+      nombresSinValidar: [for (final z in _sinValidar?.zonas ?? const <ZonaSinValidar>[]) z.nombre],
       hoyCm: _lineaHoyVisible ? _capaHoy?.alturaCm : null,
       contorno: _verContorno && _contorno.isNotEmpty ? _referencia?.nombre : null,
     );
@@ -717,29 +788,48 @@ class _PantallaMapaState extends State<PantallaMapa> {
                         doubleTapZoomDuration: quieto ? Duration.zero : const Duration(milliseconds: 200),
                       ),
                     ),
-                    // De abajo hacia arriba (docs/mapa/08-cartografia.md): cauce
-                    // y arroyos; calles (los puentes quedan sobre el río); el
-                    // margen y el agua, translúcidos sobre las calles para que
-                    // se lean primero y dejen ver por dónde pasan; el rayado; el
-                    // borde medido de una crecida y, arriba, los nombres con halo.
+                    // De abajo hacia arriba (docs/mapa/08-cartografia.md §3 y §7):
+                    // cauce y arroyos; calles (los puentes quedan sobre el río);
+                    // el margen y el agua, translúcidos sobre las calles; el
+                    // rayado (fuera de la zona baja); la zona baja, que está
+                    // dentro de toda capa de agua y por eso no tapa agua: la
+                    // muestra con su dibujo; después solo LÍNEAS sin relleno
+                    // (crecida medida, zona sin validar, hoy, puntos del
+                    // margen); los nombres y, arriba, las lomas aisladas.
+                    // Ninguna capa con relleno va encima del agua y del margen.
                     children: [
                       PolygonLayer(polygons: _cauce),
                       PolylineLayer(polylines: _cursos),
                       PolylineLayer(polylines: _calles),
                       if (margen != null) PolygonLayer(polygons: _poligonosDe(margen, margen: true)),
                       if (capa != null) PolygonLayer(polygons: _poligonosDe(capa, margen: false)),
-                      if (capa != null) CapaRayado(trazado: _rayadoDe(capa), color: c.rayado),
+                      if (capa != null)
+                        CapaRayado(
+                          trazado: _rayadoDe(capa),
+                          color: c.rayado,
+                          excluir: zonaBaja == null ? null : _trazadoZonaBajaDe(zonaBaja),
+                        ),
+                      if (zonaBaja != null) CapaZonaBaja(trazado: _trazadoZonaBajaDe(zonaBaja), colores: c),
                       if (_verContorno && _contorno.isNotEmpty) PolygonLayer(polygons: _contorno),
-                      CapaRotulos(
-                        candidatos: _candidatos,
-                        cache: _rotulos,
-                        colores: c,
-                        // Sin nombres debajo de los botones + / − ni de la atribución.
-                        tapadas: (s) => [
-                          Rect.fromLTWH(s.width - 64, 0, 64, 120),
-                          Rect.fromLTWH(0, s.height - 26, math.min(s.width, 300), 26),
-                        ],
-                      ),
+                      if (_lineasSinValidar.isNotEmpty) PolylineLayer(polylines: _lineasSinValidar),
+                      if (_lineaHoyVisible) PolylineLayer(polylines: _lineasHoyDe(capaHoy!)),
+                      if (_margenEncimaVisible) PolylineLayer(polylines: _margenEncimaDe(margen!)),
+                      CapaRotulos(candidatos: _candidatos, cache: _rotulos, colores: c, tapadas: tapadas),
+                      if (_anclasSinValidar.isNotEmpty)
+                        CapaRotuloZona(
+                          anclas: _anclasSinValidar,
+                          texto: 'Zona sin validar',
+                          colores: c,
+                          tapadas: tapadas,
+                        ),
+                      if (aisladas.isNotEmpty)
+                        MarkerLayer(
+                          markers: marcadoresAisladas(
+                            [for (final l in aisladas) l.punto],
+                            c,
+                            alTocar: (i) => mostrarLomaAislada(context, aisladas[i]),
+                          ),
+                        ),
                     ],
                   ),
                 ),
