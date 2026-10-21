@@ -39,13 +39,20 @@ Future<void> manejarPushEnSegundoPlano(RemoteMessage mensaje) async {
 /// solo se usan sus datos validados y la hora de envío que pone FCM.
 Future<void> atenderPush(RemoteMessage mensaje) async {
   final prefs = await SharedPreferences.getInstance();
-  final avisos = await avisosDePush(mensaje.data, prefs, (url) => Repositorio(url).cargar(soloActual: true),
-      enviado: mensaje.sentTime);
-  if (avisos.isEmpty) return;
-  await iniciarPlugin();
-  for (final aviso in avisos) {
-    await mostrarAviso(aviso);
-  }
+  var listo = false;
+  await atenderMensajePush(
+    mensaje.data,
+    prefs,
+    (url) => Repositorio(url, tiempoMaximo: tiempoDescargaPush).cargar(soloActual: true),
+    (aviso) async {
+      if (!listo) {
+        await iniciarPlugin();
+        listo = true;
+      }
+      await mostrarAviso(aviso);
+    },
+    enviado: mensaje.sentTime,
+  );
 }
 
 /// Suscribe y desuscribe temas (en la app, FCM; en las pruebas, uno falso).

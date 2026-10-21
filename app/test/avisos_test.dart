@@ -59,6 +59,15 @@ const todoPrendido = <String, Object>{
 
 List<TipoAviso> tipos(List<Aviso> avisos) => [for (final a in avisos) a.tipo];
 
+/// Lo que muestra un push, en orden (sin esperar de verdad entre descargas).
+Future<List<Aviso>> avisosDePush(Map<String, Object?> datos, SharedPreferences prefs, BajarDatos bajar,
+    {DateTime? enviado, DateTime Function() reloj = DateTime.now}) async {
+  final mostrados = <Aviso>[];
+  await atenderMensajePush(datos, prefs, bajar, (a) async => mostrados.add(a),
+      enviado: enviado, reloj: reloj, espera: Duration.zero);
+  return mostrados;
+}
+
 void main() {
   group('aviso urgente', () {
     // A las 08:00 todavía no hay resumen (antes de las 10, sin Prefectura del día).
@@ -212,13 +221,13 @@ void main() {
       expect(tipos(await decidirAvisos(alerta, prefs, ahora)), [TipoAviso.urgente]);
       final push = await avisosDePush({'tipo': 'urgente', 'nivel': 'alerta', 'ciudad': 'paysandu'}, prefs,
           (_) async => datos(alerta),
-          reloj: () => ahora, esperas: const []);
+          reloj: () => ahora);
       expect(push, isEmpty);
 
       final evacuacion = actualEn('2026-10-09T09:00', nivel: 'evacuacion', valor: 7.0, prefectura: '2026-10-08T06:00');
       final porPush = await avisosDePush({'tipo': 'urgente', 'nivel': 'evacuacion', 'ciudad': 'paysandu'}, prefs,
           (_) async => datos(evacuacion),
-          reloj: () => ahora, esperas: const []);
+          reloj: () => ahora);
       expect(porPush.single.titulo, 'Río Uruguay: subió a EVACUACIÓN');
       expect(await decidirAvisos(evacuacion, prefs, ahora), isEmpty);
     });
@@ -229,12 +238,12 @@ void main() {
       final ahora = hora('2026-10-09T08:31');
       final push = await avisosDePush({'tipo': 'resumen', 'fuente': 'prefectura', 'ciudad': 'paysandu'}, prefs,
           (_) async => datos(a),
-          reloj: () => ahora, esperas: const []);
+          reloj: () => ahora);
       expect(tipos(push), [TipoAviso.resumen]);
       expect(await decidirAvisos(a, prefs, ahora), isEmpty);
       final otraVez = await avisosDePush({'tipo': 'resumen', 'fuente': 'prefectura', 'ciudad': 'paysandu'}, prefs,
           (_) async => datos(a),
-          reloj: () => ahora, esperas: const []);
+          reloj: () => ahora);
       expect(otraVez, isEmpty);
     });
 
@@ -290,7 +299,7 @@ void main() {
       final prefs = await prefsCon({...todoPrendido, claveUltimoNivel: 'atencion'});
       final avisos = await avisosDePush(
           {...urgente, 'title': 'Texto falso', 'body': 'Evacuen ya'}, prefs, (_) async => Datos(actual: alerta),
-          reloj: () => ahora, esperas: const []);
+          reloj: () => ahora);
       expect(avisos.single.titulo, 'Río Uruguay: subió a ALERTA');
       expect(avisos.single.texto, isNot(contains('Evacuen')));
     });
@@ -303,15 +312,14 @@ void main() {
       }
 
       final prefs = await prefsCon({...todoPrendido, claveUltimoNivel: 'atencion'});
-      expect(await avisosDePush({'tipo': 'urgente', 'nivel': 'alerta'}, prefs, bajar, esperas: const []), isEmpty);
+      expect(await avisosDePush({'tipo': 'urgente', 'nivel': 'alerta'}, prefs, bajar), isEmpty);
       await prefs.setBool(claveUrgente, false);
-      expect(await avisosDePush(urgente, prefs, bajar, esperas: const []), isEmpty);
+      expect(await avisosDePush(urgente, prefs, bajar), isEmpty);
       await prefs.setBool(claveUrgente, true);
       await prefs.setString(claveUrgenteDesde, 'evacuacion');
-      expect(await avisosDePush(urgente, prefs, bajar, esperas: const []), isEmpty);
+      expect(await avisosDePush(urgente, prefs, bajar), isEmpty);
       await prefs.setBool(claveResumen, false);
-      expect(await avisosDePush({'tipo': 'resumen', 'fuente': 'prefectura', 'ciudad': 'paysandu'}, prefs, bajar,
-              esperas: const []),
+      expect(await avisosDePush({'tipo': 'resumen', 'fuente': 'prefectura', 'ciudad': 'paysandu'}, prefs, bajar),
           isEmpty);
       expect(bajadas, 0);
     });
@@ -319,46 +327,83 @@ void main() {
     test('sin dato bajado: el urgente avisa sin inventar nada; el resumen, nada', () async {
       final prefs = await prefsCon({...todoPrendido, claveUltimoNivel: 'atencion'});
       Future<Datos> sinRed(String _) async => Datos(actual: alerta, sinConexion: true); // la copia guardada no sirve
-      final avisos = await avisosDePush(urgente, prefs, sinRed, reloj: () => ahora, esperas: const []);
+      final avisos = await avisosDePush(urgente, prefs, sinRed, reloj: () => ahora);
       expect(avisos.single.titulo, 'Río Uruguay: hay novedades');
       expect(avisos.single.texto, isNot(contains(' m ')));
       expect(prefs.getString(claveUltimoNivel), 'atencion'); // no cuenta como visto
       expect(
           await avisosDePush({'tipo': 'resumen', 'fuente': 'prefectura', 'ciudad': 'paysandu'}, prefs, sinRed,
-              reloj: () => ahora, esperas: const []),
+              reloj: () => ahora),
           isEmpty);
       Future<Datos> falla(String _) => Future.error(Exception('sin red'));
-      expect((await avisosDePush(urgente, prefs, falla, reloj: () => ahora, esperas: const [])).single,
+      expect((await avisosDePush(urgente, prefs, falla, reloj: () => ahora)).single,
           same(avisoUrgenteSinDato));
     });
 
     test('sin la dirección de los datos guardada, el urgente avisa sin dato', () async {
       final prefs = await prefsCon({...todoPrendido}..remove(claveUrl));
-      expect(await avisosDePush(urgente, prefs, (_) async => Datos(actual: alerta), esperas: const []),
+      expect(await avisosDePush(urgente, prefs, (_) async => Datos(actual: alerta)),
           [avisoUrgenteSinDato]);
     });
 
-    test('si actual.json todavía no se publicó, se vuelve a bajar', () async {
+    test('si actual.json todavía no se publicó: el genérico sale ya y el aviso real lo reemplaza', () async {
       final prefs = await prefsCon({...todoPrendido, claveUltimoNivel: 'atencion'});
       final viejo = actualEn('2026-10-09T07:30', nivel: 'atencion', prefectura: '2026-10-08T06:00');
+      final pasos = <String>[];
       var bajadas = 0;
-      final avisos = await avisosDePush(urgente, prefs, (_) async => Datos(actual: ++bajadas < 2 ? viejo : alerta),
-          reloj: () => ahora, esperas: const [Duration.zero, Duration.zero]);
-      expect(bajadas, 2);
-      expect(avisos.single.titulo, 'Río Uruguay: subió a ALERTA');
+      await atenderMensajePush(urgente, prefs, (_) async {
+        pasos.add('bajar');
+        return Datos(actual: ++bajadas < 2 ? viejo : alerta);
+      }, (a) async => pasos.add(a.titulo), reloj: () => ahora, espera: Duration.zero);
+      // El genérico se muestra antes del reintento (Android puede cortar en cualquier momento).
+      expect(pasos, ['bajar', 'Río Uruguay: hay novedades', 'bajar', 'Río Uruguay: subió a ALERTA']);
     });
 
-    test('si después de esperar sigue sin publicarse, avisa sin dato (y el respaldo avisa después)', () async {
+    test('si sigue sin publicarse: un solo reintento y queda el genérico (el respaldo avisa después)', () async {
       final prefs = await prefsCon({...todoPrendido, claveUltimoNivel: 'atencion'});
       final viejo = actualEn('2026-10-09T07:30', nivel: 'atencion', prefectura: '2026-10-08T06:00');
       var bajadas = 0;
       final avisos = await avisosDePush(urgente, prefs, (_) async {
         bajadas++;
         return Datos(actual: viejo);
-      }, reloj: () => ahora, esperas: const [Duration.zero, Duration.zero]);
-      expect(bajadas, 3);
+      }, reloj: () => ahora);
+      expect(bajadas, 2);
       expect(avisos, [avisoUrgenteSinDato]);
+      expect(prefs.getString(claveUltimoNivel), 'atencion');
       expect(tipos(await decidirAvisos(alerta, prefs, ahora)), [TipoAviso.urgente]);
+    });
+
+    test('el resumen sin dato: un solo reintento y nada', () async {
+      final prefs = await prefsCon({...todoPrendido, claveUltimoNivel: 'alerta'});
+      var bajadas = 0;
+      final avisos = await avisosDePush({'tipo': 'resumen', 'fuente': 'prefectura', 'ciudad': 'paysandu'}, prefs,
+          (_) async {
+        bajadas++;
+        throw Exception('sin red');
+      }, reloj: () => ahora);
+      expect(bajadas, 2);
+      expect(avisos, isEmpty);
+    });
+
+    test('el peor caso entra en unos 15 s (Android corta el manejador a los ~20)', () {
+      expect(tiempoDescargaPush * 2 + esperaPush, lessThanOrEqualTo(const Duration(seconds: 15)));
+    });
+
+    testWidgets('con la descarga colgada, el genérico sale a los 6 s y todo termina a los 15', (t) async {
+      final prefs = await prefsCon({...todoPrendido, claveUltimoNivel: 'atencion'});
+      final mostrados = <Aviso>[];
+      var terminado = false;
+      unawaited(atenderMensajePush(urgente, prefs, (_) => Completer<Datos>().future, (a) async => mostrados.add(a))
+          .then((_) => terminado = true));
+      await t.pump(const Duration(seconds: 5));
+      expect(mostrados, isEmpty);
+      await t.pump(const Duration(seconds: 1));
+      expect(mostrados, [avisoUrgenteSinDato]);
+      await t.pump(const Duration(seconds: 8));
+      expect(terminado, isFalse);
+      await t.pump(const Duration(seconds: 1));
+      expect(terminado, isTrue);
+      expect(mostrados, [avisoUrgenteSinDato]);
     });
 
     group('con la hora de envío de FCM', () {
@@ -369,7 +414,7 @@ void main() {
         expect(tipos(await decidirAvisos(alerta, prefs, ahora)), [TipoAviso.urgente]); // la vio el respaldo
         expect(
             await avisosDePush(urgente, prefs, (_) async => Datos(actual: alerta),
-                enviado: enviado, reloj: () => ahora, esperas: const []),
+                enviado: enviado, reloj: () => ahora),
             isEmpty);
       });
 
@@ -378,13 +423,13 @@ void main() {
         final prefs = await prefsCon(
             {...todoPrendido, claveUltimoNivel: 'alerta', claveUltimoGenerado: '2026-10-09T06:00:00.000Z'});
         final avisos = await avisosDePush(urgente, prefs, (_) async => Datos(actual: alerta),
-            enviado: enviado, reloj: () => ahora, esperas: const []);
+            enviado: enviado, reloj: () => ahora);
         expect(avisos.single.titulo, 'Río Uruguay: subió a ALERTA');
         // Sin la hora de envío no se puede saber: no se arriesga a repetir.
         final otro = await prefsCon(
             {...todoPrendido, claveUltimoNivel: 'alerta', claveUltimoGenerado: '2026-10-09T06:00:00.000Z'});
         expect(
-            await avisosDePush(urgente, otro, (_) async => Datos(actual: alerta), reloj: () => ahora, esperas: const []),
+            await avisosDePush(urgente, otro, (_) async => Datos(actual: alerta), reloj: () => ahora),
             isEmpty);
       });
 
@@ -395,7 +440,7 @@ void main() {
         final avisos = await avisosDePush(urgente, prefs, (_) async {
           bajadas++;
           return Datos(actual: hoy);
-        }, enviado: enviado, reloj: () => hora('2026-10-16T08:05'), esperas: const [Duration.zero]);
+        }, enviado: enviado, reloj: () => hora('2026-10-16T08:05'));
         expect(avisos, isEmpty);
         expect(bajadas, 1); // el dato es posterior al envío: no hay que esperar
       });
@@ -407,7 +452,7 @@ void main() {
         final avisos = await avisosDePush(urgente, prefs, (_) async {
           bajadas++;
           return Datos(actual: viejo);
-        }, enviado: enviado, reloj: () => ahora, esperas: const [Duration.zero]);
+        }, enviado: enviado, reloj: () => ahora);
         expect(bajadas, 2);
         expect(avisos, [avisoUrgenteSinDato]);
       });
@@ -418,7 +463,7 @@ void main() {
       expect(await decidirAvisos(alerta, prefs, ahora), isEmpty);
       final otro = await prefsCon(todoPrendido);
       final avisos =
-          await avisosDePush(urgente, otro, (_) async => Datos(actual: alerta), reloj: () => ahora, esperas: const []);
+          await avisosDePush(urgente, otro, (_) async => Datos(actual: alerta), reloj: () => ahora);
       expect(tipos(avisos), [TipoAviso.urgente]);
     });
   });

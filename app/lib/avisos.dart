@@ -175,14 +175,14 @@ Aviso avisoUrgente(Actual actual, Nivel nivel) {
   );
 }
 
-/// Si llega un push urgente y no se puede bajar el dato (o sigue sin mostrar
-/// la subida), se avisa igual pero sin inventar nada: ni nivel ni altura.
-/// Callar durante una crecida es peor. Cuando la app consiga el dato, el aviso
-/// de verdad reemplaza a este (usan la misma notificación).
+/// Si llega un push urgente y el dato no se pudo bajar, o todavía no muestra la
+/// subida, se avisa igual pero sin inventar nada: ni nivel ni altura. Callar
+/// durante una crecida es peor. Cuando se consigue el dato, el aviso de verdad
+/// reemplaza a este (usan la misma notificación).
 const avisoUrgenteSinDato = Aviso(
   TipoAviso.urgente,
   'Río Uruguay: hay novedades',
-  'No se pudo bajar el dato del río. Abrí la app para ver el nivel. $_oficial',
+  'Todavía no se pudo ver el dato nuevo. Abrí la app para ver el nivel. $_oficial',
 );
 
 /// "Bajó 13 cm en 24 h. " con la lectura de Prefectura, o nada si no trae la
@@ -350,10 +350,16 @@ MensajePush? validarMensajePush(Map<String, Object?> datos) {
 /// Cómo baja el push el dato (en la app: `Repositorio(url).cargar(soloActual: true)`).
 typedef BajarDatos = Future<Datos> Function(String urlBase);
 
-/// Esperas antes de volver a bajar actual.json si todavía no muestra lo que
-/// anunció el push: el aviso puede salir antes de que GitHub Pages publique el
-/// archivo nuevo. En total, poco más de un minuto.
-const esperasPush = [Duration(seconds: 20), Duration(seconds: 45)];
+/// Cómo se muestra un aviso (en la app, `mostrarAviso` de notificaciones.dart).
+typedef MostrarAviso = Future<void> Function(Aviso aviso);
+
+/// Con la app cerrada, Android le da al manejador del push unos 20 segundos y
+/// después puede cortarlo. Todo tiene que entrar en ~15 s en el peor caso: una
+/// descarga de hasta [tiempoDescargaPush], si hace falta una espera de
+/// [esperaPush] (el push puede salir antes de que GitHub Pages publique el
+/// archivo nuevo) y un solo reintento. Lo que no entre lo cubre el respaldo local.
+const tiempoDescargaPush = Duration(seconds: 6);
+const esperaPush = Duration(seconds: 3);
 
 /// ¿El dato bajado todavía no muestra lo que anunció el push? Si se armó
 /// después del envío ([enviado], la hora de FCM), no: el río cambió después
@@ -364,45 +370,53 @@ bool _atrasado(MensajePush m, Actual a, DateTime? enviado) {
   return m.tipo == TipoAviso.urgente ? ordenNivel(a.nivel) < ordenNivel(m.nivel!) : resumenListo(a, a.nivel) == null;
 }
 
-/// Qué mostrar al recibir un push (en primer plano, en segundo plano o con la
-/// app cerrada). Valida el mensaje, mira las preferencias de este teléfono,
-/// baja actual.json y decide con [decidirAvisos], igual que el respaldo.
-/// Si no se consigue el dato: para el urgente, [avisoUrgenteSinDato]; para el
-/// resumen, nada. [enviado] es la hora de envío que pone FCM (no es texto del
-/// mensaje); sin ella se decide igual, solo con el nivel.
-Future<List<Aviso>> avisosDePush(Map<String, Object?> datos, SharedPreferences prefs, BajarDatos bajar,
-    {DateTime? enviado, DateTime Function() reloj = DateTime.now, List<Duration> esperas = esperasPush}) async {
+/// Atiende un push (en primer plano, en segundo plano o con la app cerrada).
+/// Valida el mensaje, mira las preferencias de este teléfono, baja actual.json
+/// y decide con [decidirAvisos], igual que el respaldo, mostrando con [mostrar].
+///
+/// Para un urgente, si la primera descarga falla o todavía no muestra la
+/// subida, se muestra YA [avisoUrgenteSinDato] (Android puede cortar el
+/// manejador en cualquier momento) y recién después se reintenta una vez: si
+/// aparece el dato, el aviso de verdad reemplaza al genérico (misma
+/// notificación). El genérico no cuenta como visto. Para el resumen, sin
+/// genérico: un intento y como mucho un reintento corto.
+/// [enviado] es la hora de envío que pone FCM (no es texto del mensaje); sin
+/// ella se decide igual, solo con el nivel.
+Future<void> atenderMensajePush(Map<String, Object?> datos, SharedPreferences prefs, BajarDatos bajar,
+    MostrarAviso mostrar,
+    {DateTime? enviado, DateTime Function() reloj = DateTime.now, Duration espera = esperaPush}) async {
   final mensaje = validarMensajePush(datos);
-  if (mensaje == null) return const [];
+  if (mensaje == null) return;
   await prefs.reload();
   await migrarPreferencias(prefs);
   final p = PreferenciasAvisos.leer(prefs);
   final urgente = mensaje.tipo == TipoAviso.urgente;
   // Un push de algo que este teléfono no pidió (por ejemplo, mientras se
   // termina de desuscribir) no hace nada, ni siquiera bajar el dato.
-  if (urgente ? !(p.urgente && ordenNivel(mensaje.nivel!) >= ordenNivel(p.desde)) : !p.resumen) return const [];
+  if (urgente ? !(p.urgente && ordenNivel(mensaje.nivel!) >= ordenNivel(p.desde)) : !p.resumen) return;
 
   final url = prefs.getString(claveUrl);
-  Actual? actual;
-  for (var intento = 0;; intento++) {
-    actual = null;
-    if (url != null) {
-      try {
-        final d = await bajar(url);
-        if (!d.sinConexion) actual = d.actual; // la copia guardada es vieja: no sirve para avisar
-      } catch (_) {}
+  Future<Actual?> bajarUna() async {
+    if (url == null) return null;
+    try {
+      final d = await bajar(url).timeout(tiempoDescargaPush);
+      return d.sinConexion ? null : d.actual; // la copia guardada es vieja: no sirve para avisar
+    } catch (_) {
+      return null;
     }
-    if ((actual != null && !_atrasado(mensaje, actual, enviado)) || intento >= esperas.length) break;
-    await Future<void>.delayed(esperas[intento]);
   }
-  if (actual == null) return urgente ? const [avisoUrgenteSinDato] : const [];
 
-  final avisos = await decidirAvisos(actual, prefs, reloj(),
-      origen: Origen.push, subidaInformada: urgente ? mensaje.nivel : null, enviado: enviado);
-  if (urgente && _atrasado(mensaje, actual, enviado) && !avisos.any((a) => a.tipo == TipoAviso.urgente)) {
-    return [avisoUrgenteSinDato, ...avisos];
+  var actual = await bajarUna();
+  if (actual == null || _atrasado(mensaje, actual, enviado)) {
+    if (urgente) await mostrar(avisoUrgenteSinDato);
+    await Future<void>.delayed(espera);
+    actual = await bajarUna() ?? actual;
   }
-  return avisos;
+  if (actual == null) return;
+  for (final aviso in await decidirAvisos(actual, prefs, reloj(),
+      origen: Origen.push, subidaInformada: urgente ? mensaje.nivel : null, enviado: enviado)) {
+    await mostrar(aviso);
+  }
 }
 
 // ---------- temas de FCM ----------
