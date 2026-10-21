@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rio_paysandu/modelos.dart';
-import 'package:rio_paysandu/notificaciones.dart';
+import 'package:rio_paysandu/avisos.dart';
 import 'package:rio_paysandu/pantallas/grafico.dart';
 import 'package:rio_paysandu/textos.dart';
 
@@ -204,33 +204,24 @@ void main() {
     });
   });
 
+  // Las reglas completas de los avisos están en avisos_test.dart.
   group('cuándo avisar', () {
-    test('sube hasta el mínimo elegido', () {
-      expect(debeAvisar(Nivel.normal, Nivel.alerta, Nivel.alerta), isTrue);
-      expect(debeAvisar(Nivel.alerta, Nivel.evacuacion, Nivel.alerta), isTrue);
-      expect(debeAvisar(Nivel.normal, Nivel.atencion, Nivel.alerta), isFalse);
-      expect(debeAvisar(Nivel.normal, Nivel.alerta, Nivel.evacuacion), isFalse);
-    });
-
-    test('baja desde un nivel avisado', () {
-      expect(debeAvisar(Nivel.alerta, Nivel.normal, Nivel.alerta), isTrue);
-      expect(debeAvisar(Nivel.atencion, Nivel.normal, Nivel.alerta), isFalse);
-    });
-
-    test('sin cambio, sin dato y primera vez', () {
-      expect(debeAvisar(Nivel.alerta, Nivel.alerta, Nivel.alerta), isFalse);
-      expect(debeAvisar(Nivel.alerta, Nivel.sinDato, Nivel.alerta), isFalse);
-      expect(debeAvisar(null, Nivel.alerta, Nivel.alerta), isTrue);
-      expect(debeAvisar(null, Nivel.normal, Nivel.alerta), isFalse);
+    test('solo al subir a alerta o evacuación, desde el mínimo elegido', () {
+      expect(subidaUrgente(Nivel.normal, Nivel.alerta, Nivel.alerta), isTrue);
+      expect(subidaUrgente(Nivel.alerta, Nivel.evacuacion, Nivel.alerta), isTrue);
+      expect(subidaUrgente(Nivel.normal, Nivel.atencion, Nivel.alerta), isFalse);
+      expect(subidaUrgente(Nivel.normal, Nivel.alerta, Nivel.evacuacion), isFalse);
+      expect(subidaUrgente(Nivel.alerta, Nivel.normal, Nivel.alerta), isFalse);
+      expect(subidaUrgente(null, Nivel.alerta, Nivel.alerta), isFalse);
     });
 
     test('mensaje', () {
       final a = Actual.desdeJson(jsonDecode(actualReal))!;
-      final (titulo, cuerpo) = mensajeDeCambio(Nivel.normal, a, Nivel.alerta, ahora);
-      expect(titulo, 'Río Uruguay: nivel de ALERTA');
-      expect(cuerpo, contains('5,95 m (el 9/10 a las 12:00)'));
-      expect(cuerpo, contains('Fuente: CARU'));
-      expect(mensajeDeCambio(Nivel.alerta, a, Nivel.normal, ahora).$1, 'Río Uruguay: bajó a nivel NORMAL');
+      final aviso = avisoUrgente(a, Nivel.alerta);
+      expect(aviso.titulo, 'Río Uruguay: subió a ALERTA');
+      expect(aviso.texto, contains('5,95 m (el 9/10 a las 12:00)'));
+      expect(aviso.texto, contains('Fuente: CARU'));
+      expect(avisoUrgente(a, Nivel.evacuacion).titulo, 'Río Uruguay: subió a EVACUACIÓN');
     });
   });
 }
