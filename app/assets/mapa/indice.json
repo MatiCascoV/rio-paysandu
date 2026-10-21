@@ -1,12 +1,12 @@
 {
  "version": 1,
- "generado": "2026-10-19T18:00:00-03:00",
+ "generado": "2026-10-21T12:00:00-03:00",
  "cero": "Local",
  "validado": false,
  "modelo": {
-  "metodo": "PROVISORIO: agua inventada (río de OSM agrandado según la altura). Reemplazar por los datos reales.",
-  "delta_m": null,
-  "iou_validacion": null,
+  "metodo": "Relleno conectado al río sobre el MDT de IDE Uruguay (1 m remuestreado a 2 m, vuelo 2017), calibrado con crecidas de Dinagua",
+  "delta_m": 0.66,
+  "iou_validacion": 0.9168,
   "margen_m": 0.5
  },
  "limites": [
@@ -20,144 +20,466 @@
   ]
  ],
  "paso_m": 0.1,
- "min_m": 5.0,
- "max_m": 7.0,
+ "min_m": 4.0,
+ "max_m": 10.5,
  "base": {
   "archivo": "base.json",
   "bytes": 268774,
-  "sha256": "f25d1ade7d343b12d0a98de5669501807da4bd2829165a8898eb9c2348b21c9f"
+  "sha256": "5d84537d842513c437d24afcfe3fbc4715ec538f758f355eeb5a03668bf8d322"
  },
  "capas": [
   {
+   "altura_m": 4.0,
+   "archivo": "agua/0400.json",
+   "bytes": 62916,
+   "sha256": "78965196fcf387755b440463fa7ad7157d3c20dfb69ed4131db3dee894f8f368"
+  },
+  {
+   "altura_m": 4.1,
+   "archivo": "agua/0410.json",
+   "bytes": 60809,
+   "sha256": "54838d3ba764d397923d3bc240ccf995198be8d07226da954578e9a9f6bdd491"
+  },
+  {
+   "altura_m": 4.2,
+   "archivo": "agua/0420.json",
+   "bytes": 59778,
+   "sha256": "93f9b8fd86e1f6e6ed23b515fff13ba6cdf128848e18a8a47c36ee45bec7c70f"
+  },
+  {
+   "altura_m": 4.3,
+   "archivo": "agua/0430.json",
+   "bytes": 59968,
+   "sha256": "d3cc46b0f2b5a2217e9b5ad8016ab8ec853191f2173dd35d6e240cd5da00bed0"
+  },
+  {
+   "altura_m": 4.4,
+   "archivo": "agua/0440.json",
+   "bytes": 64029,
+   "sha256": "7fcc8a5e99f2769b9335bef7348d1138ceea1594e0b766c43c244a47a24288f1"
+  },
+  {
+   "altura_m": 4.5,
+   "archivo": "agua/0450.json",
+   "bytes": 61443,
+   "sha256": "8a09a1d5248184d44b478ea2a8c1a657b09a1fb14936b9292487a17e07500368"
+  },
+  {
+   "altura_m": 4.6,
+   "archivo": "agua/0460.json",
+   "bytes": 63342,
+   "sha256": "f35d058063dfd37e120f21d39cca8b3f5b23a74cd093e6f1f324147680eae532"
+  },
+  {
+   "altura_m": 4.7,
+   "archivo": "agua/0470.json",
+   "bytes": 61345,
+   "sha256": "8e25cc3cf32295ccc8b7e1e8a1b80df907bdfc9ee8a87aac1a6faa4db7616991"
+  },
+  {
+   "altura_m": 4.8,
+   "archivo": "agua/0480.json",
+   "bytes": 59726,
+   "sha256": "eb94063b9cd9c0ed11e42796bf1db9cd869159af03ce7b60ec6819513834dde0"
+  },
+  {
+   "altura_m": 4.9,
+   "archivo": "agua/0490.json",
+   "bytes": 58888,
+   "sha256": "5acfda9b0ced91283a06fe7b89a86744fb56f64b02097e7655cf10371429e5a2"
+  },
+  {
    "altura_m": 5.0,
    "archivo": "agua/0500.json",
-   "bytes": 142,
-   "sha256": "f881784ed6adf32310fd9a92e88f65d3db726ebcd6779182c1b642034abbd414"
+   "bytes": 59999,
+   "sha256": "204afee7a9b98ce9caf1148355b35bb4ea5e198dec3d5c2e01da2582665caaa3"
   },
   {
    "altura_m": 5.1,
    "archivo": "agua/0510.json",
-   "bytes": 55394,
-   "sha256": "30b134aaf3e51938dc6fcda482c45db59378a2d1228a2cf732701028f89ae678"
+   "bytes": 60271,
+   "sha256": "68d91fae8aab9e9016377dbbd81e7801fc4a892d0f0c45d519d194b3ba7aaa41"
   },
   {
    "altura_m": 5.2,
    "archivo": "agua/0520.json",
-   "bytes": 55246,
-   "sha256": "f4beb84f8e786bfc27174e5a0992f66dd827d237cf0e497afa3a7c80d37b000a"
+   "bytes": 59365,
+   "sha256": "468935f1548c7aeaac563d7e72a068443e5e82ba98dd7342d089d24947235b51"
   },
   {
    "altura_m": 5.3,
    "archivo": "agua/0530.json",
-   "bytes": 54988,
-   "sha256": "7b595770bc88e84f1f71a11f415386665369607edd261e6e43a318865c0f10d9"
+   "bytes": 65807,
+   "sha256": "2bf288308be1df384f979a2e6b990bdd36c0da7b2bf457312fec333d8893b524"
   },
   {
    "altura_m": 5.4,
    "archivo": "agua/0540.json",
-   "bytes": 54483,
-   "sha256": "836246f02d821b046b79a1c58acb1bee896bf2fbf6cf6c6fd0fd4f9a83e5c424"
+   "bytes": 64433,
+   "sha256": "52f6e735a557cf005752513a723829727e07269f7864c2f7fd0b9fadcc1d5187"
   },
   {
    "altura_m": 5.5,
    "archivo": "agua/0550.json",
-   "bytes": 54000,
-   "sha256": "82b925e3d582e17f4df3cfc132370556456988e2eb441e7e71e82fee5197e7dc"
+   "bytes": 65473,
+   "sha256": "2b06bd82fe90faec7ee6cc6e8ffddec8c21f9eb735eb2255d30dc7b71f756035"
   },
   {
    "altura_m": 5.6,
    "archivo": "agua/0560.json",
-   "bytes": 53259,
-   "sha256": "bdbf099966a1f785547359d5c31d1eb3863a957e0415531cad09d41ff47e4b2f"
+   "bytes": 67223,
+   "sha256": "e49502ed6d4f9524b89e204419adae5134510cf0fb148239e59e09f4cb086e56"
   },
   {
    "altura_m": 5.7,
    "archivo": "agua/0570.json",
-   "bytes": 53280,
-   "sha256": "5f867a6bf79b6fb8dcc03caf9a61d92ae2b2fc36e7114b7916100629edd335aa"
+   "bytes": 60101,
+   "sha256": "56c65feb3f0cc17abc3c4e3ae2c4d144e624530bc0604c73ae1e67cfc786e21e"
   },
   {
    "altura_m": 5.8,
    "archivo": "agua/0580.json",
-   "bytes": 52825,
-   "sha256": "877933c409327e9e6ef0e9d760dbc6e5d50cb477b4d1cb44e03ae68310557f33"
+   "bytes": 59047,
+   "sha256": "cc6acb378506c3ff1de9e1d9e57b6298eac75f4c30c838b51b4489cd897e723a"
   },
   {
    "altura_m": 5.9,
    "archivo": "agua/0590.json",
-   "bytes": 51599,
-   "sha256": "b7838b7618d18925c7f7d8728cf9c254acaa169645b4169dd87dd18f26bc9585"
+   "bytes": 60582,
+   "sha256": "05464d3cbcc4dcd0a984a1588cb56afbda9ab49ef7704360ed3b133f53843950"
   },
   {
    "altura_m": 6.0,
    "archivo": "agua/0600.json",
-   "bytes": 51336,
-   "sha256": "9799f231b643001fb85c8005f7aa56ad38fbab88a55017f0405052d60a40b377"
+   "bytes": 62648,
+   "sha256": "b97f197e7db5712cf496ffed5f55aa4ff4cbb8c2190fb7c1774bf007d85aae4d"
   },
   {
    "altura_m": 6.1,
    "archivo": "agua/0610.json",
-   "bytes": 50366,
-   "sha256": "df0ac477007a2652a373d3db822dae969b3f06b821176f6c335c266a97ef1175"
+   "bytes": 63715,
+   "sha256": "df94c49455be3435c3da8cad257064cb743a35774bb2d1ff1352fcbe968c5156"
   },
   {
    "altura_m": 6.2,
    "archivo": "agua/0620.json",
-   "bytes": 49453,
-   "sha256": "59d0632f0cf4c4433a0cda717f2a02fe95bf0f3e890359bf4e4aa4bfae0180d1"
+   "bytes": 62075,
+   "sha256": "f39b8ac5ae987f6722a339a22f3a7ece2b10e426fec19454624d5a631e58d18d"
   },
   {
    "altura_m": 6.3,
    "archivo": "agua/0630.json",
-   "bytes": 49141,
-   "sha256": "a5b500b7a6eefbc176d1f0c8594b60a7ccbba93549550633df08ffd1b2e0c0ef"
+   "bytes": 63272,
+   "sha256": "410eee287f2db85f9a7c69fa50872144f7b3b51b8711bd9b638882048aee1fba"
   },
   {
    "altura_m": 6.4,
    "archivo": "agua/0640.json",
-   "bytes": 49223,
-   "sha256": "97bad4ce79dc12e4b3e0f12a2b745dc938aae1cab94a605fad46d135b65d8184"
+   "bytes": 68505,
+   "sha256": "e781c9a2909fe324ac4a3d3f090ebb750c261b946057c0a27df7ee8182882dc6"
   },
   {
    "altura_m": 6.5,
    "archivo": "agua/0650.json",
-   "bytes": 48714,
-   "sha256": "40c5d0786764dfb22ee875976331c1c7813865a8109edbcbd4347455cb9151bd"
+   "bytes": 65712,
+   "sha256": "9c5faf1620dcc84d2ec19ff652bbee284a9a781f4f83bacc96cc6cbf435323bc"
   },
   {
    "altura_m": 6.6,
    "archivo": "agua/0660.json",
-   "bytes": 48393,
-   "sha256": "50d64be0545a876403f9429ed949738957d299bbb13d8f9fac207654582164a4"
+   "bytes": 65530,
+   "sha256": "1376cc0d65ed49bf91d34a5609211ea4939b3113639d678debc34f25f4439a09"
   },
   {
    "altura_m": 6.7,
    "archivo": "agua/0670.json",
-   "bytes": 48016,
-   "sha256": "385d4af29a8576ec3d4a65b97e0fd9b3962bc083cac45e488f4dfe5e13619d76"
+   "bytes": 67527,
+   "sha256": "79e8f4cdf0491171725a01457da6c12c33b410338d4aeb403a8e3fc95626b141"
   },
   {
    "altura_m": 6.8,
    "archivo": "agua/0680.json",
-   "bytes": 47598,
-   "sha256": "9638ed3d7a3b49706d4ce6945b1b48de635815090cd24965fb15b4d2a8a677ac"
+   "bytes": 68018,
+   "sha256": "184ec86e82d0e80406598c548eff286add36c2b8c391724c47db9318c5800cfd"
   },
   {
    "altura_m": 6.9,
    "archivo": "agua/0690.json",
-   "bytes": 47205,
-   "sha256": "378d0dfc758423454008e33b85e9715141bf97a47c06d987ded6987434ce50cb"
+   "bytes": 68616,
+   "sha256": "39e8404d973c69d684cb9d9a6e9968e33cf525dfacc6414dd63af665c7212e34"
   },
   {
    "altura_m": 7.0,
    "archivo": "agua/0700.json",
-   "bytes": 46784,
-   "sha256": "8df7447eb25df044e694ba23ccb1ce7ef8710d9acf0b06f222a72cb1a3547899"
+   "bytes": 69610,
+   "sha256": "2ed1092b4616e44080c2f78bc0ca64c039119bca3102c9d012652adbd6d7dd3b"
+  },
+  {
+   "altura_m": 7.1,
+   "archivo": "agua/0710.json",
+   "bytes": 70528,
+   "sha256": "1e03b02f091f2178b6b35e1035137497ed5c6bf5fdc1d782dc64ddea0fae3544"
+  },
+  {
+   "altura_m": 7.2,
+   "archivo": "agua/0720.json",
+   "bytes": 71529,
+   "sha256": "50a7bf978f9ee07d8b5818a2739c6d238a1b2e1c2a6011ce29d047e0b7db8754"
+  },
+  {
+   "altura_m": 7.3,
+   "archivo": "agua/0730.json",
+   "bytes": 72253,
+   "sha256": "1926006e2b96bbb4560d21d560e74b986d690fb2318c9ffe52758072cd7570f8"
+  },
+  {
+   "altura_m": 7.4,
+   "archivo": "agua/0740.json",
+   "bytes": 72038,
+   "sha256": "873b6f69dc4302b8e09f97b05d8160191d106096132c183b1361d999a6013136"
+  },
+  {
+   "altura_m": 7.5,
+   "archivo": "agua/0750.json",
+   "bytes": 70438,
+   "sha256": "80f51f55144ee5c35d945b179360e4bfbe5f3a589b8bd460a07d487233df7e0a"
+  },
+  {
+   "altura_m": 7.6,
+   "archivo": "agua/0760.json",
+   "bytes": 72379,
+   "sha256": "44561b6eb9c48bada6dbc7c0ec35d48d9bbe054d17a53b1198555074cf59baae"
+  },
+  {
+   "altura_m": 7.7,
+   "archivo": "agua/0770.json",
+   "bytes": 70655,
+   "sha256": "dd891f89be603a577e28340b48b555447d36ebca850eb4c6aea54a8df64aab6a"
+  },
+  {
+   "altura_m": 7.8,
+   "archivo": "agua/0780.json",
+   "bytes": 71262,
+   "sha256": "ffc5c82617de3ecf7cd2321f00caeafa7625b314e70d6fdb633a4d1302ebee05"
+  },
+  {
+   "altura_m": 7.9,
+   "archivo": "agua/0790.json",
+   "bytes": 72910,
+   "sha256": "b1efbb1c68f05946df03ec7ac2391546747acc8c1a370dc68ef308a7fa3734a1"
+  },
+  {
+   "altura_m": 8.0,
+   "archivo": "agua/0800.json",
+   "bytes": 71895,
+   "sha256": "53c55a8b75d1f408a1f60606153d774d8db8e07b97c66b89bd63457712375f46"
+  },
+  {
+   "altura_m": 8.1,
+   "archivo": "agua/0810.json",
+   "bytes": 69984,
+   "sha256": "7b45d4251f5d58dc883f3496d97687466e564eec1f579a73091a305e722760de"
+  },
+  {
+   "altura_m": 8.2,
+   "archivo": "agua/0820.json",
+   "bytes": 69561,
+   "sha256": "b0ebdd202fa80aa095c85de47361b2733ec9704cd872371be05177448bebb3fc"
+  },
+  {
+   "altura_m": 8.3,
+   "archivo": "agua/0830.json",
+   "bytes": 73555,
+   "sha256": "97d511277dd0f711c5ee48b62cb5815ae5a98629e1d7884ea6ce9aca35dfc9db"
+  },
+  {
+   "altura_m": 8.4,
+   "archivo": "agua/0840.json",
+   "bytes": 74284,
+   "sha256": "28947238c97706d01d8e8341970f3d7618ee4b51cc07b73b3257986f7543c15f"
+  },
+  {
+   "altura_m": 8.5,
+   "archivo": "agua/0850.json",
+   "bytes": 71425,
+   "sha256": "12bdc6a39d56b1d09cf4d468adde1fae510a9e13d1b95f4c43cc30f6f983b4e2"
+  },
+  {
+   "altura_m": 8.6,
+   "archivo": "agua/0860.json",
+   "bytes": 72069,
+   "sha256": "918aa253580536ff4f8ab27dfb940737d47aa6743cca849da79070e80f714d69"
+  },
+  {
+   "altura_m": 8.7,
+   "archivo": "agua/0870.json",
+   "bytes": 74837,
+   "sha256": "feb7b791867ee1d9ceccffdbea994b3ef53bac1bd8ae2ff92c41606465988064"
+  },
+  {
+   "altura_m": 8.8,
+   "archivo": "agua/0880.json",
+   "bytes": 74261,
+   "sha256": "615af3bfc0df00d973df6fc1422694bc40b890ac9fba221e3472f188907ee1d0"
+  },
+  {
+   "altura_m": 8.9,
+   "archivo": "agua/0890.json",
+   "bytes": 77305,
+   "sha256": "e6f1046443672b21433aa5aad6cf6c9e1215d9f4e9c77d8c5c0533a9529eb066"
+  },
+  {
+   "altura_m": 9.0,
+   "archivo": "agua/0900.json",
+   "bytes": 74730,
+   "sha256": "47338ba87acdbe3fd149afba8f46f3ae8ace52287f991ec9b42c8a3e8aabdbe9"
+  },
+  {
+   "altura_m": 9.1,
+   "archivo": "agua/0910.json",
+   "bytes": 75609,
+   "sha256": "a44f820ef0ea103638a6d207849a8d6fb0f462ac4a503bef2bf7a93bda3d7c5e"
+  },
+  {
+   "altura_m": 9.2,
+   "archivo": "agua/0920.json",
+   "bytes": 74522,
+   "sha256": "784ae53a5f8c0a8da4edd6fb3a3fc2520ea3f69027e866bcc78b5b4c264f7bc7"
+  },
+  {
+   "altura_m": 9.3,
+   "archivo": "agua/0930.json",
+   "bytes": 75106,
+   "sha256": "fe4a998fcf8256452529d66f38cf53b2c5356c58cd3cdea8afac2ffcaa9841d2"
+  },
+  {
+   "altura_m": 9.4,
+   "archivo": "agua/0940.json",
+   "bytes": 80488,
+   "sha256": "094d9db6a569495659d5200247806154f2ce107ae02b0ea3afa4e64f00960b94"
+  },
+  {
+   "altura_m": 9.5,
+   "archivo": "agua/0950.json",
+   "bytes": 78283,
+   "sha256": "8753e82fcfbeada7015332a63b2c0ae9e29df3faee3b411a8346c1f2e1b4c3af"
+  },
+  {
+   "altura_m": 9.6,
+   "archivo": "agua/0960.json",
+   "bytes": 74077,
+   "sha256": "21c03ce7cff175f733ddadee468d5dde41c0bf1367bab806f474a5ae0321dd91"
+  },
+  {
+   "altura_m": 9.7,
+   "archivo": "agua/0970.json",
+   "bytes": 72673,
+   "sha256": "2a7784f88805f6dc0ffe137d8ae8968b7f829cd281203260567fb187ecd46032"
+  },
+  {
+   "altura_m": 9.8,
+   "archivo": "agua/0980.json",
+   "bytes": 72181,
+   "sha256": "bf9ebc0d561f96458512f81410d7aee2492fcea59cb498151352fe643c5fd8ed"
+  },
+  {
+   "altura_m": 9.9,
+   "archivo": "agua/0990.json",
+   "bytes": 74178,
+   "sha256": "0390672693db8c6a52a0d4b3c830fcb7f938c071af9917ad1b80a2d0479a2938"
+  },
+  {
+   "altura_m": 10.0,
+   "archivo": "agua/1000.json",
+   "bytes": 74466,
+   "sha256": "78f0e4ca3646e5dfdcd2415a52d3ca2f504f35bb2fc3209e7620da0137773749"
+  },
+  {
+   "altura_m": 10.1,
+   "archivo": "agua/1010.json",
+   "bytes": 72392,
+   "sha256": "4a3477fed5d267d4203c6caa358c1567101313d0176d972c311386cb151c986e"
+  },
+  {
+   "altura_m": 10.2,
+   "archivo": "agua/1020.json",
+   "bytes": 71069,
+   "sha256": "1d917870c4337b9621e7c1b19de000dcffd6512b4bf550acf84c78c6f814bdd9"
+  },
+  {
+   "altura_m": 10.3,
+   "archivo": "agua/1030.json",
+   "bytes": 71466,
+   "sha256": "135b9a90979e44b84e5750a014ebb3ed1624e60cac5968a63edcf3d12fb2366c"
+  },
+  {
+   "altura_m": 10.4,
+   "archivo": "agua/1040.json",
+   "bytes": 70398,
+   "sha256": "259ea1fdc5a9906762d8bf95da583113f20b31b108b7e6d0f97c7d5d631980f7"
+  },
+  {
+   "altura_m": 10.5,
+   "archivo": "agua/1050.json",
+   "bytes": 66140,
+   "sha256": "decf8886d40e203bfe7cd1198dfcfb1a7bff4cbbf3d9da141611432b8b086e03"
   }
  ],
- "referencias": [],
+ "referencias": [
+  {
+   "tipo": "crecida",
+   "nombre": "Crecida de julio de 2025",
+   "altura_m": 6.58,
+   "fecha": "2025-07-03",
+   "archivo": "curvas/2025-07.json",
+   "bytes": 56261,
+   "sha256": "12cc88f2700d9a5bbc1e671d427c3337e401f86d99246ac1403934ba4db237df",
+   "fuente": "Dinagua"
+  },
+  {
+   "tipo": "crecida",
+   "nombre": "Crecida de junio de 2017",
+   "altura_m": 8.35,
+   "fecha": "2017-06-12",
+   "archivo": "curvas/2017-06.json",
+   "bytes": 13238,
+   "sha256": "5b2f936c41dfe326f4d330a044156ec8506c12aab5236b59d5593b63325d49b1",
+   "fuente": "Dinagua"
+  },
+  {
+   "tipo": "crecida",
+   "nombre": "Crecida de enero de 2019",
+   "altura_m": 8.45,
+   "fecha": "2019-01-23",
+   "archivo": "curvas/2019-01.json",
+   "bytes": 25782,
+   "sha256": "6faa2d33bc8f68415997a78aea3428c1421742130b873337dd9a57d5f6d0bec1",
+   "fuente": "Dinagua"
+  },
+  {
+   "tipo": "crecida",
+   "nombre": "Crecida de noviembre de 2009",
+   "altura_m": 8.93,
+   "fecha": "2009-11-10",
+   "archivo": "curvas/2009-11.json",
+   "bytes": 6243,
+   "sha256": "2409b4274a7ec85f2d4dbbe97fc59fefb7e8aa8db127f4992757fa169e1f5c86",
+   "fuente": "Dinagua"
+  },
+  {
+   "tipo": "crecida",
+   "nombre": "Crecida de diciembre de 2015",
+   "altura_m": 9.12,
+   "fecha": "2015-12-10",
+   "archivo": "curvas/2015-12.json",
+   "bytes": 10404,
+   "sha256": "ed35681cedd3cbf1d8b2e95f3f12c29fabf881fe1eedbb3006197a0fb3fc3a10",
+   "fuente": "Dinagua"
+  }
+ ],
  "fuentes": [
   "© colaboradores de OpenStreetMap, ODbL",
-  "PROVISORIO: el agua de este mapa es inventada, solo para probar la pantalla"
+  "Modelo digital del terreno: IDE Uruguay, Licencia de Datos Abiertos – Uruguay. Datos modificados.",
+  "Curvas de inundación: Dirección Nacional de Aguas (Dinagua), Ministerio de Ambiente"
  ]
 }
