@@ -58,16 +58,32 @@ const pasosComoSeUsa = [
   'Es aproximado: el agua puede llegar más lejos. No reemplaza la alerta oficial.',
 ];
 
-/// Hoja "Fuentes": solo texto, sin enlaces (decisión del 21/10/2026).
+/// Hoja "Fuentes": solo texto, sin enlaces (decisión del 21/10/2026). Textos
+/// de docs/mapa/13-legal.md §3.3: aviso ODbL de la base derivada de OSM (B1),
+/// nota de origen de la IDE con los dos productos MDT y las modificaciones
+/// (B3) y Dinagua sin licencia publicada (B2). El detalle completo está en
+/// assets/mapa/LICENSE-DATOS.md.
 const textosFuentes = [
-  ('Calles, río y barrios', '© colaboradores de OpenStreetMap. Datos con licencia ODbL (openstreetmap.org/copyright).'),
+  (
+    'Calles, río y barrios',
+    '© colaboradores de OpenStreetMap. Los usamos para el fondo y para calcular el agua; '
+        'esos datos derivados se comparten con la misma licencia, ODbL 1.0 '
+        '(openstreetmap.org/copyright).',
+  ),
   (
     'Terreno',
-    'Modelo digital del terreno de la IDE Uruguay (vuelo 2017–2018). Licencia de Datos Abiertos de Uruguay. '
-        'Lo recortamos y calculamos qué partes quedan por debajo de cada altura del río.',
+    'IDE Uruguay: modelo digital del terreno urbano de Paysandú, 1 m (vuelo de 2017), y nacional, 2,5 m '
+        '(vuelo 2017–2018), del conjunto "Ortoimagen y modelo digital del terreno de cobertura nacional". '
+        'Licencia de Datos Abiertos – Uruguay (catalogodatos.gub.uy). Datos modificados: los recortamos, '
+        'unimos y pasamos a 2 m, y calculamos qué partes quedan por debajo de cada altura del río.',
   ),
-  ('Crecidas medidas', 'Curvas de inundación de Dinagua, Ministerio de Ambiente. Las recortamos y simplificamos.'),
-  ('Altura del río y pronóstico', 'CARU.'),
+  (
+    'Crecidas medidas',
+    'Curvas de inundación de la Dirección Nacional de Aguas (Dinagua), Ministerio de Ambiente. '
+        'Información pública; Dinagua no publicó una licencia para estas capas y le estamos consultando. '
+        'Las recortamos y simplificamos.',
+  ),
+  ('Altura del río y pronóstico', 'Comisión Administradora del Río Uruguay (CARU).'),
 ];
 
 const textoFuentesDeslinde =
@@ -105,8 +121,19 @@ String textoAvisoAisladas(int cuantas) => cuantas == 1
 
 /// Zona sin validar (contrato v1.1 §1): resumen textual cuando no se conocen
 /// los nombres de las zonas. Para la v1 hay una sola: el valle del arroyo
-/// San Francisco (contrato 05, v1.1 §1).
-const textoSinValidar = 'En el valle del arroyo San Francisco el mapa no se pudo comparar con crecidas reales.';
+/// San Francisco Grande (contrato 05, v1.1 §1; 11 §8, condición 3).
+const textoSinValidar = 'En el valle del arroyo San Francisco Grande el mapa no se pudo comparar con crecidas reales.';
+
+/// Se agrega a [textoSinValidar] cuando la zona no está dibujada (el índice no
+/// trae `sin_validar` o el archivo no validó): la zona existe igual y hay que
+/// decirlo (11 §8, condición 3), aunque no haya borde para mostrar.
+const textoSinValidarSinDibujo = 'Esa zona no está marcada en el dibujo.';
+
+/// Fila de la leyenda, sin muestra, cuando la zona sin validar no está
+/// dibujada. No repite la fila del borde ([textoLeyendaSinValidar]).
+const textoLeyendaSinValidarSinDibujo =
+    'Valle del arroyo San Francisco Grande: zona sin validar, el mapa no la pudo comparar con crecidas. '
+    'No está marcada en el dibujo';
 
 /// Resumen textual de la zona sin validar con los nombres que trae
 /// `sin_validar.json`, para no nombrar un lugar que no es si el pipeline
@@ -128,6 +155,35 @@ const textoLeyendaSinValidar = 'Zona sin validar: el mapa no se pudo comparar co
 
 /// Fila de la leyenda de las lomas aisladas (sin la palabra del dibujo).
 const textoLeyendaAisladas = 'Loma que quedaría rodeada de agua: puede quedar aislada';
+
+/// Fila de la leyenda de la línea de hoy (sin la palabra del dibujo), al
+/// simular otra altura. Con un dato viejo o sin conexión,
+/// [textoLeyendaUltimoDato].
+const textoLeyendaHoy = 'Hasta dónde llega el agua con el río de hoy';
+const textoLeyendaUltimoDato = 'Hasta dónde llega el agua con el último dato';
+
+/// Fila de la leyenda del margen, cuando entra entero en el mapa.
+String textoLeyendaMargen(int margenCm) =>
+    'Puede llegar un poco más: hasta ${formatoDiferencia(margenCm / 100)} más de altura';
+
+/// Fila de la leyenda del margen cuando altura + margen pasa del máximo del
+/// mapa: los puntos quedan recortados (o pegados al agua) y no muestran todo
+/// el margen.
+String textoLeyendaMargenRecortado(int maxCm) =>
+    'Puede llegar un poco más. Los puntos se cortan en ${formatoAltura(maxCm / 100)} m, donde termina el mapa: '
+    'con un poco más de altura, el agua puede pasarlos';
+
+/// Línea de la lectura (con aviso) cuando el margen quedó recortado en el
+/// máximo del mapa, dentro del rango (por encima ya hay otro aviso).
+String textoMargenRecortado(int maxCm) =>
+    'El mapa llega hasta ${formatoAltura(maxCm / 100)} m: con un poco más de altura, '
+    'el agua puede pasar los puntos y llegar más lejos de lo que se ve.';
+
+/// Cuando la capa de agua de esta altura (y las de arriba) no se pudo leer: el
+/// dibujo no sirve para esta altura y se tapa con este aviso.
+const textoDibujoIlegible =
+    'No se pudo leer el dibujo del agua para esta altura. El mapa no muestra hasta dónde llegaría: '
+    'el agua puede llegar lejos. Seguí los avisos oficiales.';
 
 /// Clave de SharedPreferences: la tarjeta "Cómo se usa" ya se vio.
 const claveComoSeUsa = 'mapa_como_se_usa_visto';
@@ -250,8 +306,11 @@ String _metros(int cm) => '${formatoAltura(cm / 100)} metros';
 /// [minCm] es la capa más baja (zona baja de la costa); [zonaBajaDibujada]
 /// dice si esa capa se pudo leer. [aisladas] es la cantidad de lomas
 /// marcadas; [sinValidar] dice si la zona sin validar está dibujada, y
-/// [nombresSinValidar], sus nombres (de `sin_validar.json`); [hoyCm], la
-/// altura de la línea "agua de hoy" si está dibujada.
+/// [nombresSinValidar], sus nombres (de `sin_validar.json`);
+/// [sinValidarSinDibujo], que la zona existe pero no está dibujada (se nombra
+/// igual, 11 §8 condición 3); [margenRecortado], que altura + margen pasa del
+/// máximo del mapa; [hoyCm], la altura de la línea "agua de hoy" si está
+/// dibujada.
 String resumenMapa({
   required SituacionAgua? situacion,
   required int? alturaCm,
@@ -265,6 +324,8 @@ String resumenMapa({
   int aisladas = 0,
   bool sinValidar = false,
   List<String> nombresSinValidar = const [],
+  bool sinValidarSinDibujo = false,
+  bool margenRecortado = false,
   int? hoyCm,
   String? contorno,
 }) {
@@ -300,10 +361,16 @@ String resumenMapa({
       partes.add(
         'El mapa llega hasta ${_metros(maxCm)}. Con ${_metros(alturaCm!)} el agua llega más lejos de lo que se ve.',
       );
+    } else if (margenRecortado) {
+      partes.add(unidadesEnPalabras(textoMargenRecortado(maxCm)));
     }
   }
   if (aisladas > 0) partes.add(textoAvisoAisladas(aisladas));
-  if (sinValidar) partes.add(textoSinValidarDe(nombresSinValidar));
+  if (sinValidar) {
+    partes.add(textoSinValidarDe(nombresSinValidar));
+  } else if (sinValidarSinDibujo) {
+    partes.add('$textoSinValidar $textoSinValidarSinDibujo');
+  }
   if (hoyCm != null) partes.add('Línea gruesa: hasta dónde llega el agua con el río de hoy, ${_metros(hoyCm)}.');
   if (contorno != null) partes.add('Línea de trazos: el borde medido en la crecida "$contorno".');
   partes.add(
@@ -1201,7 +1268,9 @@ class BotonAltura extends StatelessWidget {
 // Leyenda
 
 class EntradaLeyenda {
-  final CustomPainter muestra;
+  /// null: fila solo de texto (algo que el mapa no puede dibujar, como la
+  /// zona sin validar cuando falta su archivo).
+  final CustomPainter? muestra;
   final String texto;
 
   const EntradaLeyenda(this.muestra, this.texto);
@@ -1230,7 +1299,13 @@ class LeyendaMapa extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.only(top: 2),
                   child: ExcludeSemantics(
-                    child: SizedBox(width: 36, height: 22, child: CustomPaint(painter: e.muestra)),
+                    child: SizedBox(
+                      width: 36,
+                      height: 22,
+                      child: e.muestra == null
+                          ? Icon(Icons.info_outline, size: 22, color: Colores.tintaSecundaria)
+                          : CustomPaint(painter: e.muestra),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 12),

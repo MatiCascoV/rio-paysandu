@@ -306,7 +306,11 @@ class _PantallaMapaState extends State<PantallaMapa> {
     final capa = e.capaCm == null ? null : await repo.capa(e.capaCm!);
     // El margen y la zona baja van siempre (v1.1 §3 y §4).
     final margen = await repo.capa(e.margenCm);
-    final zonaBaja = await repo.capa(e.zonaBajaCm);
+    // Si la capa de `min_m` no se pudo leer, el repositorio da la de arriba:
+    // esa no es la zona baja y no se dibuja con su estilo (se dice en la
+    // lectura; por encima del mínimo el agua ya la cubre).
+    final leidaZonaBaja = await repo.capa(e.zonaBajaCm);
+    final zonaBaja = leidaZonaBaja == null || leidaZonaBaja.reemplazada ? null : leidaZonaBaja;
     // Al simular otra altura, también el agua de hoy (para su línea).
     final hoyCm = _hoyCm;
     final hoyCapaCm = hoyCm == null || hoyCm == cm ? null : elegirAgua(hoyCm, ind).capaCm;
@@ -350,6 +354,10 @@ class _PantallaMapaState extends State<PantallaMapa> {
     if (m == null) return false;
     return m == _capa?.alturaCm || m == _zonaBaja?.alturaCm || (_lineaHoyVisible && m == _capaHoy!.alturaCm);
   }
+
+  /// La capa de agua de esta altura (y todas las de arriba) no se pudo leer:
+  /// el dibujo no sirve para esta altura y se tapa con un aviso.
+  bool get _dibujoIlegible => _eleccion?.capaCm != null && _capa == null;
 
   /// Lomas aisladas de la capa pintada: la del agua o, por debajo del mínimo,
   /// la de la zona baja (contrato v1.1 §2).
@@ -421,7 +429,9 @@ class _PantallaMapaState extends State<PantallaMapa> {
           ),
         );
       case SituacionAgua.enRango:
-        break;
+        // Altura + margen pasa del máximo: los puntos quedan recortados en
+        // `max_m` (o pegados al agua en el máximo) y no muestran todo el margen.
+        if (e.margenRecortado) lineas.add(linea(textoMargenRecortado(ind.maxCm), aviso: true));
     }
     final ref = _referencia;
     final refCm = ref == null ? null : redondearArriba(ref.alturaM, pasoCm: ind.pasoCm);
@@ -442,8 +452,8 @@ class _PantallaMapaState extends State<PantallaMapa> {
           'Se muestra el de ${formatoAltura(c.alturaCm / 100)} m, con un poco más de agua.',
         ),
       );
-    } else if (e.capaCm != null && c == null) {
-      lineas.add(linea('No se pudo leer el dibujo del agua para esta altura.'));
+    } else if (_dibujoIlegible) {
+      lineas.add(linea(textoDibujoIlegible, aviso: true));
     }
     // Lomas que quedarían rodeadas de agua: nunca se presentan como lugar seguro.
     if (_aisladas.isNotEmpty) lineas.add(linea(textoAvisoAisladas(_aisladas.length), aviso: true));
@@ -536,17 +546,22 @@ class _PantallaMapaState extends State<PantallaMapa> {
       EntradaLeyenda(MuestraAgua(c), 'Hasta dónde llegaría el agua con la altura elegida (rayado)'),
       EntradaLeyenda(
         MuestraMargen(c),
-        'Puede llegar un poco más: hasta ${formatoDiferencia(ind.margenCm / 100)} más de altura (borde de puntos)',
+        '${_eleccion?.margenRecortado ?? false ? textoLeyendaMargenRecortado(ind.maxCm) : textoLeyendaMargen(ind.margenCm)}'
+        ' (borde de puntos)',
       ),
       if (_zonaBaja != null) EntradaLeyenda(MuestraZonaBaja(c), '$textoLeyendaZonaBaja (rayas horizontales)'),
       if (_lineaHoyVisible)
         EntradaLeyenda(
           MuestraHoy(c),
-          'Hasta dónde llega el agua con ${_hoy?.esUltimoDato ?? false ? 'el último dato' : 'el río de hoy'} '
-          '(línea gruesa)',
+          '${_hoy?.esUltimoDato ?? false ? textoLeyendaUltimoDato : textoLeyendaHoy} (línea gruesa)',
         ),
       if (_aisladas.isNotEmpty) EntradaLeyenda(MarcaAislada(c), '$textoLeyendaAisladas (rombo con "!")'),
-      if (_sinValidar != null) EntradaLeyenda(MuestraSinValidar(c), '$textoLeyendaSinValidar (raya y punto)'),
+      // Sin el archivo (los datos de hoy no lo traen) la zona igual existe:
+      // fila sin muestra, porque no hay borde para dibujar (11 §8, condición 3).
+      if (_sinValidar != null)
+        EntradaLeyenda(MuestraSinValidar(c), '$textoLeyendaSinValidar (raya y punto)')
+      else
+        const EntradaLeyenda(null, textoLeyendaSinValidarSinDibujo),
       if (_verContorno && _contorno.isNotEmpty)
         EntradaLeyenda(
           MuestraContorno(c),
@@ -742,9 +757,11 @@ class _PantallaMapaState extends State<PantallaMapa> {
       maxCm: ind.maxCm,
       zonaBajaDibujada: _zonaBaja != null,
       simulacion: eleccion != null && eleccion.alturaCm != _hoyCm,
-      dibujoIlegible: eleccion?.capaCm != null && capa == null,
+      dibujoIlegible: _dibujoIlegible,
+      margenRecortado: eleccion?.margenRecortado ?? false,
       aisladas: _aisladas.length,
       sinValidar: _sinValidar != null,
+      sinValidarSinDibujo: _sinValidar == null,
       nombresSinValidar: [for (final z in _sinValidar?.zonas ?? const <ZonaSinValidar>[]) z.nombre],
       hoyCm: _lineaHoyVisible ? _capaHoy?.alturaCm : null,
       contorno: _verContorno && _contorno.isNotEmpty ? _referencia?.nombre : null,
@@ -834,6 +851,24 @@ class _PantallaMapaState extends State<PantallaMapa> {
                   ),
                 ),
               ),
+              // Sin la capa de esta altura, el dibujo (casi sin agua) no se
+              // muestra como si valiera: se tapa con el aviso. TalkBack ya lo
+              // oye en la descripción del mapa y en la lectura.
+              if (_dibujoIlegible)
+                Positioned.fill(
+                  child: ExcludeSemantics(
+                    child: ColoredBox(
+                      key: const ValueKey('mapa-dibujo-ilegible'),
+                      color: Colores.superficie,
+                      // Con letra grande el aviso puede pasar el alto del
+                      // mapa: se desplaza adentro en vez de desbordar.
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.fromLTRB(16, 16, 72, 32),
+                        child: Recuadro(icono: Icons.warning_amber, texto: textoDibujoIlegible),
+                      ),
+                    ),
+                  ),
+                ),
               Positioned(
                 left: 0,
                 bottom: 0,

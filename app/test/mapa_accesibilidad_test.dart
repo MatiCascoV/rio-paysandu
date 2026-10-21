@@ -48,7 +48,10 @@ void main() {
       await t.tap(find.byTooltip('Subir 10 cm'));
       await t.pumpAndSettle();
       final nodo = find.bySemanticsLabel(
-        'No es el río de hoy. Simulación con 4,30 metros, nivel Evacuación (de referencia). 10 centímetros más que hoy.',
+        'No es el río de hoy. Simulación con 4,30 metros, nivel Evacuación (de referencia). 10 centímetros más que hoy. '
+        // 4,30 es la capa más alta del set de prueba: el margen queda recortado (I1).
+        'El mapa llega hasta 4,30 metros: con un poco más de altura, el agua puede pasar los puntos y llegar más '
+        'lejos de lo que se ve.',
       );
       expect(nodo, findsOneWidget);
       // Sin liveRegion: si no, TalkBack la repetiría en cada paso del arrastre.
@@ -250,6 +253,9 @@ void main() {
       await t.pumpAndSettle();
       expect(anuncios, [
         'No es el río de hoy. Simulación con 4,30 metros, nivel Evacuación (de referencia). 10 centímetros más que hoy. '
+            // 4,30 es la capa más alta del set de prueba: el margen queda recortado (I1).
+            'El mapa llega hasta 4,30 metros: con un poco más de altura, el agua puede pasar los puntos y llegar más '
+            'lejos de lo que se ve. '
             'El mapa ahora muestra el agua con 4,30 metros. Puede llegar más lejos.',
       ]);
       await tocar(t, find.text('Volver a hoy'));
@@ -287,15 +293,22 @@ void main() {
   });
 
   group('gestos: el mapa no atrapa la página', () {
-    Future<void> abrir(WidgetTester t) => mostrarMapa(t, datosCon(4.13), tamano: const Size(720, 1600)); // 360 × 800 dp
+    // 360 × 800 dp. Se baja hasta el mapa (como haría la persona): con los
+    // avisos de la lectura el mapa puede quedar más abajo de la primera vista.
+    Future<void> abrir(WidgetTester t) async {
+      await mostrarMapa(t, datosCon(4.13), tamano: const Size(720, 1600));
+      await t.ensureVisible(find.byType(FlutterMap));
+      await t.pumpAndSettle();
+    }
 
     testWidgets('con un dedo sobre el mapa se mueve la página, no el mapa', (t) async {
       await abrir(t);
       final antes = camara(t).center;
+      final paginaAntes = desplazamiento(t);
       final mapa = t.getRect(find.byType(FlutterMap));
       await t.dragFrom(mapa.center, const Offset(0, -200));
       await t.pumpAndSettle();
-      expect(desplazamiento(t), greaterThan(100));
+      expect(desplazamiento(t) - paginaAntes, greaterThan(100));
       expect(camara(t).center, antes);
     });
 

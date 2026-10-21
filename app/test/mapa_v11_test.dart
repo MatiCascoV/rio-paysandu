@@ -446,11 +446,61 @@ void main() {
       expect(find.bySemanticsLabel(mencionSinValidar), findsOneWidget);
     });
 
-    testWidgets('sin el archivo (datos de hoy): ni fila ni mención, y el mapa anda', (t) async {
+    // B1 (revisión de código): los assets de hoy no traen `sin_validar` (el
+    // pipeline v1.1 no se pudo correr). La zona existe igual (11 §8,
+    // condición 3): se nombra en el resumen y en la leyenda, sin dibujar borde.
+    testWidgets('sin el archivo (datos de hoy): se nombra igual, sin borde, y el mapa anda', (t) async {
+      final s = t.ensureSemantics();
       await mostrarMapa(t, datosCon(6.95, nivel: 'evacuacion'), fuente: fuenteReal());
-      expect(find.textContaining(textoLeyendaSinValidar), findsNothing);
-      expect(find.bySemanticsLabel(mencionSinValidar), findsNothing);
       expect(lectura('7,00'), findsOneWidget);
+      // Resumen para TalkBack: el valle del San Francisco y que no está marcado.
+      expect(find.bySemanticsLabel(mencionSinValidar), findsOneWidget);
+      expect(
+        find.bySemanticsLabel(RegExp(RegExp.escape('$textoSinValidar $textoSinValidarSinDibujo'))),
+        findsOneWidget,
+      );
+      // Leyenda: fila sin muestra (no hay borde), distinta de la del borde.
+      expect(find.text(textoLeyendaSinValidarSinDibujo), findsOneWidget);
+      expect(find.textContaining(textoLeyendaSinValidar), findsNothing);
+      // Y ningún borde de zona sin validar dibujado.
+      final c = ColoresMapa.actuales();
+      expect(
+        t
+            .widgetList<PolylineLayer>(find.byType(PolylineLayer))
+            .expand((l) => l.polylines)
+            .where((p) => p.color == c.sinValidar),
+        isEmpty,
+      );
+      s.dispose();
+    });
+
+    test('textos de la zona sin dibujo: nombran el valle del San Francisco Grande', () {
+      expect(textoSinValidar, contains('San Francisco Grande'));
+      expect(textoLeyendaSinValidarSinDibujo, contains('San Francisco Grande'));
+      expect(textoLeyendaSinValidarSinDibujo, contains('No está marcada en el dibujo'));
+      final r = resumenMapa(
+        situacion: SituacionAgua.enRango,
+        alturaCm: 700,
+        dibujoCm: 700,
+        margenCm: 750,
+        minCm: 400,
+        maxCm: 1050,
+        sinValidarSinDibujo: true,
+      );
+      expect(r, contains('$textoSinValidar $textoSinValidarSinDibujo'));
+      // Con la zona dibujada se usa el nombre del archivo, sin "no está marcada".
+      final dibujada = resumenMapa(
+        situacion: SituacionAgua.enRango,
+        alturaCm: 700,
+        dibujoCm: 700,
+        margenCm: 750,
+        minCm: 400,
+        maxCm: 1050,
+        sinValidar: true,
+        sinValidarSinDibujo: true,
+        nombresSinValidar: const ['Valle del arroyo San Francisco'],
+      );
+      expect(dibujada, isNot(contains(textoSinValidarSinDibujo)));
     });
 
     testWidgets('con el archivo roto: el mapa anda igual, sin la zona', (t) async {
@@ -468,6 +518,8 @@ void main() {
       );
       expect(lectura('7,00'), findsOneWidget);
       expect(find.textContaining(textoLeyendaSinValidar), findsNothing);
+      // Sin borde, pero la zona se sigue nombrando (B1).
+      expect(find.text(textoLeyendaSinValidarSinDibujo), findsOneWidget);
     });
   });
 
@@ -601,6 +653,15 @@ void main() {
         textoSinValidarDe(const ['Valle del arroyo San Francisco', 'Otra']),
         textoLeyendaSinValidar,
         textoLeyendaAisladas,
+        textoSinValidarSinDibujo,
+        textoLeyendaSinValidarSinDibujo,
+        textoLeyendaHoy,
+        textoLeyendaUltimoDato,
+        textoLeyendaMargen(50),
+        textoLeyendaMargenRecortado(1050),
+        textoMargenRecortado(1050),
+        textoDibujoIlegible,
+        for (final (_, f) in textosFuentes) f,
       ]) {
         expect(texto, isNot(matches(prohibido)), reason: texto);
       }

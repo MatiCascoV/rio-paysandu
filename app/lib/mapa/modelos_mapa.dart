@@ -37,7 +37,21 @@ const _latMin = -35.2, _latMax = -30.0, _lonMin = -58.7, _lonMax = -53.0;
 
 /// Alturas del mapa, en centímetros enteros: así no hay errores de redondeo
 /// al comparar 6,70 con 6,6999999.
-int aCm(double metros) => (metros * 100).round();
+///
+/// Redondea HACIA ARRIBA (contrato 05, "Cómo elige la app qué capa pintar":
+/// prudencia, mejor un poco más de agua): 5,704 m → 571 cm, nunca 570. Se
+/// resta una millonésima antes de redondear para que el error de la coma
+/// flotante (6,70 × 100 = 670,0000000000001) no sume un centímetro de más.
+int aCm(double metros) => (metros * 100 - 1e-6).ceil();
+
+/// Única versión del contrato que entiende la app (05: los agregados v1.1
+/// siguen en `version: 1`). Otra versión puede cambiar el significado de un
+/// campo: no se pinta.
+const versionDelMapa = 1;
+
+/// Margen mínimo aceptado (11 §8, condición 1: el margen se dibuja siempre y
+/// cubre la omisión urbana). Un margen menor que un paso no se vería.
+const margenMinimoM = 0.1;
 
 /// Error de validación con un motivo legible (para el informe y los tests).
 class ErrorMapa implements Exception {
@@ -209,7 +223,7 @@ class IndiceMapa {
   static IndiceMapa desdeJson(Object? j) {
     if (j is! Map) throw const ErrorMapa('el índice no es un objeto');
     final version = j['version'];
-    if (version is! int || version < 1) throw const ErrorMapa('version inválida');
+    if (version is! int || version != versionDelMapa) throw const ErrorMapa('version inválida o desconocida');
     final cero = _texto(j['cero']);
     if (cero == null || cero.isEmpty) throw const ErrorMapa('falta cero');
 
@@ -218,7 +232,7 @@ class IndiceMapa {
     final metodo = _texto(m['metodo']);
     final margen = _numero(m['margen_m']);
     if (metodo == null || metodo.isEmpty) throw const ErrorMapa('modelo sin metodo');
-    if (margen == null || margen < 0 || margen > 2) throw const ErrorMapa('margen_m fuera de rango');
+    if (margen == null || margen < margenMinimoM - 1e-9 || margen > 2) throw const ErrorMapa('margen_m fuera de rango');
     final modelo = ModeloMapa(
       metodo: metodo,
       margenM: margen,
@@ -245,6 +259,9 @@ class IndiceMapa {
     final minCm = aCm(_altura(j['min_m'], 'min_m'));
     final maxCm = aCm(_altura(j['max_m'], 'max_m'));
     if (minCm > maxCm) throw const ErrorMapa('min_m mayor que max_m');
+    // Los nombres agua/NNNN.json y el redondeo de la altura de hoy suponen
+    // capas en múltiplos del paso: 4,05 con paso 0,10 correría todo 5 cm.
+    if (minCm % pasoCm != 0) throw const ErrorMapa('min_m no es múltiplo de paso_m');
     if ((maxCm - minCm) % pasoCm != 0) throw const ErrorMapa('min_m y max_m no cuadran con paso_m');
 
     final base = ArchivoMapa.desdeJson(j['base'], 'base', TopesMapa.bytesBase);

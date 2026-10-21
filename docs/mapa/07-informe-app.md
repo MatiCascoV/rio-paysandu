@@ -8,7 +8,7 @@ Rama `mapa-inundacion` · 21/10/2026 · Mobile App Builder. Alcance: `app/` y es
 |---|---|
 | `flutter analyze` | **0 problemas** |
 | `flutter test` (toda la suite) | **190 OK, 0 fallas** (mapa: 74, antes 51 OK + 4 fallas) |
-| `flutter build apk --release` | **OK**, APK de 51,0 MB (igual que antes de los cambios; ver §6) |
+| `flutter build apk --release` | **OK**, APK de 51,0 MB con las 21 capas provisorias (ver §6; con los datos reales, 52,2 MB) |
 | Recursos nombrados desde Dart en el APK release | presentes (mismo control que `app.yml`, ver §6) |
 
 ## 1. Arquitectura (cómo quedó)
@@ -46,12 +46,12 @@ Otro hallazgo de la revisión: la pantalla guardaba los polígonos armados de **
 
 | Caso del contrato | Qué hace la app | Prueba |
 |---|---|---|
-| Rango 4,00–10,50 (66 capas) | Valida orden, paso, nombres `agua/NNNN.json`, bytes y sha256 de las 66. El deslizador va de 3,90 (en su cauce) a 10,50 o a la altura de hoy si es mayor. | `mapa_logica_test`: "el índice del rango del contrato valida con 66 capas", "elección en el rango real…"; `mapa_test`: tres alturas con `fuenteRangoReal()` |
-| `validado: false` | Recuadro ámbar arriba del mapa: **"Mapa aproximado, en prueba: todavía no se comprobó con suficientes crecidas reales. El agua puede llegar más lejos de lo que muestra."** Si los datos son los provisorios, gana el aviso "Datos de prueba… inventada". | "validado: false → aviso visible…" (también comprueba que va antes del mapa y que con `validado: true` no aparece) |
+| Rango 4,00–10,50 (66 capas) | Valida orden, paso, nombres `agua/NNNN.json`, bytes y sha256 de las 66. El deslizador va de 3,90 (el agua no pasa de la zona baja de la costa; nunca "en su cauce", v1.1 §3) a 10,50 o a la altura de hoy si es mayor. | `mapa_logica_test`: "el índice del rango del contrato valida con 66 capas", "elección en el rango real…"; `mapa_test`: tres alturas con `fuenteRangoReal()` |
+| `validado: false` | Sello ámbar en el marco del mapa, arriba del dibujo (`selloMapa`, `textoMapaEnPrueba`): **"Mapa en prueba: el agua puede llegar más lejos de lo que muestra."** Si los datos son los provisorios, gana el sello "Datos de prueba: el agua es inventada. No la uses para decidir nada." El único recuadro ámbar es el del dato de hoy. | "validado: false → sello de mapa en prueba arriba del mapa; el pie siempre" (también comprueba que con `validado: true` no aparece) |
 | sha256 / bytes | Cada archivo se lee solo si pesa lo que dice el índice y su huella coincide; si no, se descarta (capa: se usa la de arriba y se dice; fondo: mapa no disponible; curva: "No se pudo leer el borde medido"). Topes: índice 256 KB, fondo 4 MB, capa y curva 2 MB, total 48 MB, 400 000 puntos por capa. | tests de huella rota de capa, fondo y curva; también en segundo plano |
 | `cero` del índice distinto de "Local" | No dibuja agua: "El mapa usa otra referencia de altura ("Oficial") que la escala de CARU, así que no se dibuja el agua." | "índice en otra escala…" |
 | `cero` de actual.json distinto del mapa | No pinta hoy (como antes) y **tampoco usa los umbrales** (vienen del mismo lector, en la misma escala que actual.json): abre en la capa más baja. | "actual.json en otra escala…" |
-| h < min | "Con 3,90 m el agua queda en su cauce: los puntos muestran hasta dónde podría llegar con un poco más." (el margen se sigue pintando si llega al mapa) | "rango del contrato… 3,85 m" |
+| h < min | "Con esta altura el agua no pasa de la zona baja de la costa: islas y bañados que se mojan con el río normal. Los puntos muestran hasta dónde podría llegar con un poco más." (`textoZonaBaja` + `textoZonaBajaMargen`; el margen se pinta siempre) | "rango del contrato… 3,85 m" |
 | h > max | Capa de `max_m` + "El río supera lo que cubre el mapa (hasta 10,50 m). Se muestra el agua con ese máximo." | "rango del contrato… 10,80 m" |
 | `curvas/` (crecidas reales de Dinagua) | Bloque "Alturas para comparar": botones de nivel de alerta, evacuación y cada crecida del índice (ordenadas por altura). Al tocar una crecida: va a su altura redondeada hacia arriba (y lo dice: "…: 9,12 m. El mapa lo redondea hacia arriba a 9,20 m.") y ofrece el interruptor **"Ver el borde medido en esa crecida"** (apagado por defecto). El contorno se dibuja en trazos, encima del agua del modelo, con su fila en la leyenda. Una referencia con archivo inválido (por ejemplo `bytes: 0`, como el ejemplo del contrato) queda como botón de altura sin contorno. | "crecida real: botón, redondeo dicho y contorno opcional", "curva con la huella rota…", tests de `CurvaMapa` |
 | `pubspec.yaml` | Declara `assets/mapa/`, `assets/mapa/agua/` y **`assets/mapa/curvas/`** (Flutter no entra en subcarpetas y exige que la carpeta exista: va un `.gitkeep` vacío). Un test falla si aparece una carpeta nueva bajo `assets/mapa/` sin declarar. | "pubspec.yaml declara todas las carpetas de assets/mapa/" |
@@ -96,14 +96,14 @@ Los archivos los genera el pipeline (`lector/mapa/`, otro agente). Pasos, desde 
 5. Controlar, desde `app/`:
    - `flutter test test/mapa_logica_test.dart` → el test **"assets/mapa/ es válido"** lee los archivos reales con el mismo código de la app: índice válido, mismo cero que `actual.json`, fondo, las 66 capas sin reemplazo y cada curva. El test de `pubspec.yaml` avisa si apareció una carpeta sin declarar.
    - `flutter analyze`, `flutter test` y `flutter build apk --release`; comparar el tamaño del APK con el de este informe.
-6. En el teléfono: la pestaña tiene que mostrar el recuadro "Mapa aproximado, en prueba" (con `validado: false`) y **no** el de "Datos de prueba". Probar Hoy, − / +, una crecida con su contorno y modo avión.
+6. En el teléfono: la pestaña tiene que mostrar el sello "Mapa en prueba" (con `validado: false`) y **no** el de "Datos de prueba". Probar Hoy, − / +, una crecida con su contorno y modo avión.
 7. Cuando el índice diga `validado: true` (lo decide el pipeline con la revisión externa), el recuadro desaparece solo; el pie "No reemplaza la alerta oficial" queda siempre.
 
 No hace falta tocar código ni `pubspec.yaml` para ningún paso.
 
 ## 6. Build release
 
-`flutter build apk --release` (Flutter 3.47.7, AGP del proyecto): **OK**, 51,0 MB (APK con todas las arquitecturas, firmado con la clave de depuración como en el CI). Antes de los cambios: 51,0 MB. Control de recursos (`aapt2 dump resources` de build-tools 36.0.0, mismo criterio que `app.yml`): `@drawable/ic_notificacion` presente. Dentro del APK están `assets/mapa/indice.json`, `base.json`, las 21 capas provisorias y `curvas/.gitkeep` (la carpeta nueva entra).
+`flutter build apk --release` (Flutter 3.47.7, AGP del proyecto): **OK**, 51,0 MB (APK con todas las arquitecturas, firmado con la clave de depuración como en el CI), **medido con las 21 capas provisorias**. Antes de los cambios: 51,0 MB. Con los datos reales (66 capas, 4,90 MB sin comprimir, ≈ 1,0 MB comprimidas; 06) el último build release medido dio **52,2 MB** (12-retomar.md). Las dos cifras son ciertas para su momento; la vigente es 52,2 MB. No se volvió a medir en la tanda de la revisión de código (la nube no tiene el SDK de Android). Control de recursos (`aapt2 dump resources` de build-tools 36.0.0, mismo criterio que `app.yml`): `@drawable/ic_notificacion` presente. Dentro del APK están `assets/mapa/indice.json`, `base.json`, las 21 capas provisorias y `curvas/.gitkeep` (la carpeta nueva entra).
 
 Con los datos reales el APK crece lo que pesen los archivos: el pipeline topa 600 KB por capa y 20 MB en total; los JSON se comprimen dentro del APK (el pipeline informa `agua_gzip_bytes` en `calibracion.json`).
 
@@ -173,3 +173,22 @@ En `test/mapa_v11_test.dart`, grupo **"margen siempre (v1.1 §4, condición bloq
 1. **Cartógrafo (`pantallas/mapa.dart`):** pasar los nombres al resumen: `nombresSinValidar: [for (final z in _sinValidar?.zonas ?? const <ZonaSinValidar>[]) z.nombre]` en la llamada a `resumenMapa`. Mientras no esté, TalkBack dice el texto fijo del valle del arroyo San Francisco (correcto para los datos v1, que traen una sola zona).
 2. **Datos v1.1 reales** (paso 2 del 12): cuando el pipeline publique `sin_validar.json` y `aisladas`, correr `flutter test test/mapa_logica_test.dart test/mapa_v11_test.dart` sobre los assets nuevos y `flutter build apk --release`.
 3. **Redmi:** ver con el sol y TalkBack la zona baja, el borde de la zona sin validar, las marcas de loma (48 dp) y los puntos del margen encima en 3,50 y 10,50 m.
+
+## Revisión de código (21/10/2026, parte app)
+
+Mobile App Builder. Hallazgos del Code Reviewer sobre la rama, resueltos en `app/` con un test cada uno. Sin commits. No se tocaron `lector/`, `.github/` ni los JSON de `app/assets/mapa/` (sha256).
+
+| # | Qué pasaba | Arreglo | Prueba |
+|---|---|---|---|
+| B1 (bloqueante) | Los assets de hoy no traen `sin_validar` (el pipeline v1.1 no se pudo correr: la red de la nube bloquea IDE, Dinagua y Geofabrik) y la app no mencionaba en ningún lado el valle del arroyo San Francisco Grande (11 §8, condición 3). | Respaldo: sin la zona dibujada, el resumen para TalkBack dice `textoSinValidar` + "Esa zona no está marcada en el dibujo." y la leyenda trae una fila sin muestra (`textoLeyendaSinValidarSinDibujo`). No se dibuja borde. Vale también si el archivo no valida. | `mapa_v11_test`: "sin el archivo (datos de hoy): se nombra igual, sin borde, y el mapa anda" (reemplaza al que pedía "ni fila ni mención"), "textos de la zona sin dibujo…", "con el archivo roto…" |
+| I1 | Entre 10,10 y 10,50 m el margen se recorta en `max_m` y la leyenda seguía diciendo "+50 cm"; en 10,50 la franja tiene ancho 0. | `EleccionAgua.margenRecortado` (altura + margen > `max_m`). En rango: línea de lectura con aviso "El mapa llega hasta 10,50 m: con un poco más de altura, el agua puede pasar los puntos y llegar más lejos de lo que se ve."; la leyenda y el resumen dicen lo mismo. | `mapa_revision_test`: grupo "I1" (10,30, 10,50 y control en 10,00) |
+| I2 | Con la capa de esa altura (y las de arriba) ilegibles, el mapa quedaba casi sin agua y la línea iba sin aviso. | El dibujo se tapa con un recuadro ámbar (`textoDibujoIlegible`) y la línea de la lectura va con aviso. | `mapa_revision_test`: grupo "I2" (agua/1050.json roto con 10,50 y 10,80) |
+| M1 | Si `agua/0400.json` no valida, el repositorio da la de 4,10 y se dibujaba con el estilo de zona baja. | Una capa reemplazada no se dibuja como zona baja; por debajo del mínimo se dice "No se pudo leer el dibujo de la zona baja de la costa." y el margen se sigue pintando. | `mapa_revision_test`: grupo "M1" |
+| M2/M3 | El índice aceptaba `version` ≠ 1, `min_m` que no es múltiplo de `paso_m` y `margen_m` < 0,10. | Se rechazan con motivo. | `mapa_revision_test`: grupo "M2/M3" |
+| M9 | `aCm` redondeaba al más cercano: 5,704 m → 570 cm (menos agua). | `(metros × 100 − 1e-6).ceil()`: hacia arriba sin sumar un centímetro por la coma flotante. | `mapa_revision_test`: grupo "M9" (0 a 20 m de a 1 cm) |
+| M8 | Faltaba la licencia de los datos y la nota de origen completa (13-legal B1, B2, B3). | `app/assets/mapa/LICENSE-DATOS.md` (texto de 13 §3.1; no está en el índice ni cambia ningún sha256; entra al APK porque se declara la carpeta). `textosFuentes` con el texto de 13 §3.3. | `mapa_revision_test`: grupo "M8" |
+| — | El texto de la fila de la línea de hoy estaba armado en la pantalla. | Constantes `textoLeyendaHoy` y `textoLeyendaUltimoDato`. | `mapa_revision_test`: "leyenda: fila de la línea de hoy" |
+
+Tests ajustados (cambio de fondo, no aflojado): en el set de prueba chico (4,00–4,30 m, margen 20 cm) el margen queda recortado desde 4,20 m, así que el anuncio y el nodo de la lectura en 4,30 m suman la línea nueva (`mapa_accesibilidad_test`), y los tests de gestos bajan hasta el mapa antes de arrastrar (la lectura es un renglón más alta) y miden cuánto se movió la página desde ahí.
+
+Pendiente del 13 que no entró en esta tanda (no estaba pedido): `textoFuentesDeslinde` con el Cecoed y la Intendencia (I7), el bloque "Limitaciones" (I3) y el último paso de la tarjeta "Cómo se usa" (I2 del 13).

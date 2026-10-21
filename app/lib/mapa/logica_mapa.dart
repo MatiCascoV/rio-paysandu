@@ -43,12 +43,18 @@ class EleccionAgua {
   /// propio estilo (contrato v1.1 §3).
   final int zonaBajaCm;
 
+  /// true si altura + margen pasa de la capa más alta: la franja de puntos
+  /// quedó recortada en `max_m` (más angosta que el margen, o de ancho 0 en
+  /// el máximo) y el agua puede pasar los puntos. La pantalla lo avisa.
+  final bool margenRecortado;
+
   const EleccionAgua({
     required this.alturaCm,
     required this.situacion,
     required this.margenCm,
     required this.zonaBajaCm,
     this.capaCm,
+    this.margenRecortado = false,
   });
 
   /// El agua dibujada no pasa de la zona baja (altura ≤ `min_m`). Con 3,90 y
@@ -79,5 +85,6 @@ EleccionAgua elegirAgua(int alturaCm, IndiceMapa indice) {
     capaCm: capa,
     margenCm: margen,
     zonaBajaCm: indice.minCm,
+    margenRecortado: conMargen > indice.maxCm,
   );
 }
