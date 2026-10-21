@@ -1,7 +1,9 @@
 # Fase 4: avisos push
 
-Estado: **pasos 2 y 7 hechos** en la rama `fase-4-lector-avisos`, sin merge (17/10/2026). El resto, sin
-empezar.
+Estado: **pasos 2 y 7 hechos** en la rama `fase-4-lector-avisos`, sin merge (17/10/2026). **Paso 3** (prueba
+de entrega en el Redmi) hecho: los push de solo datos llegan, así que el diseño se mantiene. **Paso 4 hecho**
+en la rama `fase-4-app-avisos`, sin merge y sin probar todavía en el teléfono (21/10/2026; detalle y cómo
+probarlo en `docs/fase-4-informe-app.md`). El resto, sin empezar.
 
 Objetivo: que los avisos importantes lleguen al teléfono **con la app cerrada**, en minutos, sin depender de
 que Android deje correr la revisión periódica (los Xiaomi la cortan seguido).
@@ -94,7 +96,7 @@ Hoy el trabajo que procesa contenido de CARU sube commits a `main`, aunque se ni
 | 1 | Crear el proyecto de Firebase "Mi Río UY" con la cuenta de Google del dueño y registrar la app `uy.miriouy.app`. Bajar `google-services.json` (no es secreto, va en el repo). Sin Analytics. | Dueño (con guía) | S |
 | 2 | Margen al bajar en el lector (`margen_bajada_m`) y tests. **Hecho.** | Desarrollo | S |
 | 3 | **Prueba de entrega en el Redmi:** app con `firebase_messaging`, suscrita a un tema de prueba; envío manual desde la consola de Firebase con la app cerrada; medir cuánto tarda y si llega con la batería en modo normal y en ahorro, **con prioridad alta y con prioridad normal**. Decide la fila "Riesgo a probar". | Desarrollo + dueño | M |
-| 4 | App: pestaña **Avisos** nueva (ver arriba). Suscribir y desuscribir los temas según las preferencias. Manejador en segundo plano que baja `actual.json` y arma la notificación. La revisión local `revisarNivel` tiene que respetar **las mismas preferencias y reglas** (urgente solo al subir a alerta o evacuación, resumen como máximo uno por día y nada con río normal), con marcas compartidas con el push para el urgente y para el resumen del día. El texto de cada notificación lo arma la app desde `actual.json`, por ejemplo: título "Río hoy: 5,85 m · Alerta", texto "Bajó 13 cm en 24 h. Abrí la app para ver el dato en tiempo real." Pantalla corta con los ajustes de Xiaomi u otros fabricantes si los avisos no llegan. Tests. | Desarrollo | M |
+| 4 | App: pestaña **Avisos** nueva (ver arriba). Suscribir y desuscribir los temas según las preferencias. Manejador en segundo plano que baja `actual.json` y arma la notificación. La revisión local `revisarNivel` tiene que respetar **las mismas preferencias y reglas** (urgente solo al subir a alerta o evacuación, resumen como máximo uno por día y nada con río normal), con marcas compartidas con el push para el urgente y para el resumen del día. El texto de cada notificación lo arma la app desde `actual.json`, por ejemplo: título "Río hoy: 5,85 m · Alerta", texto "Bajó 13 cm en 24 h. Abrí la app para ver el dato en tiempo real." Pantalla corta con los ajustes de Xiaomi u otros fabricantes si los avisos no llegan. Tests. **Hecho** en `fase-4-app-avisos` (falta probarlo en el Redmi; ver `docs/fase-4-informe-app.md`). | Desarrollo | M |
 | 5 | Mover los datos a la rama `datos` y GitHub Pages a esa rama, sin cortar el servicio (copiar, cambiar Pages, verificar las URLs, recién entonces apuntar el lector). | Desarrollo, con OK del dueño | M |
 | 6 | Identidad federada: pool exclusivo y proveedor de GitHub en Google Cloud, con la condición completa de `docs/fase-4-informe-agente.md` (IDs de repositorio y dueño, `ref == refs/heads/main`, `workflow_ref` de `avisos.yml`, `event_name == workflow_dispatch`, `run_attempt == 1`, `runner_environment == github-hosted`); cuenta de servicio con un rol propio de solo `cloudmessaging.messages.create` y nada más. | Dueño (con guía; necesita permisos de su cuenta) | M |
 | 7 | `lector/avisos.py` (decide urgente y resumen desde el historial de `data/actual.json`) y `avisos.yml` (lo corre y envía por la API HTTP v1 de FCM a los tres temas). Acciones fijadas por SHA, permisos mínimos, entrada `prueba` que envía solo a los temas de prueba. Tests con fixtures. **Hecho** (sin probar contra FCM). | Desarrollo | M |
@@ -120,4 +122,5 @@ Orden: 1 → 2 → 3 (si la prueba falla, se revisa el diseño antes de seguir) 
 - El resumen va con prioridad **normal**, y en los Xiaomi un mensaje normal puede demorarse (horas) hasta que
   el teléfono salga del reposo. Se prueba en el paso 3; si se demora demasiado, se pasa a prioridad alta.
 - El urgente y el resumen pueden llegar juntos (por ejemplo, sube a alerta con la publicación que trae
-  Prefectura). Hay que decidir en el paso 4 si la app muestra las dos notificaciones o solo la urgente.
+  Prefectura). **Decidido en el paso 4:** la app muestra solo el urgente (ya trae la altura) y da por hecho el
+  resumen de ese día.
