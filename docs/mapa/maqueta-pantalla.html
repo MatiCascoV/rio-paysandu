@@ -161,7 +161,7 @@
   <div class="fila" id="oscuro"></div>
 
   <h2>320 dp con letra al 200 %</h2>
-  <p class="intro">Mismo estado de evacuación probando otra altura. El número grande tiene tope (1,4 ×), la pastilla baja de renglón, la grilla pasa a una columna y los avisos crecen sin cortarse.</p>
+  <p class="intro">Mismo estado de evacuación simulando otra altura. El número grande tiene tope (1,4 ×), la pastilla baja de renglón, la grilla pasa a una columna y los avisos crecen sin cortarse.</p>
   <div class="fila" id="grande"></div>
 </div>
 
@@ -266,7 +266,7 @@ function telefono(e, tema, opts = {}) {
     out.push(`<div class="lectura"><div class="cap">${L.cap}</div><div class="num">${L.num}</div>${L.sub ? `<div class="sub">${L.sub}</div>` : ''}${(L.lineas || []).map((x) => `<div class="linea">${x}</div>`).join('')}</div>`);
   } else {
     const [pf, pt] = pas(L.nivel);
-    out.push(`<div class="lectura inv">${L.tit ? `<div class="tit">${I.prueba}${L.tit}</div>` : ''}<div class="cap">Prueba con</div><div class="numFila"><span class="num">${L.num}</span><span class="pastilla" style="background:${pf};color:${pt};--fondoIc:${pf}">${nivelIcono[L.nivel]}${nombre[L.nivel].toUpperCase()}</span>${L.deRef ? '<span class="ref">(de referencia)</span>' : ''}</div>${(L.lineas || []).map((x) => `<div class="linea">${x}</div>`).join('')}${L.boton ? `<div class="btn btnBorde">${I.volver}${L.boton}</div>` : ''}</div>`);
+    out.push(`<div class="lectura inv">${L.tit ? `<div class="tit">${I.prueba}${L.tit}</div>` : ''}<div class="cap">Simulación con</div><div class="numFila"><span class="num">${L.num}</span><span class="pastilla" style="background:${pf};color:${pt};--fondoIc:${pf}">${nivelIcono[L.nivel]}${nombre[L.nivel].toUpperCase()}</span>${L.deRef ? '<span class="ref">(de referencia)</span>' : ''}</div>${(L.lineas || []).map((x) => `<div class="linea">${x}</div>`).join('')}${L.boton ? `<div class="btn btnBorde">${I.volver}${L.boton}</div>` : ''}</div>`);
   }
   // 5. Marco del mapa
   out.push(`<div class="marco">${e.sello ? `<div class="sello">${I.obra}<div>Mapa en prueba: el agua puede llegar más lejos de lo que muestra.</div></div>` : ''}<div class="mapa">${mapaSvg(e.mapa)}<span class="relleno">RELLENO · DIBUJO DEL CARTÓGRAFO (08)</span><div class="zoom"><div>+</div><div>−</div></div><div class="atrib">© OpenStreetMap · IDE Uruguay · Dinagua</div></div><div class="pieMarco">${I.info}<div>Aproximado. No reemplaza la alerta oficial.</div></div></div>`);
@@ -319,7 +319,7 @@ const ESTADOS = [
     botones: [['Hoy', '5,70 m', true], ['Pronóstico CARU', 'hasta 6,10 m · 18/10', false], ...umbrales(), ...crec()],
   },
   {
-    titulo: '3 · Evacuación, probando una crecida',
+    titulo: '3 · Evacuación, simulando una crecida',
     nota: 'La lectura se invierte: "No es el río de hoy". El tinte sigue siendo el de HOY. La línea gruesa muestra el agua de hoy; los trazos, el borde medido por Dinagua.',
     tinte: 'evac', franja: { t: 'Río hoy: 7,05 m', n: 'evac', l2: 'Hoy 15:00 · CARU' },
     lectura: { modo: 'prueba', tit: 'No es el río de hoy', num: '9,20 m', nivel: 'evac', lineas: ['2,10 m más que hoy.', 'Crecida de dic. 2015: 9,12 m. El mapa lo redondea hacia arriba a 9,20 m.'], boton: 'Volver a hoy' },
@@ -328,7 +328,7 @@ const ESTADOS = [
   },
   {
     titulo: '4 · Sin dato + mapa en prueba',
-    nota: 'Tinte gris. Un recuadro (el del dato) y el sello del mapa: nunca dos recuadros. Abre en el nivel de alerta, como prueba; no hay botón Hoy ni "Volver a hoy". Umbrales de referencia.',
+    nota: 'Tinte gris. Un recuadro (el del dato) y el sello del mapa: nunca dos recuadros. Abre en el nivel de alerta, como simulación; no hay botón Hoy ni "Volver a hoy". Umbrales de referencia.',
     tinte: 'sinDato', franja: { t: 'Río hoy: sin dato', n: 'sinDato' },
     recuadro: { i: I.ayuda, t: 'No hay un dato confiable de hoy. Esto no quiere decir que el río esté bajo. Igual podés probar alturas.' },
     lectura: { modo: 'prueba', num: '4,40 m', nivel: 'alerta', deRef: true, lineas: ['No hay dato del río de hoy.'] },
@@ -342,7 +342,7 @@ function columna(e, tema, opts) {
 }
 document.getElementById('claro').innerHTML = ESTADOS.map((e) => columna(e, 'claro')).join('');
 document.getElementById('oscuro').innerHTML = ESTADOS.map((e) => columna(e, 'oscuro')).join('');
-const grande = { ...ESTADOS[2], titulo: '3 · Evacuación probando otra altura · 320 dp · letra 200 %', nota: 'Grilla en una columna. El mapa no se achica por la letra (alto entre 240 y 320 dp).' };
+const grande = { ...ESTADOS[2], titulo: '3 · Evacuación simulando otra altura · 320 dp · letra 200 %', nota: 'Grilla en una columna. El mapa no se achica por la letra (alto entre 240 y 320 dp).' };
 document.getElementById('grande').innerHTML = columna(grande, 'claro', { w: 320, s: 2 }) + columna(grande, 'oscuro', { w: 320, s: 2 });
 </script>
 </body>

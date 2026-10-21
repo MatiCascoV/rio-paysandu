@@ -242,7 +242,14 @@ class _PaginaPrincipalState extends State<PaginaPrincipal> with WidgetsBindingOb
       ),
       Pestana.grafico: PantallaGrafico(datos: datos),
       Pestana.mapa: _visitadas.contains(Pestana.mapa)
-          ? PantallaMapa(datos: datos, config: widget.config, repositorio: _repositorioMapa)
+          ? PantallaMapa(
+              datos: datos,
+              config: widget.config,
+              repositorio: _repositorioMapa,
+              prefs: widget.prefs,
+              alVerQueHacer: _irAQueHacer,
+              activa: _pestana == Pestana.mapa,
+            )
           : const SizedBox.shrink(),
       Pestana.queHacer: PantallaQueHacer(config: widget.config, controlador: _scrollQueHacer),
       Pestana.avisos: PantallaAjustes(
@@ -253,13 +260,15 @@ class _PaginaPrincipalState extends State<PaginaPrincipal> with WidgetsBindingOb
         alCambiar: () => _cargar(),
       ),
     };
-    // En Inicio la pantalla se tiñe con el color del nivel, barra de arriba incluida.
+    // En Inicio y en Mapa la pantalla se tiñe con el color del nivel de hoy,
+    // barra de arriba incluida (en Mapa, nunca con el de la altura simulada).
     final enInicio = _pestana == Pestana.inicio;
-    final tinte = enInicio ? tinteInicio(datos, widget.config, DateTime.now()) : null;
+    final tenida = enInicio || _pestana == Pestana.mapa;
+    final tinte = tenida ? tinteInicio(datos, widget.config, DateTime.now()) : null;
     return Scaffold(
       appBar: AppBar(
         backgroundColor: tinte,
-        shape: enInicio ? const Border() : null,
+        shape: tenida ? const Border() : null,
         title: const FittedBox(fit: BoxFit.scaleDown, child: Text('Río Uruguay en Paysandú')),
         actions: [
           if (widget.alCambiarTema != null)
@@ -283,7 +292,11 @@ class _PaginaPrincipalState extends State<PaginaPrincipal> with WidgetsBindingOb
         ],
       ),
       body: DecoratedBox(
-        decoration: BoxDecoration(gradient: tinte == null ? null : degradeInicio(tinte)),
+        decoration: BoxDecoration(gradient: tinte == null
+              ? null
+              : enInicio
+                  ? degradeInicio(tinte)
+                  : degradeMapa(tinte)),
         child: SafeArea(
           // En pantallas anchas (tablet, apaisado) el contenido no se estira de más.
           child: Center(

@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../enlaces.dart';
+import '../modelos.dart';
 import '../tema.dart';
+import '../textos.dart';
 
 /// Abre una página o PDF de un sitio permitido fuera de la app (los teléfonos
 /// van por llamar()). Si no se puede, lo dice.
@@ -68,3 +70,26 @@ const textoDeslinde = 'Esta app es una ayuda a la comunidad. No tiene vínculo c
 
 /// Deslinde corto, para el pie de Inicio (lleva a "Qué hacer", donde está completo).
 const textoDeslindeCorto = 'App comunitaria, sin vínculo oficial. No reemplaza la alerta oficial';
+
+/// "Ver qué hacer" de ancho completo, en el color del nivel.
+class BotonQueHacer extends StatelessWidget {
+  final Nivel nivel;
+  final VoidCallback? alTocar;
+
+  const BotonQueHacer({super.key, required this.nivel, required this.alTocar});
+
+  @override
+  Widget build(BuildContext context) {
+    final (fondo, texto) = ColoresNivel.boton(nivel);
+    return FilledButton(
+      style: FilledButton.styleFrom(
+        backgroundColor: fondo,
+        foregroundColor: texto,
+        minimumSize: const Size.fromHeight(56),
+        shape: const StadiumBorder(),
+      ),
+      onPressed: alTocar,
+      child: const Text('Ver qué hacer'),
+    );
+  }
+}

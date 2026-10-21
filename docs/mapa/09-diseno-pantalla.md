@@ -33,7 +33,7 @@ Qué responde cada bloque, en el orden en que lo lee la persona y TalkBack:
 | 1 | **Franja de hoy** | ¿Cómo está el río hoy? | siempre |
 | 2 | **Recuadro ámbar** (uno solo) | ¿Hay algo raro con el dato de hoy? | solo si hay problema |
 | 3 | **Tarjeta "Cómo se usa"** | ¿Qué es esto? | solo la primera vez |
-| 4 | **Lectura** (normal o invertida) | ¿Qué altura estoy mirando? ¿Es hoy o una prueba? | siempre |
+| 4 | **Lectura** (normal o invertida) | ¿Qué altura estoy mirando? ¿Es hoy o una simulación? | siempre |
 | 5 | **Marco del mapa**: sello de calidad + mapa + pie | ¿Hasta dónde llega el agua? ¿Cuánto le creo? | siempre |
 | 6 | **"Ver qué hacer"** en el color del nivel | ¿Qué hago? | solo si **hoy** es alerta o evacuación |
 | 7 | **Probar otra altura**: − / deslizador / + y marcas | ¿Cómo pruebo otra altura? | siempre (salvo mapa no disponible) |
@@ -101,19 +101,19 @@ Hoy el río está en 5,63 m. El mapa lo redondea hacia arriba.   (bodyMedium; so
 ```
 No lleva pastilla de nivel: el nivel de hoy ya está en la franja.
 
-**Modo prueba** (cualquier otra altura, o no hay hoy): panel **invertido**, radio 20, relleno 16.
+**Modo simulación** (cualquier otra altura, o no hay hoy): panel **invertido**, radio 20, relleno 16.
 - Claro: fondo `Colores.tinta` `#0B2A3F`, texto `Colores.fondo` `#EEF4F8` (13,4:1).
 - Oscuro: fondo `#EAF2F8`, texto `#0E1A24` (15,6:1).
 
 ```
 ⚠ No es el río de hoy                   (titleMedium 18, peso 800, ícono science/biotech 24)
-Prueba con
+Simulación con
 9,20 m   [■ EVACUACIÓN]                  (40 peso 800 + pastilla de nivel)
 3,57 m más que hoy.                      (bodyLarge)
 [ ↶ Volver a hoy ]                       (OutlinedButton 56 dp, ancho completo, borde y texto del color del panel)
 ```
 - Pastilla: relleno `estiloNivel(n).fondo`, texto `estiloNivel(n).texto` (≥ 5:1), ícono + palabra en mayúsculas, radio 999, alto 32, relleno 12 horizontal. Si los umbrales no están validados, a la derecha de la pastilla y fuera de ella: `(de referencia)`.
-- Sin dato de hoy: título `Prueba con` sin "No es el río de hoy", línea `No hay dato del río de hoy.` y **sin** botón.
+- Sin dato de hoy: rótulo `Simulación con` sin "No es el río de hoy", línea `No hay dato del río de hoy.` y **sin** botón.
 - Dato viejo: título `No es el último dato`, botón `Volver al último dato`, comparación `… más que el último dato.`
 
 **Líneas adicionales** (debajo del número, en cualquiera de los dos modos, en este orden):
@@ -127,7 +127,7 @@ Prueba con
 | Capa ilegible | `No se pudo leer el dibujo del agua para esta altura.` | bodyLarge |
 
 - El número usa `MediaQuery.withClampedTextScaling(maxScaleFactor: 1.4)` + `FittedBox(scaleDown)`: con letra al 200 % no se corta ni empuja la pastilla fuera (la pastilla baja de renglón: `Wrap`).
-- TalkBack: un nodo `liveRegion`. Modo hoy: `Altura de hoy en el mapa: 5,70 metros.` Modo prueba: `No es el río de hoy. Prueba con 9,20 metros, nivel Evacuación. 3,57 metros más que hoy.` El botón `Volver a hoy` es nodo aparte.
+- TalkBack: un nodo `liveRegion`. Modo hoy: `Altura de hoy en el mapa: 5,70 metros.` Modo simulación: `No es el río de hoy. Simulación con 9,20 metros, nivel Evacuación. 3,57 metros más que hoy.` El botón `Volver a hoy` es nodo aparte.
 
 ### 3.5 Marco del mapa (lugar para el dibujo del cartógrafo)
 
@@ -192,7 +192,7 @@ Widget nuevo `LeyendaMapa` que **no conoce colores**: recibe una lista de entrad
 | Cauce | `Río y arroyos, en su cauce` | siempre |
 | Agua | `Hasta dónde llegaría el agua con la altura elegida (rayado)` | siempre |
 | Margen | `Puede llegar un poco más: hasta 50 cm más de altura (puntos)` (50 cm = `formatoDiferencia(indice.margenM)`) | siempre |
-| Borde de hoy | `Hasta dónde llega el agua con el río de hoy (línea gruesa)` | solo en modo prueba y si el cartógrafo dibuja esa línea |
+| Borde de hoy | `Hasta dónde llega el agua con el río de hoy (línea gruesa)` | solo en modo simulación y si el cartógrafo dibuja esa línea |
 | Borde medido | `Borde medido en esa crecida, según Dinagua (trazos)` | solo con el interruptor prendido |
 
 - La entrada "Mi casa" queda para cuando exista.
@@ -265,11 +265,11 @@ Función pura testeable: `avisoHoyMapa(HoyMapa hoy, DateTime ahora) → ({IconDa
 | **Normal** | verde | `Río hoy: 3,62 m ✓ Normal` | — | modo hoy | según índice | — | sí |
 | **Alerta** | naranja | `Río hoy: 5,63 m ⚠ Alerta` | — | modo hoy | según índice | **sí** | sí |
 | **Evacuación** | rojo | `Río hoy: 7,05 m ■ Evacuación` | — | modo hoy (abre en hoy) | según índice | **sí** | sí |
-| **Probando otra altura** | el de **hoy** | igual | igual | **invertida** + `Volver a hoy` | igual | si hoy es grave | sí (no marcado) |
-| **Sin dato** | gris | `Río hoy: sin dato` | #3 (o #2) | invertida, `Prueba con` (abre en alerta) | según índice | — | **no** |
+| **Simulando otra altura** | el de **hoy** | igual | igual | **invertida** + `Volver a hoy` | igual | si hoy es grave | sí (no marcado) |
+| **Sin dato** | gris | `Río hoy: sin dato` | #3 (o #2) | invertida, `Simulación con` (abre en alerta) | según índice | — | **no** |
 | **Dato viejo** | gris | `Último dato: …` | #4 | modo hoy con rótulo `Altura del último dato en el mapa` | según índice | si el nivel del último dato es grave | `Último dato` |
 | **Sin conexión, dato fresco** | del nivel | `Último dato: …` + renglón `wifi_off` | — | modo hoy | según índice | según nivel | `Último dato` |
-| **Otra referencia (cero)** | gris | `Río hoy: no se puede pintar` | #1 | invertida, `Prueba con` (abre en la capa más baja) | según índice | — | no |
+| **Otra referencia (cero)** | gris | `Río hoy: no se puede pintar` | #1 | invertida, `Simulación con` (abre en la capa más baja) | según índice | — | no |
 | **Río en cauce** (altura < mínimo) | el de hoy | igual | igual | sin pastilla + línea de cauce | igual | igual | igual |
 | **Río sobre el máximo** | el de hoy | igual | igual | número real (10,80) + línea `El mapa llega hasta 10,50 m…` con ícono | igual | casi seguro sí | sí |
 | **Mapa en prueba** (`validado: false`) | — | — | — | — | `Mapa en prueba: …` | — | — |
@@ -280,7 +280,7 @@ Función pura testeable: `avisoHoyMapa(HoyMapa hoy, DateTime ahora) → ({IconDa
 
 Notas:
 - "Preparando el mapa" y "no disponible": hoy la pantalla entera se reemplaza por el texto. Propuesta: mantener la franja de hoy arriba y poner el texto en lugar del marco (la persona igual ve cómo está el río). Es un cambio chico de `build`.
-- **Al volver a la pestaña** (venir de otra), si la persona había elegido otra altura, se vuelve a hoy sin anuncio, y se apaga el borde medido. Evita que alguien vuelva días después y vea una prueba creyendo que es el río.
+- **Al volver a la pestaña** (venir de otra), si la persona había elegido otra altura, se vuelve a hoy sin anuncio, y se apaga el borde medido. Evita que alguien vuelva días después y vea una simulación creyendo que es el río.
 - **Abre en hoy también en crecida** (03 §6 proponía abrir en el pronóstico; ver decisión en §9).
 
 ---
@@ -334,10 +334,10 @@ Anuncios (`SemanticsService.sendAnnouncement`) solo al soltar el deslizador o to
 
 ## 9. Lo que tenés que decidir
 
-1. **¿Abrir en hoy o en el pronóstico durante una crecida?** 03 §6 proponía abrir en el pronóstico de CARU si es mayor que hoy. **Recomiendo abrir siempre en hoy** y dejar `Pronóstico CARU` como primer botón después de `Hoy`: abrir en una prueba hace que lo primero que ve alguien en plena crecida no sea el río real, y la línea "borde de hoy" todavía no está dibujada para comparar.
+1. **¿Abrir en hoy o en el pronóstico durante una crecida?** 03 §6 proponía abrir en el pronóstico de CARU si es mayor que hoy. **Recomiendo abrir siempre en hoy** y dejar `Pronóstico CARU` como primer botón después de `Hoy`: abrir en una simulación hace que lo primero que ve alguien en plena crecida no sea el río real, y la línea "borde de hoy" todavía no está dibujada para comparar.
 2. **Enlaces en "Ver fuentes".** Para abrir openstreetmap.org, gub.uy y la IDE hay que agregarlos a `enlaces_permitidos` de `assets/config.json`. Recomiendo la primera versión **solo con texto** (sin enlaces) y sumarlos después.
 3. **Zonas en texto** ("el agua llega a: Costanera, Puerto…"). Con los datos de hoy (`lugares` son puntos, no barrios) la lista saldría incompleta y un barrio ausente se leería como "no le llega": **riesgo de falsa tranquilidad**. Recomiendo esperar a que el pipeline publique, por capa, qué barrios toca cualquier parte del agua o del margen. Mientras, la descripción para TalkBack se queda como está.
-4. **Palabra "prueba".** El panel invertido dice `No es el río de hoy` / `Prueba con 9,20 m`. Alternativa: `Simulación con 9,20 m`. Recomiendo "prueba" (más llana); vale probarlo con 2–3 vecinos mayores.
+4. **Palabra para otra altura.** ~~"Prueba"~~ → el usuario eligió **"Simulación"**: `No es el río de hoy` / `Simulación con 9,20 m`. Vale probarlo con 2–3 vecinos mayores.
 
 ---
 
@@ -353,7 +353,7 @@ Para no pisar `mapa.dart`, los widgets nuevos van en un archivo aparte; `mapa.da
 | `avisoHoyMapa(HoyMapa, DateTime)` | Prioridad de §4 (reemplaza `_aviso`). Pura. |
 | `selloMapa(IndiceMapa)` | Provisorio > en prueba > nada. Pura. |
 | `FranjaHoyMapa` | Reemplaza `_FranjaHoy`; agrega el renglón `wifi_off` y el caso cero. |
-| `LecturaMapa` | Reemplaza `_Lectura`. Parámetro `modo` (hoy / prueba) calculado afuera; panel invertido; pastilla; líneas de §3.4; `alVolver` + texto del botón. |
+| `LecturaMapa` | Reemplaza `_Lectura`. Parámetro `modo` (hoy / simulación) calculado afuera; panel invertido; pastilla; líneas de §3.4; `alVolver` + texto del botón. |
 | `PastillaNivel` | Ícono + palabra sobre `EstiloNivel.fondo`. |
 | `MarcoMapa` | `child` (el mapa del cartógrafo) + sello + pie. Recibe el alto. |
 | `ControlAltura` | Reemplaza `_control` y `_BotonPaso`: encabezado, línea "Altura elegida", − / deslizador / +, marcas (`CustomPaint` debajo del `Slider` con las fracciones de los umbrales) y `Wrap` de textos. Callbacks `alCambiar(cm)` y `alSoltar()`. |
@@ -390,7 +390,7 @@ Para no pisar `mapa.dart`, los widgets nuevos van en un archivo aparte; `mapa.da
 
 ### Pruebas (`app/test/mapa_test.dart` y nuevas)
 
-- Ajustar los textos que cambian: `Se muestra el agua con …` → `Altura de hoy en el mapa` / `Prueba con` + número; `No es el río de hoy: es una prueba con 4,30 m (10 cm más que hoy)` → `No es el río de hoy` + `10 cm más que hoy.`; `Río hoy: sin dato confiable` → `Río hoy: sin dato`; textos de recuadros nuevos; `textoMapaEnPrueba` sigue apareciendo **antes** del mapa (el sello está arriba del mapa: la prueba de 07 vale tal cual).
+- Ajustar los textos que cambian: `Se muestra el agua con …` → `Altura de hoy en el mapa` / `Simulación con` + número; `No es el río de hoy: es una prueba con 4,30 m (10 cm más que hoy)` → `No es el río de hoy` + `10 cm más que hoy.`; `Río hoy: sin dato confiable` → `Río hoy: sin dato`; textos de recuadros nuevos; `textoMapaEnPrueba` sigue apareciendo **antes** del mapa (el sello está arriba del mapa: la prueba de 07 vale tal cual).
 - Nuevas: prioridad del recuadro (tabla §4, un caso por fila y combinaciones: sin dato + en prueba muestra recuadro **y** sello, nunca dos recuadros); botón Hoy y Pronóstico (aparece / no aparece); grilla 1 vs 2 columnas; "Cómo se usa" se muestra una vez y se guarda; al volver a la pestaña vuelve a hoy; vibración solo al cruzar umbral (`SystemChannels.platform` mock); ningún texto de la pantalla contiene "a salvo", "seguro", "zona segura", "no se inunda" en todos los estados; tinte de la barra en Mapa = tinte de Inicio; panel invertido con contraste ≥ 7:1 en los dos modos; 320 dp × 200 % sin desbordes en todos los estados de §5.
 
 ## Decisiones del usuario (21/10/2026)
@@ -399,3 +399,35 @@ Para no pisar `mapa.dart`, los widgets nuevos van en un archivo aparte; `mapa.da
 2. "Ver fuentes": **solo texto**, sin enlaces (no se toca `enlaces_permitidos`).
 3. Lista de zonas o barrios en texto: **se espera** a que el pipeline publique qué barrios toca cada altura.
 4. Palabra para otra altura: **"Simulación"** (no "Prueba"). Ej.: "No es el río de hoy · Simulación con 9,20 m". Cambiar en todos los textos y tests que la usen.
+
+## Implementado (21/10/2026)
+
+Sin commit. Archivos: `app/lib/pantallas/mapa_partes.dart` (nuevo), `mapa.dart` (solo el armado de la pantalla y la lógica de lectura/alturas; el dibujo del cartógrafo quedó igual), `comunes.dart` (`BotonQueHacer`, sin cambios de aspecto), `inicio.dart` (usa `BotonQueHacer`; `degradeMapa`), `main.dart` (tinte en Mapa; `prefs`, `alVerQueHacer`, `activa`), `test/mapa_test.dart`. No se tocó `estilo_mapa.dart`, `lector/`, `data/` ni `.github/`.
+
+Controles: `flutter analyze` sin problemas · `flutter test` **202 OK** (mapa: 49) · `flutter build apk --release` OK, 51,4 MB.
+
+**Quedó como dice el diseño**
+- Orden de §2; tinte y barra del nivel de **hoy** también en Mapa (degradé corto), nunca el de la altura simulada.
+- Un solo recuadro (`avisoHoyMapa`, prioridad de §4) + sello de calidad pegado arriba del mapa (`selloMapa`); "sin conexión" con dato fresco es un renglón de la franja.
+- Lectura en dos modos: hoy (sobre el tinte) y **Simulación** (panel invertido, 13,4:1 / 15,6:1): "No es el río de hoy" / "Simulación con" / número / pastilla / "10 cm más que hoy." / "Volver a hoy". Variantes de último dato, sin dato y otra referencia. Abre en hoy (decisión 1).
+- Cauce, sobre el máximo (con ícono), crecida redondeada y capa reemplazada como renglones de la lectura.
+- Marco del mapa: sello arriba, mapa de 240–320 dp (40 % de la pantalla), pie "Aproximado. No reemplaza la alerta oficial." pegado abajo.
+- "Ver qué hacer" en el color del nivel solo si hoy es alerta o evacuación.
+- Control: encabezado, "Altura elegida", − / deslizador / + de 56 dp, marcas de los umbrales dibujadas sobre la pista (`PistaConMarcas`) y su texto en renglón aparte; TalkBack dice "4,20 metros, nivel Alerta"; vibración solo al soltar o tocar si cruzó un umbral.
+- Grilla "Alturas para comparar" de dos renglones: Hoy / Último dato, Pronóstico CARU (si vigente y mismo cero), alerta, evacuación y crecidas; 2 columnas si `ancho / letra ≥ 300`, si no 1; elegido con relleno y tilde.
+- Leyenda "Qué muestra el mapa" con las muestras del cartógrafo (08 §6) y la palabra del dibujo: "(rayado)", "(borde de puntos)", "(trazos)".
+- "Cómo se usa" la primera vez (se guarda en `mapa_como_se_usa_visto`) y en hoja desde el pie; "Ver fuentes" en hoja, **solo texto** (decisión 2).
+- Al volver a la pestaña, una simulación vuelve a hoy y se apaga el borde medido.
+- Pruebas nuevas: prioridad de avisos, nunca dos recuadros, Hoy/Pronóstico, columnas, vibración, "Cómo se usa", fuentes, vuelta a hoy, tinte igual a Inicio, contraste del panel, "Ver qué hacer" solo con hoy grave, palabras prohibidas en 7 estados y simulando, 320 dp × 130/200 % en 6 estados, claro y oscuro.
+
+**Cambios respecto del diseño**
+- Con nivel **Normal** la simulación no lleva pastilla (sería un tilde verde junto a una altura, contra la regla 1). Solo Atención, Alerta y Evacuación.
+- El texto "(de referencia)" va al lado de la pastilla y baja de renglón con letra grande.
+
+**No quedó (pendiente)**
+- Fila de leyenda y línea "Hasta dónde llega el agua con el río de hoy": el dibujo no existe en `estilo_mapa.dart` (08 §6). Es del cartógrafo.
+- "Preparando el mapa" y "Mapa no disponible" siguen ocupando toda la pantalla (sin la franja de hoy arriba, §5): necesita el índice para calcular "hoy" y se dejó como estaba.
+- Zonas en texto (decisión 3), "Mi casa" y enlaces en fuentes (decisión 2): para más adelante.
+- Probar en el Redmi y con 2–3 vecinos mayores la palabra "Simulación" y el panel invertido.
+
+Capturas (claro y oscuro: normal con "Cómo se usa", alerta, evacuación con simulación de una crecida y su borde, sin dato, 320 dp con letra al 200 %): carpeta `capturas-pantalla` del scratchpad de la sesión. El test temporal de capturas no quedó en el repo.

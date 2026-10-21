@@ -33,6 +33,15 @@ Gradient degradeInicio(Color tinte) => LinearGradient(
       stops: const [0, 0.18, 0.62],
     );
 
+/// Fondo de la pestaña Mapa: el mismo tinte que Inicio, pero se funde antes
+/// (el mapa es opaco y abajo hay muchos controles).
+Gradient degradeMapa(Color tinte) => LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [tinte, tinte, Colores.fondo],
+      stops: const [0, 0.10, 0.34],
+    );
+
 /// Qué parte del bloque de la altura cubre el agua: la altura sobre la de
 /// evacuación (con un mínimo, para que siempre se vea algo de agua).
 double fraccionAgua({required double? alturaM, required Umbrales? umbrales, required bool sinNivel}) {
@@ -229,7 +238,7 @@ class PantallaInicio extends StatelessWidget {
       // fuera de la primera pantalla en un celular chico con letra grande.
       if (botonArriba) ...[
         const SizedBox(height: 14),
-        _BotonQueHacer(nivel: nivel, alTocar: alVerQueHacer),
+        BotonQueHacer(nivel: nivel, alTocar: alVerQueHacer),
       ],
 
       // Si el dato es viejo se dice antes del número, para que no se lea como actual.
@@ -318,7 +327,7 @@ class PantallaInicio extends StatelessWidget {
       if (esGrave) ...[
         if (!botonArriba) ...[
           const SizedBox(height: 16),
-          _BotonQueHacer(nivel: nivel, alTocar: alVerQueHacer),
+          BotonQueHacer(nivel: nivel, alTocar: alVerQueHacer),
         ],
         const SizedBox(height: 10),
         Text('Medido en el puerto: no es la altura del agua en tu calle.', style: apoyo, textAlign: TextAlign.center),
@@ -455,29 +464,6 @@ class _BloqueAltura extends StatelessWidget {
         ),
         Padding(padding: const EdgeInsets.only(top: 4, bottom: aire), child: child),
       ],
-    );
-  }
-}
-
-/// "Ver qué hacer" de ancho completo, en el color del nivel.
-class _BotonQueHacer extends StatelessWidget {
-  final Nivel nivel;
-  final VoidCallback? alTocar;
-
-  const _BotonQueHacer({required this.nivel, required this.alTocar});
-
-  @override
-  Widget build(BuildContext context) {
-    final (fondo, texto) = ColoresNivel.boton(nivel);
-    return FilledButton(
-      style: FilledButton.styleFrom(
-        backgroundColor: fondo,
-        foregroundColor: texto,
-        minimumSize: const Size.fromHeight(56),
-        shape: const StadiumBorder(),
-      ),
-      onPressed: alTocar,
-      child: const Text('Ver qué hacer'),
     );
   }
 }

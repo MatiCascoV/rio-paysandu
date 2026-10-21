@@ -2,16 +2,18 @@
 ///
 /// Abre en la altura de hoy (la misma de Inicio y Gráfico, de actual.json),
 /// redondeada hacia arriba a 10 cm. Con el deslizador o los botones − / + se
-/// prueban otras alturas. Versión funcional: el diseño fino viene después
-/// (docs/mapa/03-diseno-visual.md).
+/// prueban otras alturas (simulación). Diseño de la pantalla:
+/// docs/mapa/09-diseno-pantalla.md; dibujo: docs/mapa/08-cartografia.md.
 library;
 
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../datos.dart';
 import '../mapa/estilo_mapa.dart';
@@ -22,86 +24,38 @@ import '../modelos.dart';
 import '../tema.dart';
 import '../textos.dart';
 import 'comunes.dart';
+import 'mapa_partes.dart';
 
-/// Atribución que va siempre a la vista sobre el mapa.
-const textoAtribucion = '© OpenStreetMap · IDE Uruguay · Dinagua';
-
-/// Aviso corto que va siempre debajo del mapa.
-const textoAvisoMapa = 'Aproximado. No reemplaza la alerta oficial.';
-
-const textoMapaNoDisponible = 'El mapa todavía no está disponible';
-
-/// Aviso cuando el índice dice `validado: false` (el caso de los datos reales
-/// hasta que se comparen con crecidas medidas y los revise alguien de afuera).
-const textoMapaEnPrueba =
-    'Mapa aproximado, en prueba: todavía no se comprobó con suficientes crecidas reales. '
-    'El agua puede llegar más lejos de lo que muestra.';
-
-/// Aviso cuando los archivos son los provisorios (agua inventada).
-const textoMapaProvisorio = 'Datos de prueba: el agua de este mapa es inventada. No la uses para decidir nada.';
-
-/// Alto del mapa en la pantalla.
-const altoMapa = 320.0;
-
-/// La altura del río que el mapa puede usar como "hoy".
-class HoyMapa {
-  /// null si no hay un dato que se pueda pintar (ver [motivo]).
-  final Lectura? lectura;
-  final Nivel nivel;
-  final bool viejo;
-  final bool sinConexion;
-
-  /// Por qué no hay "hoy": 'sin_dato' o 'cero' (el mapa usa otra referencia).
-  final String? motivo;
-
-  /// Avisos del lector que conviene repetir (por ejemplo dato_a_verificar).
-  final List<String> avisos;
-
-  const HoyMapa({
-    this.lectura,
-    this.nivel = Nivel.sinDato,
-    this.viejo = false,
-    this.sinConexion = false,
-    this.motivo,
-    this.avisos = const [],
-  });
-
-  bool get hay => lectura != null;
-}
-
-/// Decide qué altura de hoy se puede pintar, con los mismos criterios que
-/// Inicio: nivel vigente, dato viejo, sin conexión, y además que el mapa y
-/// actual.json usen el mismo cero.
-HoyMapa hoyParaMapa(Datos? datos, Config config, IndiceMapa indice, DateTime ahora) {
-  final actual = datos?.actual;
-  final altura = actual?.altura;
-  final sinConexion = datos?.sinConexion ?? false;
-  if (actual == null || altura == null) return HoyMapa(sinConexion: sinConexion, motivo: 'sin_dato');
-  // Misma regla que nivelVigente (dato muy viejo o posterior a "generado"),
-  // aunque el lector no haya podido calcular el nivel.
-  final usable =
-      Actual(altura: altura, generado: actual.generado, nivel: Nivel.normal).nivelVigente(ahora, config.horasSinDato) !=
-      Nivel.sinDato;
-  if (!usable) return HoyMapa(sinConexion: sinConexion, motivo: 'sin_dato');
-  if (actual.cero != indice.cero) return HoyMapa(sinConexion: sinConexion, motivo: 'cero');
-  return HoyMapa(
-    lectura: altura,
-    nivel: actual.nivelVigente(ahora, config.horasSinDato),
-    viejo: ahora.difference(altura.fecha).inMinutes / 60 > config.horasAvisoDatoViejo,
-    sinConexion: sinConexion,
-    avisos: actual.avisos,
-  );
-}
+export 'mapa_partes.dart';
 
 class PantallaMapa extends StatefulWidget {
   final Datos? datos;
   final Config config;
   final RepositorioMapa repositorio;
 
+  /// Para recordar que ya se vio "Cómo se usa". Sin prefs no se muestra la tarjeta.
+  final SharedPreferences? prefs;
+
+  /// Lleva a "Qué hacer" (en alerta o evacuación de hoy).
+  final VoidCallback? alVerQueHacer;
+
+  /// false mientras la pestaña no está a la vista. Al volver a ella, si se
+  /// estaba simulando otra altura, el mapa vuelve a hoy.
+  final bool activa;
+
   /// Solo para pruebas: permite fijar la hora actual.
   final DateTime? ahora;
 
-  const PantallaMapa({super.key, required this.datos, required this.config, required this.repositorio, this.ahora});
+  const PantallaMapa({
+    super.key,
+    required this.datos,
+    required this.config,
+    required this.repositorio,
+    this.prefs,
+    this.alVerQueHacer,
+    this.activa = true,
+    this.ahora,
+  });
 
   @override
   State<PantallaMapa> createState() => _PantallaMapaState();
@@ -152,12 +106,23 @@ class _PantallaMapaState extends State<PantallaMapa> {
   List<Polyline> _cursos = const [];
   List<Rotulo> _candidatos = const [];
 
+  /// Altura al empezar a arrastrar (para vibrar si al soltar cruzó un umbral).
+  int? _cmAlEmpezar;
+
+  /// La tarjeta "Cómo se usa" de la primera vez.
+  late bool _comoSeUsa = widget.prefs != null && !(widget.prefs!.getBool(claveComoSeUsa) ?? false);
+
   DateTime get _ahora => widget.ahora ?? DateTime.now();
 
   @override
   void initState() {
     super.initState();
     _iniciar();
+  }
+
+  void _entendido() {
+    widget.prefs?.setBool(claveComoSeUsa, true);
+    setState(() => _comoSeUsa = false);
   }
 
   @override
@@ -220,6 +185,13 @@ class _PantallaMapaState extends State<PantallaMapa> {
       _iniciar();
       return;
     }
+    // Se volvió a la pestaña: una simulación no puede quedar a la vista como
+    // si fuera el río (alguien podría volver días después y confundirse).
+    if (!anterior.activa && widget.activa && _indice != null && (_elegidaPorUsuario || _referencia != null)) {
+      _elegidaPorUsuario = false;
+      _elegirInicial();
+      return;
+    }
     // Llegó un dato nuevo del río: si se está mirando "hoy", se sigue.
     if (anterior.datos != widget.datos && _indice != null && (_cm == null || !_elegidaPorUsuario || _cm == _hoyCm)) {
       _elegirInicial();
@@ -259,6 +231,8 @@ class _PantallaMapaState extends State<PantallaMapa> {
   void _ir(int cm, {bool anunciar = true, bool usuario = true, ReferenciaMapa? referencia}) {
     final (bajo, alto) = _rango;
     final nuevo = cm.clamp(bajo, alto);
+    // Al tocar − / + o un botón: vibración corta si cruzó alerta o evacuación.
+    if (usuario && anunciar && _cm != null) _vibrarSiCruza(_cm!, nuevo);
     setState(() {
       _cm = nuevo;
       _elegidaPorUsuario = usuario && nuevo != _hoyCm;
@@ -306,15 +280,193 @@ class _PantallaMapaState extends State<PantallaMapa> {
     }
   }
 
-  String _textoAnuncio() {
-    final e = _eleccion!;
-    final altura = formatoAltura(e.alturaCm / 100);
-    return switch (e.situacion) {
-      SituacionAgua.enCauce => 'Con $altura metros el agua queda en su cauce.',
-      SituacionAgua.enRango => 'Se muestra el agua con $altura metros.',
-      SituacionAgua.sobreMaximo =>
-        'El río supera lo que cubre el mapa. Se muestra el agua con ${formatoAltura(_indice!.maxCm / 100)} metros.',
-    };
+  String _textoAnuncio() => _datosLectura(_eleccion!).anuncio;
+
+  /// Umbrales que el mapa puede marcar, de menor a mayor.
+  List<MarcaUmbral> get _marcas {
+    final u = _umbrales;
+    if (u == null) return const [];
+    return [for (final (n, m) in umbralesOrdenados(u).reversed) (nivel: n, metros: m)];
+  }
+
+  void _vibrarSiCruza(int antes, int despues) {
+    final bajo = math.min(antes, despues), alto = math.max(antes, despues);
+    if (_marcas.any((m) => aCm(m.metros) > bajo && aCm(m.metros) <= alto)) HapticFeedback.selectionClick();
+  }
+
+  String _valorParaLector(int cm) {
+    final texto = '${formatoAltura(cm / 100)} metros';
+    if (cm < _indice!.minCm) return '$texto, en su cauce';
+    final u = _umbrales;
+    return u == null ? texto : '$texto, nivel ${estiloNivel(nivelSegunUmbrales(cm / 100, u)).nombre}';
+  }
+
+  /// Qué dice la lectura para la altura elegida (09 §3.4): hoy o simulación.
+  DatosLectura _datosLectura(EleccionAgua e) {
+    final ind = _indice!, hoy = _hoy!;
+    final hoyCm = _hoyCm;
+    final metros = e.alturaCm / 100;
+    final ultimo = hoy.esUltimoDato;
+    final esHoy = hoyCm != null && e.alturaCm == hoyCm;
+    LineaLectura linea(String texto, {bool aviso = false, bool chica = false}) =>
+        (texto: texto, aviso: aviso, chica: chica);
+    final lineas = <LineaLectura>[];
+    if (esHoy) {
+      final real = hoy.lectura!.valorM;
+      if (aCm(real) != hoyCm) {
+        lineas.add(
+          linea(
+            '${ultimo ? 'El último dato es' : 'Hoy el río está en'} ${formatoAltura(real)} m. '
+            'El mapa lo redondea hacia arriba.',
+            chica: true,
+          ),
+        );
+      }
+    } else if (hoyCm != null) {
+      final dif = formatoDiferencia((e.alturaCm - hoyCm) / 100);
+      lineas.add(linea('$dif ${e.alturaCm > hoyCm ? 'más' : 'menos'} que ${ultimo ? 'el último dato' : 'hoy'}.'));
+    } else {
+      lineas.add(
+        linea(hoy.motivo == 'cero' ? 'El río de hoy no se puede pintar en este mapa.' : 'No hay dato del río de hoy.'),
+      );
+    }
+    switch (e.situacion) {
+      case SituacionAgua.enCauce:
+        lineas.add(
+          linea(
+            e.margenCm == null
+                ? 'Con esta altura el agua queda en su cauce. El mapa no muestra agua sobre la tierra con esta altura.'
+                : 'Con esta altura el agua queda en su cauce. Los puntos muestran hasta dónde podría llegar con un poco más.',
+          ),
+        );
+      case SituacionAgua.sobreMaximo:
+        lineas.add(
+          linea(
+            'El mapa llega hasta ${formatoAltura(ind.maxCm / 100)} m. '
+            'Con más altura, el agua llega más lejos de lo que se ve.',
+            aviso: true,
+          ),
+        );
+      case SituacionAgua.enRango:
+        break;
+    }
+    final ref = _referencia;
+    final refCm = ref == null ? null : redondearArriba(ref.alturaM, pasoCm: ind.pasoCm);
+    if (ref != null && aCm(ref.alturaM) != refCm) {
+      lineas.add(
+        linea(
+          '${ref.nombre}: ${formatoAltura(ref.alturaM)} m. El mapa lo redondea hacia arriba '
+          'a ${formatoAltura(refCm! / 100)} m.',
+          chica: true,
+        ),
+      );
+    }
+    final c = _capa;
+    if (c != null && c.reemplazada) {
+      lineas.add(
+        linea(
+          'No se pudo leer el dibujo de ${formatoAltura(c.pedidaCm / 100)} m. '
+          'Se muestra el de ${formatoAltura(c.alturaCm / 100)} m, con un poco más de agua.',
+        ),
+      );
+    } else if (e.capaCm != null && c == null) {
+      lineas.add(linea('No se pudo leer el dibujo del agua para esta altura.'));
+    }
+    if (esHoy) {
+      return DatosLectura(
+        simulacion: false,
+        rotulo: ultimo ? 'Altura del último dato en el mapa' : 'Altura de hoy en el mapa',
+        metros: metros,
+        lineas: lineas,
+      );
+    }
+    final u = _umbrales;
+    // Sin pastilla en el cauce ni en Normal: un tilde verde junto a una altura
+    // se leería como "estás a salvo" (09 §1).
+    final calculado = u != null && e.situacion != SituacionAgua.enCauce ? nivelSegunUmbrales(metros, u) : null;
+    final nivel = calculado == Nivel.normal ? null : calculado;
+    return DatosLectura(
+      simulacion: true,
+      titulo: hoyCm == null ? null : (ultimo ? 'No es el último dato' : 'No es el río de hoy'),
+      rotulo: 'Simulación con',
+      metros: metros,
+      nivel: nivel,
+      deReferencia: nivel != null && !u!.validado,
+      lineas: lineas,
+      textoVolver: hoyCm == null ? null : (ultimo ? 'Volver al último dato' : 'Volver a hoy'),
+    );
+  }
+
+  /// Botones de "Alturas para comparar": hoy, pronóstico, umbrales y crecidas.
+  List<AlturaComparar> _alturas(IndiceMapa ind, int cm) {
+    final hoy = _hoy!, u = _umbrales, ref = _referencia;
+    int cmDe(double metros) => redondearArriba(metros, pasoCm: ind.pasoCm);
+    bool elegidoSin(double metros) => ref == null && cm == cmDe(metros);
+    final deReferencia = u != null && !u.validado ? ' (de referencia)' : '';
+    final pronostico = widget.datos?.actual?.pronostico;
+    final esperada = pronostico?.alturaEsperadaM;
+    final informe = pronostico?.informeFecha;
+    return [
+      if (hoy.lectura case final l?)
+        AlturaComparar(
+          tipo: TipoAltura.hoy,
+          titulo: hoy.esUltimoDato ? 'Último dato' : 'Hoy',
+          detalle: '${formatoAltura(cmDe(l.valorM) / 100)} m',
+          metros: l.valorM,
+          elegido: elegidoSin(l.valorM),
+        ),
+      if (pronostico != null && pronostico.vigente && esperada != null && hoy.motivo != 'cero')
+        AlturaComparar(
+          tipo: TipoAltura.pronostico,
+          titulo: 'Pronóstico CARU',
+          detalle: 'hasta ${formatoAltura(esperada)} m${informe == null ? '' : ' · ${informe.day}/${informe.month}'}',
+          metros: esperada,
+          elegido: elegidoSin(esperada),
+        ),
+      if (u?.alertaM case final a?)
+        AlturaComparar(
+          tipo: TipoAltura.alerta,
+          titulo: 'Nivel de alerta',
+          detalle: '${formatoAltura(a)} m$deReferencia',
+          metros: a,
+          elegido: elegidoSin(a),
+        ),
+      if (u?.evacuacionM case final e?)
+        AlturaComparar(
+          tipo: TipoAltura.evacuacion,
+          titulo: 'Nivel de evacuación',
+          detalle: '${formatoAltura(e)} m$deReferencia',
+          metros: e,
+          elegido: elegidoSin(e),
+        ),
+      for (final r in ind.referencias)
+        AlturaComparar(
+          tipo: TipoAltura.crecida,
+          titulo: r.nombre,
+          detalle: '${formatoAltura(r.alturaM)} m',
+          metros: r.alturaM,
+          referencia: r,
+          elegido: r == ref,
+        ),
+    ];
+  }
+
+  /// Leyenda con las muestras del cartógrafo (estilo_mapa.dart, 08 §6).
+  List<EntradaLeyenda> _leyenda(IndiceMapa ind) {
+    final c = ColoresMapa.actuales();
+    return [
+      EntradaLeyenda(MuestraCauce(c), 'Río y arroyos, en su cauce'),
+      EntradaLeyenda(MuestraAgua(c), 'Hasta dónde llegaría el agua con la altura elegida (rayado)'),
+      EntradaLeyenda(
+        MuestraMargen(c),
+        'Puede llegar un poco más: hasta ${formatoDiferencia(ind.margenCm / 100)} más de altura (borde de puntos)',
+      ),
+      if (_verContorno && _contorno.isNotEmpty)
+        EntradaLeyenda(
+          MuestraContorno(c),
+          'Borde medido en esa crecida, según ${_referencia?.fuente ?? 'Dinagua'} (trazos)',
+        ),
+    ];
   }
 
   // ----- Fondo -----
@@ -389,142 +541,63 @@ class _PantallaMapaState extends State<PantallaMapa> {
     final hoy = _hoy!;
     final cm = _cm;
     final eleccion = _eleccion;
-    final umbrales = _umbrales;
-    final apoyo = tema.bodyMedium?.copyWith(color: Colores.tintaSecundaria);
+    final aviso = avisoHoyMapa(hoy, _ahora);
+    final ref = _referencia;
 
     // Columna y no ListView: son pocos bloques, y así el mapa no se desarma
     // (ni pierde el zoom) al bajar hasta las fuentes con letra grande.
+    // Orden: docs/mapa/09-diseno-pantalla.md §2.
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (ind.modelo.esProvisorio) ...[
-            const Recuadro(icono: Icons.science_outlined, texto: textoMapaProvisorio),
-            const SizedBox(height: 12),
-          ] else if (!ind.validado) ...[
-            const Recuadro(icono: Icons.construction, texto: textoMapaEnPrueba),
-            const SizedBox(height: 12),
-          ],
-          _FranjaHoy(hoy: hoy, ahora: _ahora),
-          if (_aviso(hoy) case final aviso?) ...[
-            const SizedBox(height: 12),
-            Recuadro(icono: aviso.$1, texto: aviso.$2),
-          ],
+          FranjaHoyMapa(hoy: hoy, ahora: _ahora),
+          // Un solo recuadro: el del dato de hoy. La calidad del mapa va en el sello.
+          if (aviso != null) ...[const SizedBox(height: 12), RecuadroHoyMapa(aviso: aviso)],
+          if (_comoSeUsa) ...[const SizedBox(height: 12), TarjetaComoSeUsa(alEntender: _entendido)],
           const SizedBox(height: 16),
           if (cm != null && eleccion != null)
-            _Lectura(
-              eleccion: eleccion,
-              indice: ind,
-              hoyCm: _hoyCm,
-              umbrales: umbrales,
-              capa: _capa,
-              alVolverAHoy: _hoyCm == null || cm == _hoyCm ? null : () => _ir(_hoyCm!),
+            LecturaMapa(
+              datos: _datosLectura(eleccion),
+              alVolver: _hoyCm == null || cm == _hoyCm ? null : () => _ir(_hoyCm!),
             ),
           const SizedBox(height: 12),
-          _mapa(ind, eleccion),
-          const SizedBox(height: 12),
-          if (cm != null) _control(ind, cm),
-          if (cm != null) ..._alturasDeReferencia(ind, umbrales, cm),
-          const SizedBox(height: 16),
-          _Leyenda(conContorno: _contorno.isNotEmpty && _verContorno),
+          MarcoMapa(indice: ind, mapa: _mapa(ind, eleccion)),
+          if (hoy.grave && widget.alVerQueHacer != null) ...[
+            const SizedBox(height: 16),
+            BotonQueHacer(nivel: hoy.nivel, alTocar: widget.alVerQueHacer),
+          ],
+          if (cm != null) ...[
+            const SizedBox(height: 24),
+            _control(ind, cm),
+          ],
+          if (cm == null ? const <AlturaComparar>[] : _alturas(ind, cm) case final alturas when alturas.isNotEmpty) ...[
+            const SizedBox(height: 24),
+            Semantics(header: true, child: Text('Alturas para comparar', style: tema.titleMedium)),
+            const SizedBox(height: 8),
+            GrillaAlturas(
+              alturas: alturas,
+              alTocar: (a) => _ir(redondearArriba(a.metros, pasoCm: ind.pasoCm), referencia: a.referencia),
+            ),
+          ],
+          if (ref != null && ref.archivo != null)
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _verContorno,
+              onChanged: _mostrarContorno,
+              title: Text('Ver el borde medido en esa crecida', style: tema.bodyLarge),
+              subtitle: Text('Línea de trazos sobre el mapa. Fuente: ${ref.fuente ?? 'Dinagua'}.', style: tema.bodyMedium),
+            ),
+          if (ref != null && _verContorno && _curvaFallo)
+            Text('No se pudo leer el borde medido de esa crecida.', style: tema.bodyMedium),
+          const SizedBox(height: 24),
+          LeyendaMapa(entradas: _leyenda(ind)),
           const Separador(),
-          Text(textoAvisoMapa, style: tema.titleMedium),
-          const SizedBox(height: 4),
-          Text(
-            'Muestra hasta dónde podría llegar el río con esa altura, según el terreno. '
-            'No tiene en cuenta la lluvia, los desagües ni las calles cortadas. '
-            'Ante una evacuación, seguí las indicaciones del Cecoed.',
-            style: tema.bodyMedium,
-          ),
-          const SizedBox(height: 12),
-          Semantics(header: true, child: Text('Fuentes', style: tema.titleMedium)),
-          const SizedBox(height: 4),
-          for (final f in ind.fuentes.isEmpty ? const [textoAtribucion] : ind.fuentes) Text(f, style: apoyo),
-          if (ind.generado != null) Text('Mapa armado el ${formatoDia(enHoraUruguay(ind.generado!))}.', style: apoyo),
+          PieMapa(indice: ind),
         ],
       ),
     );
-  }
-
-  /// Botones para saltar a alturas con nombre: los niveles de CARU y las
-  /// crecidas reales del índice. De una crecida con curva medida se puede
-  /// ver además su contorno (opcional, encima del agua del modelo).
-  List<Widget> _alturasDeReferencia(IndiceMapa ind, Umbrales? u, int cm) {
-    final tema = Theme.of(context).textTheme;
-    final deReferencia = u != null && !u.validado ? ' (de referencia)' : '';
-    final botones = <(String, double, ReferenciaMapa?)>[
-      if (u?.alertaM case final a?) ('Nivel de alerta$deReferencia', a, null),
-      if (u?.evacuacionM case final e?) ('Nivel de evacuación$deReferencia', e, null),
-      for (final r in ind.referencias) (r.nombre, r.alturaM, r),
-    ];
-    if (botones.isEmpty) return const [];
-    final ref = _referencia;
-    int cmDe(double metros) => redondearArriba(metros, pasoCm: ind.pasoCm);
-    return [
-      const SizedBox(height: 16),
-      Semantics(header: true, child: Text('Alturas para comparar', style: tema.titleMedium)),
-      for (final (nombre, metros, r) in botones)
-        Padding(
-          padding: const EdgeInsets.only(top: 8),
-          child: _BotonAltura(
-            texto: '$nombre: ${formatoAltura(metros)} m',
-            elegido: r != null ? r == ref : ref == null && cm == cmDe(metros),
-            alTocar: () => _ir(cmDe(metros), referencia: r),
-          ),
-        ),
-      if (ref != null) ...[
-        if (aCm(ref.alturaM) != cmDe(ref.alturaM)) ...[
-          const SizedBox(height: 8),
-          Text(
-            '${ref.nombre}: ${formatoAltura(ref.alturaM)} m. El mapa lo redondea hacia arriba '
-            'a ${formatoAltura(cmDe(ref.alturaM) / 100)} m.',
-            style: tema.bodyMedium,
-          ),
-        ],
-        if (ref.archivo != null)
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            value: _verContorno,
-            onChanged: _mostrarContorno,
-            title: Text('Ver el borde medido en esa crecida', style: tema.bodyLarge),
-            subtitle: Text(
-              'Línea de trazos sobre el mapa. Fuente: ${ref.fuente ?? 'Dinagua'}.',
-              style: tema.bodyMedium,
-            ),
-          ),
-        if (_verContorno && _curvaFallo)
-          Text('No se pudo leer el borde medido de esa crecida.', style: tema.bodyMedium),
-      ],
-    ];
-  }
-
-  /// El aviso más grave del dato de hoy (uno solo, como pide el diseño).
-  (IconData, String)? _aviso(HoyMapa hoy) {
-    final cuando = hoy.lectura == null ? null : formatoFecha(hoy.lectura!.fecha, _ahora);
-    if (hoy.motivo == 'cero') {
-      return (
-        Icons.straighten,
-        'El mapa usa otra referencia de altura que el dato del río, así que no se pinta el río de hoy. '
-            'Igual podés elegir una altura.',
-      );
-    }
-    if (!hoy.hay) {
-      return (
-        Icons.help_outline,
-        '${hoy.sinConexion ? 'Sin conexión y sin' : 'No hay'} un dato confiable de hoy. '
-            'Igual podés elegir una altura para ver hasta dónde llegaría el agua.',
-      );
-    }
-    if (hoy.viejo) return (Icons.schedule, 'El último dato es de $cuando. El río pudo cambiar.');
-    if (hoy.sinConexion) {
-      return (
-        Icons.wifi_off,
-        'Sin conexión. El mapa funciona igual, pero el dato del río es el último guardado ($cuando).',
-      );
-    }
-    if (hoy.avisos.contains('dato_a_verificar')) return (Icons.warning_amber, textoAviso('dato_a_verificar')!);
-    return null;
   }
 
   Widget _mapa(IndiceMapa ind, EleccionAgua? eleccion) {
@@ -553,10 +626,12 @@ class _PantallaMapaState extends State<PantallaMapa> {
       container: true,
       image: true,
       label: descripcion,
+      // Las esquinas redondeadas las pone el marco (sello arriba, pie abajo).
       child: ClipRRect(
-        borderRadius: radioSuperficie,
+        borderRadius: BorderRadius.zero,
         child: SizedBox(
-          height: altoMapa,
+          // No se achica por la letra grande: entre 240 y 320 dp según la pantalla.
+          height: (MediaQuery.sizeOf(context).height * 0.40).clamp(altoMapaMinimo, altoMapa),
           child: Stack(
             children: [
               ExcludeSemantics(
@@ -634,251 +709,29 @@ class _PantallaMapaState extends State<PantallaMapa> {
 
   Widget _control(IndiceMapa ind, int cm) {
     final (bajo, alto) = _rango;
-    final paso = ind.pasoCm;
-    final pasoTexto = formatoDiferencia(paso / 100);
-    return Row(
-      children: [
-        _BotonPaso(
-          icono: Icons.remove,
-          texto: 'Bajar $pasoTexto',
-          alTocar: cm - paso >= bajo ? () => _ir(cm - paso) : null,
-        ),
-        Expanded(
-          // Un solo nodo para TalkBack, del ancho de toda la barra (no solo
-          // del pulgar), que dice la altura en metros.
-          child: MergeSemantics(
-            child: Slider(
-              value: cm.toDouble(),
-              min: bajo.toDouble(),
-              max: alto.toDouble(),
-              divisions: math.max(1, (alto - bajo) ~/ paso),
-              semanticFormatterCallback: (v) => '${formatoAltura(v.round() / 100)} metros',
-              onChanged: (v) {
-                final nuevo = bajo + ((v.round() - bajo) / paso).round() * paso;
-                if (nuevo != _cm) _ir(nuevo, anunciar: false);
-              },
-              onChangeEnd: (_) => _cargarCapas(anunciar: true),
-            ),
-          ),
-        ),
-        _BotonPaso(
-          icono: Icons.add,
-          texto: 'Subir $pasoTexto',
-          alTocar: cm + paso <= alto ? () => _ir(cm + paso) : null,
-        ),
-      ],
+    final u = _umbrales;
+    return ControlAltura(
+      cm: cm,
+      bajo: bajo,
+      alto: alto,
+      paso: ind.pasoCm,
+      marcas: _marcas,
+      deReferencia: u != null && !u.validado,
+      valorParaLector: _valorParaLector,
+      alTocarPaso: _ir,
+      alCambiar: (nuevo) => _ir(nuevo, anunciar: false),
+      alEmpezar: () => _cmAlEmpezar = _cm,
+      alSoltar: () {
+        final antes = _cmAlEmpezar;
+        if (antes != null && _cm != null) _vibrarSiCruza(antes, _cm!);
+        _cmAlEmpezar = null;
+        _cargarCapas(anunciar: true);
+      },
     );
   }
 }
 
 // ---------------------------------------------------------------------------
-// Bloques de la pantalla
-
-class _FranjaHoy extends StatelessWidget {
-  final HoyMapa hoy;
-  final DateTime ahora;
-
-  const _FranjaHoy({required this.hoy, required this.ahora});
-
-  @override
-  Widget build(BuildContext context) {
-    final tema = Theme.of(context).textTheme;
-    final l = hoy.lectura;
-    if (l == null) {
-      return Semantics(container: true, child: Text('Río hoy: sin dato confiable', style: tema.titleLarge));
-    }
-    final estilo = estiloNivel(hoy.nivel);
-    final color = ColoresNivel.familia(hoy.nivel);
-    final rotulo = hoy.viejo || hoy.sinConexion ? 'Último dato' : 'Río hoy';
-    final cuando = formatoFecha(l.fecha, ahora);
-    return Semantics(
-      container: true,
-      excludeSemantics: true,
-      label:
-          '$rotulo: ${formatoAltura(l.valorM)} metros. Nivel: ${estilo.nombre}. '
-          'Medido $cuando. Fuente: ${fuenteCorta(l.fuente)}.',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Wrap(
-            crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: 8,
-            children: [
-              Text(
-                '$rotulo: ${formatoAltura(l.valorM)} m',
-                style: tema.titleLarge?.copyWith(fontWeight: FontWeight.w800),
-              ),
-              // Ícono y palabra juntos: con letra muy grande, el par baja de
-              // renglón entero (el Wrap) y la palabra sigue siendo un texto.
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(estilo.icono, color: color, size: 24),
-                  const SizedBox(width: 4),
-                  Flexible(
-                    child: Text(
-                      estilo.nombre,
-                      style: tema.titleLarge?.copyWith(color: color, fontWeight: FontWeight.w800),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          Text('${conMayuscula(cuando)} · ${fuenteCorta(l.fuente)}', style: tema.bodyMedium),
-        ],
-      ),
-    );
-  }
-}
-
-class _Lectura extends StatelessWidget {
-  final EleccionAgua eleccion;
-  final IndiceMapa indice;
-  final int? hoyCm;
-  final Umbrales? umbrales;
-  final CapaElegida? capa;
-  final VoidCallback? alVolverAHoy;
-
-  const _Lectura({
-    required this.eleccion,
-    required this.indice,
-    required this.hoyCm,
-    required this.umbrales,
-    required this.capa,
-    required this.alVolverAHoy,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final tema = Theme.of(context).textTheme;
-    final e = eleccion;
-    final metros = e.alturaCm / 100;
-    final pintada = (e.capaCm ?? e.alturaCm) / 100;
-    final u = umbrales;
-    final nivel = u == null ? null : nivelSegunUmbrales(metros, u);
-    final esHoy = hoyCm != null && e.alturaCm == hoyCm;
-    final linea = switch (e.situacion) {
-      SituacionAgua.enCauce =>
-        'Con ${formatoAltura(metros)} m el agua queda en su cauce: '
-            '${e.margenCm == null ? 'el mapa no muestra agua sobre la tierra.' : 'los puntos muestran hasta dónde podría llegar con un poco más.'}',
-      SituacionAgua.sobreMaximo =>
-        'El río supera lo que cubre el mapa (hasta ${formatoAltura(indice.maxCm / 100)} m). '
-            'Se muestra el agua con ese máximo.',
-      SituacionAgua.enRango => null,
-    };
-    final c = capa;
-    final reemplazo = c != null && c.reemplazada
-        ? 'No se pudo leer el dibujo de ${formatoAltura(c.pedidaCm / 100)} m; '
-              'se muestra el de ${formatoAltura(c.alturaCm / 100)} m.'
-        : e.capaCm != null && c == null
-        ? 'No se pudo leer el dibujo del agua para esta altura.'
-        : null;
-    final mostrada = c?.alturaCm ?? (e.capaCm ?? e.alturaCm);
-    final principal = e.situacion == SituacionAgua.enCauce
-        ? 'Altura elegida: ${formatoAltura(metros)} m'
-        : 'Se muestra el agua con ${formatoAltura(mostrada / 100)} m';
-    return Semantics(
-      container: true,
-      liveRegion: true,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          MediaQuery.withClampedTextScaling(
-            maxScaleFactor: 1.6,
-            child: Text(
-              principal,
-              style: tema.headlineMedium?.copyWith(fontSize: 26, fontFeatures: const [FontFeature.tabularFigures()]),
-            ),
-          ),
-          if (nivel != null && e.situacion != SituacionAgua.enCauce) ...[
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                Icon(estiloNivel(nivel).icono, color: ColoresNivel.familia(nivel), size: 22),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    'Con ${formatoAltura(pintada)} m: nivel ${estiloNivel(nivel).nombre}'
-                    '${u!.validado ? '' : ' (de referencia)'}',
-                    style: tema.bodyLarge,
-                  ),
-                ),
-              ],
-            ),
-          ],
-          if (linea != null) ...[const SizedBox(height: 6), Text(linea, style: tema.bodyLarge)],
-          if (reemplazo != null) ...[const SizedBox(height: 6), Text(reemplazo, style: tema.bodyLarge)],
-          if (esHoy && hoyCm != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text(
-                'Es la altura de hoy, redondeada hacia arriba a ${formatoDiferencia(indice.pasoCm / 100)}.',
-                style: tema.bodyMedium?.copyWith(color: Colores.tintaSecundaria),
-              ),
-            ),
-          if (!esHoy && hoyCm != null) ...[
-            const SizedBox(height: 8),
-            Text(
-              'No es el río de hoy: es una prueba con ${formatoAltura(metros)} m '
-              '(${formatoDiferencia((e.alturaCm - hoyCm!) / 100)} ${e.alturaCm > hoyCm! ? 'más' : 'menos'} que hoy).',
-              style: tema.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
-            ),
-          ],
-          if (alVolverAHoy != null) ...[
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              onPressed: alVolverAHoy,
-              icon: const Icon(Icons.undo),
-              label: const Text('Volver a hoy'),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _BotonPaso extends StatelessWidget {
-  final IconData icono;
-  final String texto;
-  final VoidCallback? alTocar;
-
-  const _BotonPaso({required this.icono, required this.texto, required this.alTocar});
-
-  @override
-  Widget build(BuildContext context) => IconButton.filledTonal(
-    tooltip: texto,
-    onPressed: alTocar,
-    constraints: const BoxConstraints.tightFor(width: 56, height: 56),
-    icon: Icon(icono, size: 28),
-  );
-}
-
-/// Botón ancho para una altura con nombre. Una columna: con letra grande el
-/// texto baja de renglón en vez de cortarse.
-class _BotonAltura extends StatelessWidget {
-  final String texto;
-  final bool elegido;
-  final VoidCallback alTocar;
-
-  const _BotonAltura({required this.texto, required this.elegido, required this.alTocar});
-
-  @override
-  Widget build(BuildContext context) {
-    final hijo = Align(alignment: Alignment.centerLeft, child: Text(texto));
-    final estilo = ButtonStyle(
-      minimumSize: const WidgetStatePropertyAll(Size(double.infinity, 56)),
-      padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 16, vertical: 10)),
-    );
-    return Semantics(
-      selected: elegido,
-      child: elegido
-          ? FilledButton.tonal(onPressed: alTocar, style: estilo, child: hijo)
-          : OutlinedButton(onPressed: alTocar, style: estilo, child: hijo),
-    );
-  }
-}
 
 class _BotonMapa extends StatelessWidget {
   final IconData icono;
@@ -895,35 +748,4 @@ class _BotonMapa extends StatelessWidget {
     constraints: const BoxConstraints.tightFor(width: 48, height: 48),
     icon: Icon(icono),
   );
-}
-
-class _Leyenda extends StatelessWidget {
-  final bool conContorno;
-  const _Leyenda({this.conContorno = false});
-
-  @override
-  Widget build(BuildContext context) {
-    final c = ColoresMapa.actuales();
-    final tema = Theme.of(context).textTheme;
-    Widget fila(Widget muestra, String texto) => Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          ExcludeSemantics(child: SizedBox(width: 36, height: 22, child: muestra)),
-          const SizedBox(width: 12),
-          Expanded(child: Text(texto, style: tema.bodyLarge)),
-        ],
-      ),
-    );
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Semantics(header: true, child: Text('Cómo leer el mapa', style: tema.titleMedium)),
-        fila(CustomPaint(painter: MuestraCauce(c)), 'Río y arroyos, en su cauce'),
-        fila(CustomPaint(painter: MuestraAgua(c)), 'Hasta dónde llegaría el agua (borde continuo)'),
-        fila(CustomPaint(painter: MuestraMargen(c)), 'Puede llegar un poco más (borde de puntos)'),
-        if (conContorno) fila(CustomPaint(painter: MuestraContorno(c)), 'Borde medido en esa crecida real (trazos)'),
-      ],
-    );
-  }
 }
