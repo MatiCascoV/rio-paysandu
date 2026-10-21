@@ -2,8 +2,7 @@ name: Tests del lector
 
 on:
   push:
-    # data/umbrales.json se edita a mano: un test controla que siga siendo válido.
-    paths: ["lector/**", "data/umbrales.json", "pytest.ini", ".github/workflows/tests.yml"]
+    paths: ["lector/**", "pytest.ini", ".github/workflows/tests.yml"]
   pull_request:
 
 permissions:

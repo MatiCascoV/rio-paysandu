@@ -1,8 +1,8 @@
 # Fase 4, paso 4: informe de la app (avisos push)
 
-Rama `fase-4-app-avisos`, sin merge ni push (21/10/2026). Compila, `flutter analyze` sin problemas y
-`flutter test` todo verde, pero **todavía no se probó en el teléfono**: eso es lo primero que falta (ver
-"Cómo probar en el celular").
+Rama `fase-4-app-avisos`, mergeada en `main` (MatiCascoV/rio-paysandu#13, 21/10/2026). Compila, `flutter analyze`
+sin problemas, `flutter test` todo verde y **probada en el Redmi** con el río en alerta real (ver "Prueba en el
+Redmi" al final).
 
 Diseño completo en `docs/fase-4-avisos-push.md`. Acá está qué se hizo, qué se decidió en el camino y cómo
 probarlo.
@@ -114,8 +114,8 @@ reintenta en la próxima.
 
 ## Qué quedó pendiente
 
-- **Probarlo en el Redmi** (abajo), con la app cerrada, en ahorro de batería y en reposo.
-- Pasos 5, 6, 8 y 9 del diseño (rama `datos`, identidad federada, prueba completa con `avisos.yml`, README).
+- Pasos 6, 8 y 9 del diseño (identidad federada, prueba completa con `avisos.yml`, README). El paso 5 (rama
+  `datos`) quedó hecho el 21/10/2026.
 - Si el reintento consigue el dato pero ya no corresponde avisar (por ejemplo, otra puerta ya avisó la
   subida en ese momento), el genérico queda en la barra hasta que se toque o se borre. No se cancela para no
   borrar un aviso de verdad que use la misma notificación.

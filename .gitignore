@@ -4,8 +4,8 @@ __pycache__/
 .venv/
 venv/
 .pytest_cache/
-# temporales del lector si una escritura se corta (no se publican)
-data/*.tmp
+# los datos viven en la rama datos: un data/ local (lector corrido sin LECTOR_DATOS) no va a main
+/data/
 
 # --- Flutter / Dart (app) ---
 app/.dart_tool/
