@@ -57,7 +57,7 @@
   "capas": {
     "sieve_m2": 100,
     "rellenar_secos_m2": 2000,
-    "buffer_m": 4.0,
+    "buffer_m": 5.0,
     "simplify_m": 4.0,
     "decimales": 5,
     "tolerancia_anidado": 0.01,
@@ -79,11 +79,27 @@
     "validado_requiere_revision_externa": true
   },
 
+  "sin_validar": {
+    "rio": ["Río Uruguay"],
+    "factor_celdas": 5,
+    "simplify_m": 10.0,
+    "zonas": [
+      {"nombre": "Valle del arroyo San Francisco Grande",
+       "motivo": "No hay crecidas medidas por Dinagua para comparar el modelo.",
+       "cursos": ["Arroyo San Francisco Grande"],
+       "buffer_m": 100.0}
+    ]
+  },
+
+  "aisladas": {"usar": true, "min_calles_m": 50, "con_agua_base": true},
+
   "control_png": [
     {"capas": [6.58, 7.08], "curva": "2025-07", "archivo": "control_2025-07.png"},
     {"capas": [8.35, 8.85], "curva": "2017-06", "archivo": "control_2017-06.png"},
     {"capas": [8.93, 9.43], "curva": "2009-11", "archivo": "control_2009-11.png"},
-    {"capas": [9.12, 9.62], "curva": "2015-12", "archivo": "control_2015-12.png"}
+    {"capas": [9.12, 9.62], "curva": "2015-12", "archivo": "control_2015-12.png"},
+    {"capas": [8.40], "curva": "2017-06", "sin_validar": true, "aisladas": true, "archivo": "control_aisladas_0840.png"},
+    {"capas": [9.20], "curva": "2015-12", "sin_validar": true, "aisladas": true, "archivo": "control_aisladas_0920.png"}
   ],
 
   "fuentes": [

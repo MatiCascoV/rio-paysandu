@@ -135,6 +135,18 @@ class RepositorioMapa {
   /// Alturas de las capas que hay en memoria, de la más vieja a la más nueva.
   List<int> get capasGuardadas => List.unmodifiable(_capas.keys);
 
+  Future<ZonasSinValidar?>? _sinValidar;
+
+  /// Zonas sin validar (contrato v1.1), o null si el índice no las trae, el
+  /// archivo falta o no valida (tamaño, huella o formato). Se lee una vez.
+  Future<ZonasSinValidar?> sinValidar() => _sinValidar ??= () async {
+    final e = await indice();
+    if (e is! IndiceListo) return null;
+    final a = e.indice.sinValidar;
+    if (a == null) return null;
+    return _leerYArmar(a, TopesMapa.bytesSinValidar, _armarSinValidar, e.indice);
+  }();
+
   final _curvas = <String, Future<CurvaMapa?>>{};
 
   /// Contorno medido de una crecida real (curvas/…), o null si la referencia
@@ -167,4 +179,5 @@ T? _verificarYArmar<T, A>(_Pedido<T, A> p) {
 
 BaseMapa _armarBase(Object? j, IndiceMapa ind) => BaseMapa.desdeJson(j, ind);
 CapaAgua _armarCapa(Object? j, (CapaIndice, IndiceMapa) e) => CapaAgua.desdeJson(j, e.$1, e.$2);
+ZonasSinValidar _armarSinValidar(Object? j, IndiceMapa ind) => ZonasSinValidar.desdeJson(j, ind);
 CurvaMapa _armarCurva(Object? j, (ReferenciaMapa, IndiceMapa) e) => CurvaMapa.desdeJson(j, e.$1, e.$2);

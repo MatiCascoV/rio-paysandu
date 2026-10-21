@@ -14,6 +14,11 @@ abstract final class TopesMapa {
   static const bytesBase = 4 * 1024 * 1024;
   static const bytesCapa = 2 * 1024 * 1024;
   static const bytesCurva = 2 * 1024 * 1024;
+  static const bytesSinValidar = 2 * 1024 * 1024;
+
+  /// Más lomas aisladas que esto en una capa no se marcan todas (pantalla
+  /// ilegible); el aviso igual aparece.
+  static const aisladasPorCapa = 200;
 
   /// Suma de todo lo que declara el índice (base + capas + curvas).
   static const bytesTotales = 48 * 1024 * 1024;
@@ -164,6 +169,11 @@ class IndiceMapa {
   final List<ReferenciaMapa> referencias;
   final List<String> fuentes;
 
+  /// Zonas donde el modelo no se pudo comparar con crecidas reales
+  /// (`sin_validar.json`, contrato v1.1). null si el índice no la trae o la
+  /// trae mal: el mapa sigue funcionando como antes.
+  final ArchivoMapa? sinValidar;
+
   const IndiceMapa({
     required this.version,
     required this.generado,
@@ -179,6 +189,7 @@ class IndiceMapa {
     required this.capas,
     this.referencias = const [],
     this.fuentes = const [],
+    this.sinValidar,
   });
 
   int get margenCm => aCm(modelo.margenM);
@@ -270,6 +281,19 @@ class IndiceMapa {
         if (referencias.length >= 40) break; // más que esto no entra en la pantalla
       }
     }
+    // Opcional (v1.1): si falta o viene mal, se sigue sin la zona sin validar.
+    ArchivoMapa? sinValidar;
+    if (j['sin_validar'] != null) {
+      try {
+        final a = ArchivoMapa.desdeJson(j['sin_validar'], 'sin_validar', TopesMapa.bytesSinValidar);
+        if (!a.archivo.startsWith('agua/') && !a.archivo.startsWith('curvas/') && a.archivo != base.archivo) {
+          sinValidar = a;
+          total += a.bytes;
+        }
+      } on ErrorMapa {
+        // Sin la zona: el resto del mapa sirve igual.
+      }
+    }
     if (total > TopesMapa.bytesTotales) throw const ErrorMapa('el mapa declara demasiados bytes');
 
     final fuentes = j['fuentes'];
@@ -294,6 +318,7 @@ class IndiceMapa {
                 if (f is String && f.length <= 300) f,
             ]
           : const [],
+      sinValidar: sinValidar,
     );
   }
 }
@@ -389,11 +414,44 @@ String? _nombre(Object? v) {
   return t.length > 60 ? t.substring(0, 60) : t;
 }
 
+/// Loma seca totalmente rodeada por el agua de una capa, con calles adentro
+/// (contrato v1.1 §2): aunque no se inunde, puede quedar aislada.
+class LomaAislada {
+  /// Un punto interior, para marcarla.
+  final LatLng punto;
+
+  /// Área en hectáreas y metros de calle adentro (pueden faltar).
+  final double? hectareas;
+  final double? callesM;
+
+  const LomaAislada(this.punto, {this.hectareas, this.callesM});
+
+  /// Tolerante: una entrada rara se saltea (null), no invalida la capa.
+  static LomaAislada? desdeJson(Object? j, IndiceMapa indice) {
+    if (j is! Map) return null;
+    final c = j['c'];
+    if (c is! List || c.length < 2) return null;
+    final lon = _numero(c[0]), lat = _numero(c[1]);
+    if (lon == null || lat == null || !indice.dentro(lat, lon, holgura: 0)) return null;
+    final ha = _numero(j['ha']), calles = _numero(j['calles_m']);
+    return LomaAislada(
+      LatLng(lat, lon),
+      hectareas: ha != null && ha >= 0 ? ha : null,
+      callesM: calles != null && calles >= 0 ? calles : null,
+    );
+  }
+}
+
 /// Agua sobre tierra a una altura: un MultiPolygon (puede estar vacío).
 class CapaAgua {
   final int alturaCm;
   final List<PoligonoMapa> poligonos;
-  const CapaAgua(this.alturaCm, this.poligonos);
+
+  /// Lomas que quedarían rodeadas de agua con esta capa (puede estar vacía:
+  /// los datos de antes de la v1.1 no la traen).
+  final List<LomaAislada> aisladas;
+
+  const CapaAgua(this.alturaCm, this.poligonos, [this.aisladas = const []]);
 
   bool get vacia => poligonos.isEmpty;
 
@@ -409,7 +467,62 @@ class CapaAgua {
     if (altura == null || aCm(altura) != capa.alturaCm) throw const ErrorMapa('altura_m no coincide con el índice');
     final poligonos = _poligonos(f['geometry'], indice);
     if (_puntos(poligonos) > TopesMapa.puntosPorCapa) throw const ErrorMapa('la capa tiene demasiados puntos');
-    return CapaAgua(capa.alturaCm, poligonos);
+    final lista = (p as Map)['aisladas'];
+    final aisladas = <LomaAislada>[];
+    if (lista is List) {
+      for (final a in lista) {
+        if (LomaAislada.desdeJson(a, indice) case final loma?) aisladas.add(loma);
+        if (aisladas.length >= TopesMapa.aisladasPorCapa) break;
+      }
+    }
+    return CapaAgua(capa.alturaCm, poligonos, aisladas);
+  }
+}
+
+/// Zona donde el mapa no se pudo comparar con crecidas reales.
+class ZonaSinValidar {
+  final String nombre;
+  final String? motivo;
+  final List<PoligonoMapa> poligonos;
+  const ZonaSinValidar(this.nombre, this.motivo, this.poligonos);
+}
+
+/// `sin_validar.json` (contrato v1.1 §1): un Feature Polygon/MultiPolygon por
+/// zona. Una zona con geometría rota se saltea; si no queda ninguna, error.
+class ZonasSinValidar {
+  final List<ZonaSinValidar> zonas;
+  const ZonasSinValidar(this.zonas);
+
+  List<PoligonoMapa> get poligonos => [for (final z in zonas) ...z.poligonos];
+
+  static ZonasSinValidar desdeJson(Object? j, IndiceMapa indice) {
+    if (j is! Map || j['type'] != 'FeatureCollection' || j['features'] is! List) {
+      throw const ErrorMapa('sin_validar.json no es una FeatureCollection');
+    }
+    final features = j['features'] as List;
+    if (features.isEmpty || features.length > 20) throw const ErrorMapa('sin_validar.json sin zonas o con demasiadas');
+    final zonas = <ZonaSinValidar>[];
+    for (final f in features) {
+      if (f is! Map) continue;
+      final p = f['properties'];
+      try {
+        final poligonos = _poligonos(f['geometry'], indice);
+        if (poligonos.isEmpty) continue;
+        zonas.add(
+          ZonaSinValidar(
+            (p is Map ? _nombre(p['nombre']) : null) ?? 'Zona sin validar',
+            p is Map ? _texto(p['motivo']) : null,
+            poligonos,
+          ),
+        );
+      } on ErrorMapa {
+        // Una zona rota se saltea.
+      }
+    }
+    if (zonas.isEmpty) throw const ErrorMapa('sin_validar.json no tiene zonas legibles');
+    final todos = [for (final z in zonas) ...z.poligonos];
+    if (_puntos(todos) > TopesMapa.puntosPorCapa) throw const ErrorMapa('sin_validar.json tiene demasiados puntos');
+    return ZonasSinValidar(zonas);
   }
 }
 

@@ -13,8 +13,10 @@ int redondearArriba(double metros, {int pasoCm = 10}) {
 }
 
 enum SituacionAgua {
-  /// Por debajo de la capa más baja: el agua queda en su cauce.
-  enCauce,
+  /// Por debajo de la capa más baja (`min_m`). El agua no pasa de la zona
+  /// baja de la costa, que se dibuja igual (contrato v1.1 §3). Nunca se dice
+  /// "en su cauce": esa capa ya moja islas y bañados.
+  debajoDelMinimo,
 
   /// Hay una capa para esa altura.
   enRango,
@@ -28,33 +30,54 @@ class EleccionAgua {
   final int alturaCm;
   final SituacionAgua situacion;
 
-  /// Capa a pintar como "agua", o null si queda en el cauce.
+  /// Capa a pintar como "agua", o null por debajo del mínimo.
   final int? capaCm;
 
-  /// Capa del margen ("puede llegar un poco más"), o null si no hay o
-  /// coincide con [capaCm].
-  final int? margenCm;
+  /// Capa del margen ("puede llegar un poco más"). Siempre hay (contrato
+  /// v1.1 §4, condición para publicar): de [capaCm] hasta la capa de
+  /// altura + margen, recortada a las capas que existen. En el máximo o por
+  /// encima coincide con la capa máxima.
+  final int margenCm;
 
-  const EleccionAgua({required this.alturaCm, required this.situacion, this.capaCm, this.margenCm});
+  /// Zona baja de la costa: la capa de `min_m`, que se dibuja siempre con su
+  /// propio estilo (contrato v1.1 §3).
+  final int zonaBajaCm;
+
+  const EleccionAgua({
+    required this.alturaCm,
+    required this.situacion,
+    required this.margenCm,
+    required this.zonaBajaCm,
+    this.capaCm,
+  });
+
+  /// El agua dibujada no pasa de la zona baja (altura ≤ `min_m`). Con 3,90 y
+  /// con 4,00 se dice lo mismo: así no hay salto de texto en el mínimo.
+  bool get noPasaDeLaZonaBaja => alturaCm <= zonaBajaCm;
 }
 
 /// [alturaCm] ya redondeada al paso del índice.
 EleccionAgua elegirAgua(int alturaCm, IndiceMapa indice) {
   final situacion = alturaCm < indice.minCm
-      ? SituacionAgua.enCauce
+      ? SituacionAgua.debajoDelMinimo
       : alturaCm > indice.maxCm
       ? SituacionAgua.sobreMaximo
       : SituacionAgua.enRango;
   final capa = switch (situacion) {
-    SituacionAgua.enCauce => null,
+    SituacionAgua.debajoDelMinimo => null,
     SituacionAgua.enRango => alturaCm,
     SituacionAgua.sobreMaximo => indice.maxCm,
   };
-  // El margen se redondea también hacia arriba y no pasa del máximo.
+  // El margen se redondea también hacia arriba y queda dentro de las capas
+  // que existen: nunca debajo de la zona baja ni encima del máximo.
   final conMargen = alturaCm + indice.margenCm;
   final resto = (conMargen - indice.minCm) % indice.pasoCm;
-  var margen = resto == 0 ? conMargen : conMargen - resto + indice.pasoCm;
-  if (margen > indice.maxCm) margen = indice.maxCm;
-  final hayMargen = indice.margenCm > 0 && margen >= indice.minCm && margen != capa;
-  return EleccionAgua(alturaCm: alturaCm, situacion: situacion, capaCm: capa, margenCm: hayMargen ? margen : null);
+  final margen = (resto == 0 ? conMargen : conMargen - resto + indice.pasoCm).clamp(indice.minCm, indice.maxCm);
+  return EleccionAgua(
+    alturaCm: alturaCm,
+    situacion: situacion,
+    capaCm: capa,
+    margenCm: margen,
+    zonaBajaCm: indice.minCm,
+  );
 }

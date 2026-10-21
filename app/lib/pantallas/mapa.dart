@@ -90,6 +90,15 @@ class _PantallaMapaState extends State<PantallaMapa> {
   EleccionAgua? _eleccion;
   CapaElegida? _capa;
   CapaElegida? _margen;
+
+  /// Zona baja de la costa (capa de `min_m`): se dibuja siempre (v1.1 §3).
+  CapaElegida? _zonaBaja;
+
+  /// Agua con el río de hoy, para la línea de hoy al simular otra altura.
+  CapaElegida? _capaHoy;
+
+  /// Zonas donde el mapa no se pudo comparar con crecidas reales (v1.1 §1).
+  ZonasSinValidar? _sinValidar;
   int _turno = 0;
 
   final _controlador = MapController();
@@ -163,8 +172,12 @@ class _PantallaMapaState extends State<PantallaMapa> {
       });
       return;
     }
+    // Opcional: si falta o no valida, el mapa sigue sin esa zona.
+    final sinValidar = await repo.sinValidar();
+    if (!mounted || repo != widget.repositorio) return;
     _indice = e.indice;
     _base = base;
+    _sinValidar = sinValidar;
     _armarFondo(base);
     setState(() => _carga = _Carga.lista);
     _elegirInicial();
@@ -180,7 +193,8 @@ class _PantallaMapaState extends State<PantallaMapa> {
       _base = null;
       _cm = null;
       _eleccion = null;
-      _capa = _margen = null;
+      _capa = _margen = _zonaBaja = _capaHoy = null;
+      _sinValidar = null;
       _elegidaPorUsuario = false;
       _referencia = null;
       _verContorno = false;
@@ -271,14 +285,23 @@ class _PantallaMapaState extends State<PantallaMapa> {
   Future<void> _cargarCapas({required bool anunciar}) async {
     final ind = _indice!, cm = _cm!;
     final turno = ++_turno;
+    final repo = widget.repositorio;
     final e = elegirAgua(cm, ind);
-    final capa = e.capaCm == null ? null : await widget.repositorio.capa(e.capaCm!);
-    final margen = e.margenCm == null ? null : await widget.repositorio.capa(e.margenCm!);
+    final capa = e.capaCm == null ? null : await repo.capa(e.capaCm!);
+    // El margen y la zona baja van siempre (v1.1 §3 y §4).
+    final margen = await repo.capa(e.margenCm);
+    final zonaBaja = await repo.capa(e.zonaBajaCm);
+    // Al simular otra altura, también el agua de hoy (para su línea).
+    final hoyCm = _hoyCm;
+    final hoyCapaCm = hoyCm == null || hoyCm == cm ? null : elegirAgua(hoyCm, ind).capaCm;
+    final capaHoy = hoyCapaCm == null ? null : await repo.capa(hoyCapaCm);
     if (!mounted || turno != _turno) return; // ya se pidió otra altura
     setState(() {
       _eleccion = e;
       _capa = capa;
       _margen = margen;
+      _zonaBaja = zonaBaja;
+      _capaHoy = capaHoy;
       // Solo quedan armados los polígonos que se ven: lo demás lo guarda (con
       // tope) el repositorio, y así la memoria no crece con cada altura.
       _poligonos.removeWhere((k, _) => k != (capa?.alturaCm, false) && k != (margen?.alturaCm, true));
@@ -292,9 +315,17 @@ class _PantallaMapaState extends State<PantallaMapa> {
   /// con el agua en el mapa.
   String _textoAnuncio() {
     final e = _eleccion!;
-    final agua = fraseAgua(e.situacion, _capa?.alturaCm);
+    final agua = fraseAgua(e, _capa?.alturaCm);
     return [_datosLectura(e).anuncio, ?agua].join(' ');
   }
+
+  /// La línea "agua de hoy" se dibuja al simular otra altura, si el río de
+  /// hoy tiene capa en el mapa.
+  bool get _lineaHoyVisible => _capaHoy != null && _eleccion != null && _eleccion!.alturaCm != _hoyCm;
+
+  /// Lomas aisladas de la capa pintada: la del agua o, por debajo del mínimo,
+  /// la de la zona baja (contrato v1.1 §2).
+  List<LomaAislada> get _aisladas => (_capa ?? _zonaBaja)?.capa.aisladas ?? const [];
 
   /// Umbrales que el mapa puede marcar, de menor a mayor.
   List<MarcaUmbral> get _marcas {
@@ -310,7 +341,7 @@ class _PantallaMapaState extends State<PantallaMapa> {
 
   String _valorParaLector(int cm) {
     final texto = '${formatoAltura(cm / 100)} metros';
-    if (cm < _indice!.minCm) return '$texto, en su cauce';
+    if (cm <= _indice!.minCm) return '$texto, el agua no pasa de la zona baja de la costa';
     final u = _umbrales;
     return u == null ? texto : '$texto, nivel ${estiloNivel(nivelSegunUmbrales(cm / 100, u)).nombre}';
   }
@@ -344,15 +375,15 @@ class _PantallaMapaState extends State<PantallaMapa> {
         linea(hoy.motivo == 'cero' ? 'El río de hoy no se puede pintar en este mapa.' : 'No hay dato del río de hoy.'),
       );
     }
+    // Zona baja: igual con 3,90 que con 4,00 (sin salto de texto en el mínimo).
+    if (e.noPasaDeLaZonaBaja) {
+      final conPuntos = _margen != null && _margen!.alturaCm > e.alturaCm;
+      lineas.add(linea(conPuntos ? '$textoZonaBaja $textoZonaBajaMargen' : textoZonaBaja));
+      if (_zonaBaja == null) lineas.add(linea('No se pudo leer el dibujo de la zona baja de la costa.'));
+    }
     switch (e.situacion) {
-      case SituacionAgua.enCauce:
-        lineas.add(
-          linea(
-            e.margenCm == null
-                ? 'Con esta altura el agua queda en su cauce. El mapa no muestra agua sobre la tierra con esta altura.'
-                : 'Con esta altura el agua queda en su cauce. Los puntos muestran hasta dónde podría llegar con un poco más.',
-          ),
-        );
+      case SituacionAgua.debajoDelMinimo:
+        break;
       case SituacionAgua.sobreMaximo:
         lineas.add(
           linea(
@@ -386,6 +417,8 @@ class _PantallaMapaState extends State<PantallaMapa> {
     } else if (e.capaCm != null && c == null) {
       lineas.add(linea('No se pudo leer el dibujo del agua para esta altura.'));
     }
+    // Lomas que quedarían rodeadas de agua: nunca se presentan como lugar seguro.
+    if (_aisladas.isNotEmpty) lineas.add(linea(textoAvisoAisladas(_aisladas.length), aviso: true));
     if (esHoy) {
       return DatosLectura(
         simulacion: false,
@@ -397,7 +430,7 @@ class _PantallaMapaState extends State<PantallaMapa> {
     final u = _umbrales;
     // Sin pastilla en el cauce ni en Normal: un tilde verde junto a una altura
     // se leería como "estás a salvo" (09 §1).
-    final calculado = u != null && e.situacion != SituacionAgua.enCauce ? nivelSegunUmbrales(metros, u) : null;
+    final calculado = u != null && e.situacion != SituacionAgua.debajoDelMinimo ? nivelSegunUmbrales(metros, u) : null;
     final nivel = calculado == Nivel.normal ? null : calculado;
     return DatosLectura(
       simulacion: true,
@@ -635,9 +668,14 @@ class _PantallaMapaState extends State<PantallaMapa> {
       alturaCm: eleccion?.alturaCm,
       dibujoCm: capa?.alturaCm,
       margenCm: margen?.alturaCm,
+      minCm: ind.minCm,
       maxCm: ind.maxCm,
+      zonaBajaDibujada: _zonaBaja != null,
       simulacion: eleccion != null && eleccion.alturaCm != _hoyCm,
       dibujoIlegible: eleccion?.capaCm != null && capa == null,
+      aisladas: _aisladas.length,
+      sinValidar: _sinValidar != null,
+      hoyCm: _lineaHoyVisible ? _capaHoy?.alturaCm : null,
       contorno: _verContorno && _contorno.isNotEmpty ? _referencia?.nombre : null,
     );
     final quieto = MediaQuery.disableAnimationsOf(context);

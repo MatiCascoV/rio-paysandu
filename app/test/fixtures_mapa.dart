@@ -93,17 +93,23 @@ Map<String, Object> baseDePrueba() => {
 /// Capa de agua de [cm]: vacía en 400; si no, un rectángulo que llega más al
 /// este cuanto más alta es la capa (1 cm de río = 0,0001° más), con un hueco
 /// (zona alta seca). Hasta 10,50 m queda dentro de los límites.
-Map<String, Object> capaDePrueba(int cm) {
-  final este = -58.09 + (cm - 400) * 0.0001;
+///
+/// [aisladas] agrega la propiedad `aisladas` del contrato v1.1 (lomas
+/// rodeadas de agua); sin ella la capa es como las de antes de la v1.1.
+///
+/// Con [zonaBaja] la capa de 4,00 deja de estar vacía: una franja angosta,
+/// como la zona baja de la costa de los datos reales (v1.1 §3).
+Map<String, Object> capaDePrueba(int cm, {List<Object>? aisladas, bool zonaBaja = false}) {
+  final este = -58.09 + (cm == 400 && zonaBaja ? 5 : cm - 400) * 0.0001;
   return {
     'type': 'FeatureCollection',
     'features': [
       {
         'type': 'Feature',
-        'properties': {'altura_m': cm / 100},
+        'properties': {'altura_m': cm / 100, 'aisladas': ?aisladas},
         'geometry': {
           'type': 'MultiPolygon',
-          'coordinates': cm == 400
+          'coordinates': cm == 400 && !zonaBaja
               ? []
               : [
                   [
@@ -154,6 +160,39 @@ Map<String, Object> curvaDePrueba({String nombre = 'Crecida de prueba', double a
   ],
 };
 
+/// Loma aislada dentro del agua de prueba (v1.1 §2).
+Map<String, Object> lomaDePrueba({double lon = -58.0898, double lat = -32.357}) => {
+  'c': [lon, lat],
+  'ha': 1.4,
+  'calles_m': 320,
+};
+
+/// Zonas sin validar (v1.1 §1): una zona, el "valle" al sur del set.
+Map<String, Object> sinValidarDePrueba() => {
+  'type': 'FeatureCollection',
+  'features': [
+    {
+      'type': 'Feature',
+      'properties': {
+        'nombre': 'Valle del arroyo San Francisco',
+        'motivo': 'No hay crecidas medidas por Dinagua para comparar el modelo.',
+      },
+      'geometry': {
+        'type': 'Polygon',
+        'coordinates': [
+          [
+            [-58.08, -32.395],
+            [-58.06, -32.395],
+            [-58.06, -32.37],
+            [-58.08, -32.37],
+            [-58.08, -32.395],
+          ],
+        ],
+      },
+    },
+  ],
+};
+
 const alturasDePrueba = [400, 410, 420, 430];
 
 /// Archivos del set: indice.json, base.json, agua/NNNN.json y curvas/.
@@ -168,12 +207,16 @@ Map<String, Uint8List> archivosDePrueba({
   bool validado = false,
   int desde = 400,
   int hasta = 430,
+  Map<int, List<Object>> aisladas = const {},
+  bool sinValidar = false,
+  bool zonaBaja = false,
 }) {
   final alturas = [for (var cm = desde; cm <= hasta; cm += 10) cm];
   final salida = <String, Uint8List>{
     'base.json': _bytes(baseDePrueba()),
-    for (final cm in alturas) archivoCapa(cm): _bytes(capaDePrueba(cm)),
+    for (final cm in alturas) archivoCapa(cm): _bytes(capaDePrueba(cm, aisladas: aisladas[cm], zonaBaja: zonaBaja)),
     'curvas/2015-12.json': _bytes(curvaDePrueba()),
+    if (sinValidar) 'sin_validar.json': _bytes(sinValidarDePrueba()),
   };
   Map<String, Object> describir(String ruta) => {
     'archivo': ruta,
@@ -209,6 +252,7 @@ Map<String, Uint8List> archivosDePrueba({
       {'tipo': 'crecida', 'nombre': 'Rota', 'altura_m': 'x'},
     ],
     'fuentes': ['Datos sintéticos de prueba'],
+    if (sinValidar) 'sin_validar': describir('sin_validar.json'),
   };
   indice?.call(ind);
   salida['indice.json'] = _bytes(ind);
@@ -223,15 +267,29 @@ FuenteMemoria fuenteDePrueba({
   bool validado = false,
   int desde = 400,
   int hasta = 430,
+  Map<int, List<Object>> aisladas = const {},
+  bool sinValidar = false,
+  bool zonaBaja = false,
 }) => FuenteMemoria(
-  archivosDePrueba(indice: indice, archivos: archivos, metodo: metodo, validado: validado, desde: desde, hasta: hasta),
+  archivosDePrueba(
+    indice: indice,
+    archivos: archivos,
+    metodo: metodo,
+    validado: validado,
+    desde: desde,
+    hasta: hasta,
+    aisladas: aisladas,
+    sinValidar: sinValidar,
+    zonaBaja: zonaBaja,
+  ),
 );
 
 /// El rango del contrato para los datos reales: 4,00 a 10,50 m (66 capas).
 FuenteMemoria fuenteRangoReal({bool validado = false}) => fuenteDePrueba(desde: 400, hasta: 1050, validado: validado);
 
 /// El índice del set, ya decodificado (para las pruebas de validación).
-Map<String, dynamic> indiceDePrueba({int desde = 400, int hasta = 430}) =>
-    jsonDecode(utf8.decode(archivosDePrueba(desde: desde, hasta: hasta)['indice.json']!)) as Map<String, dynamic>;
+Map<String, dynamic> indiceDePrueba({int desde = 400, int hasta = 430, bool sinValidar = false}) =>
+    jsonDecode(utf8.decode(archivosDePrueba(desde: desde, hasta: hasta, sinValidar: sinValidar)['indice.json']!))
+        as Map<String, dynamic>;
 
 Uint8List jsonABytes(Object json) => _bytes(json);

@@ -9,6 +9,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:rio_paysandu/datos.dart';
 import 'package:rio_paysandu/main.dart';
+import 'package:rio_paysandu/mapa/estilo_mapa.dart';
 import 'package:rio_paysandu/mapa/fuente_mapa.dart';
 import 'package:rio_paysandu/mapa/repositorio_mapa.dart';
 import 'package:rio_paysandu/modelos.dart';
@@ -103,9 +104,22 @@ Future<void> mostrarMapa(
 /// El número grande de la lectura ("4,20 m"), no el de un botón o una marca.
 Finder lectura(String metros) => find.descendant(of: find.byType(LecturaMapa), matching: find.text('$metros m'));
 
-/// Polígonos de agua pintados (sin el cauce del fondo), por capa de flutter_map.
-List<int> capasDeAguaPintadas(WidgetTester t) =>
-    t.widgetList<PolygonLayer>(find.byType(PolygonLayer)).skip(1).map((c) => c.polygons.length).toList();
+/// Polígonos de agua y de margen pintados, por capa de flutter_map (se
+/// reconocen por su estilo: así no importa cuántas otras capas haya, como la
+/// zona baja o la zona sin validar). Las capas vacías no cuentan.
+List<int> capasDeAguaPintadas(WidgetTester t) {
+  final c = ColoresMapa.actuales();
+  return [
+    for (final capa in t.widgetList<PolygonLayer>(find.byType(PolygonLayer)))
+      if (capa.polygons.isNotEmpty &&
+          capa.polygons.every(
+            (p) =>
+                (p.color == c.agua && p.borderColor == c.bordeAgua) ||
+                (p.color == c.margen && p.borderColor == c.bordeMargen),
+          ))
+        capa.polygons.length,
+  ];
+}
 
 String formatoAlturaPrueba(double m) => m.toStringAsFixed(2).replaceAll('.', ',');
 
@@ -145,7 +159,8 @@ void main() {
       expect(find.text('10 cm más que hoy.'), findsOneWidget);
       expect(find.text('EVACUACIÓN'), findsOneWidget); // pastilla del nivel de esa altura
       expect(find.text('Volver a hoy'), findsOneWidget);
-      expect(capasDeAguaPintadas(t), [1]); // en el máximo no hay margen aparte
+      // en el máximo el margen coincide con el agua y se dibuja igual (v1.1 §4)
+      expect(capasDeAguaPintadas(t), [1, 1]);
       // el + se apaga en el máximo
       expect(t.widget<IconButton>(find.widgetWithIcon(IconButton, Icons.add).last).onPressed, isNull);
 
@@ -191,12 +206,13 @@ void main() {
   });
 
   group('estados', () {
-    testWidgets('río por debajo del mapa: el agua queda en su cauce', (t) async {
+    testWidgets('río por debajo del mapa: el agua no pasa de la zona baja (nunca "en su cauce")', (t) async {
       await mostrarMapa(t, datosCon(3.20, nivel: 'normal'));
       expect(lectura('3,20'), findsOneWidget);
       expect(find.text('Altura elegida: 3,20 m'), findsOneWidget);
-      expect(find.textContaining('el agua queda en su cauce'), findsOneWidget);
-      expect(capasDeAguaPintadas(t), isEmpty);
+      expect(find.textContaining('el agua no pasa de la zona baja de la costa'), findsOneWidget);
+      expect(find.textContaining('el agua queda en su cauce'), findsNothing);
+      expect(capasDeAguaPintadas(t), isEmpty); // la capa de 4,00 de prueba está vacía
     });
 
     testWidgets('río por encima del mapa: se pinta el máximo y se avisa', (t) async {
@@ -207,7 +223,7 @@ void main() {
         find.text('El mapa llega hasta 4,30 m. Con más altura, el agua llega más lejos de lo que se ve.'),
         findsOneWidget,
       );
-      expect(capasDeAguaPintadas(t), [1]);
+      expect(capasDeAguaPintadas(t), [1, 1]); // la máxima, con su margen
     });
 
     testWidgets('sin dato: lo dice y abre en el nivel de alerta, como simulación', (t) async {
@@ -317,7 +333,12 @@ void main() {
       final sinRed = avisoHoyMapa(const HoyMapa(motivo: 'sin_dato', sinConexion: true), ahora)!;
       expect(sinRed.texto, startsWith('Sin conexión y sin un dato confiable'));
       expect(sinRed.icono, Icons.wifi_off);
-      final viejoYDudoso = HoyMapa(lectura: lectura0, nivel: Nivel.alerta, viejo: true, avisos: const ['dato_a_verificar']);
+      final viejoYDudoso = HoyMapa(
+        lectura: lectura0,
+        nivel: Nivel.alerta,
+        viejo: true,
+        avisos: const ['dato_a_verificar'],
+      );
       expect(avisoHoyMapa(viejoYDudoso, ahora)!.icono, Icons.schedule);
       final dudoso = HoyMapa(lectura: lectura0, nivel: Nivel.alerta, avisos: const ['dato_a_verificar']);
       expect(avisoHoyMapa(dudoso, ahora)!.texto, textoAviso('dato_a_verificar'));
@@ -566,7 +587,7 @@ void main() {
 
     for (final (altura, metros, aviso) in [
       (6.73, '6,80', null),
-      (3.85, '3,90', 'el agua queda en su cauce'),
+      (3.85, '3,90', 'el agua no pasa de la zona baja de la costa'),
       (10.80, '10,80', 'El mapa llega hasta 10,50 m'),
     ]) {
       testWidgets('rango del contrato 4,00–10,50 m con ${formatoAlturaPrueba(altura)} m', (t) async {
@@ -581,7 +602,7 @@ void main() {
 
     testWidgets('crecida real: botón, redondeo dicho y contorno opcional de la curva', (t) async {
       await mostrarMapa(t, datosCon(4.13));
-      expect(find.byType(PolygonLayer), findsNWidgets(3)); // cauce, margen y agua
+      expect(capasDeAguaPintadas(t), [1, 1]); // margen y agua
       await tocar(t, find.text('Crecida de prueba'));
       expect(lectura('4,30'), findsOneWidget);
       expect(find.textContaining('El mapa lo redondea hacia arriba a 4,30 m'), findsOneWidget);
@@ -607,7 +628,7 @@ void main() {
       await tocar(t, find.text('Crecida de prueba'));
       await tocar(t, find.byType(Switch));
       expect(find.text('No se pudo leer el borde medido de esa crecida.'), findsOneWidget);
-      expect(find.byType(PolygonLayer), findsNWidgets(2)); // cauce y agua (4,30 no tiene margen aparte)
+      expect(capasDeAguaPintadas(t), [1, 1]); // margen (en 4,30 coincide con el agua) y agua, sin contorno
     });
 
     testWidgets('sin dato al abrir y después llega uno: el mapa pasa a la altura de hoy', (t) async {

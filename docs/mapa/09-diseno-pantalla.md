@@ -13,7 +13,7 @@ Base: `03-diseno-visual.md` (se mantiene salvo donde este documento dice otra co
 
 ## 1. Reglas que no se negocian
 
-1. **Nunca transmitir "estás a salvo".** Ninguna frase dice "a salvo", "seguro", "no se inunda", "zona segura", "sin peligro". Nada de tilde verde ni ícono de aprobación junto a una altura, una calle o un barrio. El caso "en su cauce" no lleva pastilla de nivel ni ícono de "todo bien".
+1. **Nunca transmitir "estás a salvo".** Ninguna frase dice "a salvo", "seguro", "no se inunda", "zona segura", "sin peligro". Nada de tilde verde ni ícono de aprobación junto a una altura, una calle o un barrio. El caso "el agua no pasa de la zona baja" (altura por debajo del mapa) no lleva pastilla de nivel ni ícono de "todo bien". **Nunca se dice "en su cauce"** (v1.1): la capa más baja ya moja unas 450 ha de islas y bañados.
 2. **"No reemplaza la alerta oficial" siempre a la vista**, pegado al mapa (pie del marco) y otra vez al final de la pantalla.
 3. **El tinte es el del río de hoy, nunca el de la altura que se está probando.** Probar 9,20 m no tiñe la pantalla de rojo; tampoco la "tranquiliza" probar 3,00 m en plena crecida.
 4. **Ante la duda, más agua y más aviso**: si algo no se pudo leer o el río supera el mapa, se dice con palabras, al lado del número.
@@ -120,11 +120,12 @@ Simulación con
 
 | Situación | Texto exacto | Estilo |
 |---|---|---|
-| Río en cauce (`enCauce`) | `Con esta altura el agua queda en su cauce. Los puntos muestran hasta dónde podría llegar con un poco más.` (si no hay margen dibujado: `…en su cauce. El mapa no muestra agua sobre la tierra con esta altura.`) | bodyLarge. **Sin pastilla** de nivel, sin ícono. |
+| Zona baja (altura ≤ `min_m`, v1.1 §3) | `Con esta altura el agua no pasa de la zona baja de la costa: islas y bañados que se mojan con el río normal. Los puntos muestran hasta dónde podría llegar con un poco más.` (la segunda frase solo si el margen está dibujado y va más arriba que la altura). Es **el mismo texto con 3,90 que con 4,00 m**: no hay salto en el mínimo. Si la capa de la zona baja no se pudo leer, se agrega `No se pudo leer el dibujo de la zona baja de la costa.` | bodyLarge. **Sin pastilla** de nivel (por debajo del mínimo), sin ícono. |
 | Río sobre el máximo (`sobreMaximo`) | `El mapa llega hasta 10,50 m. Con más altura, el agua llega más lejos de lo que se ve.` | bodyLarge peso 600 con ícono `warning_amber` 24 a la izquierda |
 | Crecida redondeada | `Crecida de dic. 2015: 9,12 m. El mapa lo redondea hacia arriba a 9,20 m.` | bodyMedium |
 | Capa reemplazada | `No se pudo leer el dibujo de 6,90 m. Se muestra el de 7,00 m, con un poco más de agua.` | bodyLarge |
 | Capa ilegible | `No se pudo leer el dibujo del agua para esta altura.` | bodyLarge |
+| Lomas aisladas (v1.1 §2) en la capa pintada | Una: `Hay una loma marcada en el mapa. Quedaría rodeada de agua: aunque no se inunde, puede quedar aislada.` Varias: `Hay N lomas marcadas en el mapa. Quedarían rodeadas de agua: aunque no se inunden, pueden quedar aisladas.` | bodyLarge peso 600 con ícono `warning_amber` 24 |
 
 - El número usa `MediaQuery.withClampedTextScaling(maxScaleFactor: 1.4)` + `FittedBox(scaleDown)`: con letra al 200 % no se corta ni empuja la pastilla fuera (la pastilla baja de renglón: `Wrap`).
 - TalkBack: un nodo `liveRegion`. Modo hoy: `Altura de hoy en el mapa: 5,70 metros.` Modo simulación: `No es el río de hoy. Simulación con 9,20 metros, nivel Evacuación. 3,57 metros más que hoy.` El botón `Volver a hoy` es nodo aparte.
@@ -159,7 +160,7 @@ Altura elegida: 9,20 m                     (titleMedium peso 800; ExcludeSemanti
 - Deslizador: pista 8 dp, pulgar 28 dp, área táctil de toda la fila (≥ 48 de alto); relleno de la pista en `Colores.primario` (no en el color del nivel). Rango y paso sin cambios (10 cm; del mínimo − 10 cm al máximo o a hoy si es mayor).
 - Marcas: palitos de 2 × 10 dp debajo de la pista en `Colores.tinta`, en la posición de alerta y evacuación (y atención si existe). El texto de las marcas va en la línea de abajo (`Wrap`), nunca pegado al palito: así no se pisan a 320 dp ni con letra al 200 %. Con umbrales no validados: `Alerta: 4,39 m (de referencia)`.
 - Vibración: `HapticFeedback.selectionClick()` **al soltar** el deslizador o al tocar − / + / un botón de altura, solo si la nueva altura cruzó un umbral respecto de la anterior.
-- TalkBack: `MergeSemantics` (como hoy). Valor: `9,20 metros, nivel Evacuación` (sin nivel si no hay umbrales; `…, en su cauce` si está debajo del mapa). Al soltar, anuncio: el mismo texto de la lectura (§3.4).
+- TalkBack: `MergeSemantics` (como hoy). Valor: `9,20 metros, nivel Evacuación` (sin nivel si no hay umbrales; `…, el agua no pasa de la zona baja de la costa` si está en el mínimo o debajo). Al soltar, anuncio: el mismo texto de la lectura (§3.4).
 
 ### 3.8 Alturas para comparar
 
@@ -194,6 +195,9 @@ Widget nuevo `LeyendaMapa` que **no conoce colores**: recibe una lista de entrad
 | Margen | `Puede llegar un poco más: hasta 50 cm más de altura (puntos)` (50 cm = `formatoDiferencia(indice.margenM)`) | siempre |
 | Borde de hoy | `Hasta dónde llega el agua con el río de hoy (línea gruesa)` | solo en modo simulación y si el cartógrafo dibuja esa línea |
 | Borde medido | `Borde medido en esa crecida, según Dinagua (trazos)` | solo con el interruptor prendido |
+| Zona baja (v1.1) | `Zona baja de la costa: se moja con el río normal` + palabra del dibujo (08 §7) | siempre que la capa se pudo leer |
+| Zona sin validar (v1.1) | `Zona sin validar: el mapa no se pudo comparar con crecidas reales` + palabra del dibujo | si el índice trae `sin_validar` y el archivo valida |
+| Loma aislada (v1.1) | `Loma que quedaría rodeada de agua: puede quedar aislada` + palabra del dibujo | si la capa pintada tiene alguna |
 
 - La entrada "Mi casa" queda para cuando exista.
 
@@ -201,10 +205,14 @@ Widget nuevo `LeyendaMapa` que **no conoce colores**: recibe una lista de entrad
 
 ```
 Este mapa es aproximado                    (titleMedium, encabezado)
-Muestra hasta dónde podría llegar el río con esa altura, según el terreno.
-No tiene en cuenta la lluvia, los desagües ni las calles cortadas.
-Que una calle no aparezca con agua no quiere decir que no se inunde.
-Seguí siempre las indicaciones del Cecoed. Emergencias: 911.      (bodyLarge)
+Es una estimación comunitaria, no un mapa oficial. Muestra hasta dónde podría
+llegar el río con esa altura, según el terreno de 2017–2018 y crecidas medidas
+por Dinagua. El borde puede variar una cuadra o más. No tiene en cuenta la
+lluvia, los desagües y pluviales, las crecidas propias de los arroyos ni las
+calles cortadas. Que una calle no aparezca con agua no quiere decir que no se
+inunde: si estás cerca del borde, el agua te puede llegar. Si quedás rodeado
+de agua, también estás en riesgo. No reemplaza los avisos del Cecoed ni de la
+Intendencia. Emergencias: 911.             (bodyLarge; v1.1: textos de 01 §6 y 11 §8)
 
 Datos: OpenStreetMap, IDE Uruguay, Dinagua y CARU.
 Mapa armado el 3/10/2026.                  (bodyMedium, tintaSecundaria)
@@ -270,7 +278,7 @@ Función pura testeable: `avisoHoyMapa(HoyMapa hoy, DateTime ahora) → ({IconDa
 | **Dato viejo** | gris | `Último dato: …` | #4 | modo hoy con rótulo `Altura del último dato en el mapa` | según índice | si el nivel del último dato es grave | `Último dato` |
 | **Sin conexión, dato fresco** | del nivel | `Último dato: …` + renglón `wifi_off` | — | modo hoy | según índice | según nivel | `Último dato` |
 | **Otra referencia (cero)** | gris | `Río hoy: no se puede pintar` | #1 | invertida, `Simulación con` (abre en la capa más baja) | según índice | — | no |
-| **Río en cauce** (altura < mínimo) | el de hoy | igual | igual | sin pastilla + línea de cauce | igual | igual | igual |
+| **Debajo del mapa** (altura ≤ mínimo) | el de hoy | igual | igual | sin pastilla (debajo del mínimo) + línea de zona baja | igual | igual | igual |
 | **Río sobre el máximo** | el de hoy | igual | igual | número real (10,80) + línea `El mapa llega hasta 10,50 m…` con ícono | igual | casi seguro sí | sí |
 | **Mapa en prueba** (`validado: false`) | — | — | — | — | `Mapa en prueba: …` | — | — |
 | **Datos provisorios** | — | — | — | — | `Datos de prueba: el agua es inventada…` | — | — |

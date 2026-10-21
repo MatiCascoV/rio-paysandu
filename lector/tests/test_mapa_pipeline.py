@@ -21,7 +21,7 @@ CFG = {
     "limites": [[-32.40, -58.20], [-32.20, -57.95]],
     "mdt_urbano": {"fecha_vuelo": "2017-10"},
     "curvas": {"simplify_grados": 0.00002},
-    "capas": {"sieve_m2": 16, "simplify_m": 1.5, "decimales": 5, "tolerancia_anidado": 0.01,
+    "capas": {"sieve_m2": 16, "simplify_m": 1.5, "buffer_m": 2.5, "decimales": 5, "tolerancia_anidado": 0.01,
               "tope_capa_bytes": 200000, "tope_base_bytes": 200000, "tope_total_bytes": 2000000},
     "fuentes": ["© colaboradores de OpenStreetMap, ODbL"],
 }
@@ -38,7 +38,7 @@ def salida(tmp_path):
     lleg = llegada_cm(dem, cauce, 360, 1200, 2)
     carpeta = tmp_path / "salida"
     carpeta.mkdir()
-    entradas, geoms, base_ent, refs, areas, errores = generar(CFG, carpeta, grilla, lleg, cauce, 0.4, BASE, [])
+    entradas, geoms, base_ent, refs, areas, errores, extra = generar(CFG, carpeta, grilla, lleg, cauce, 0.4, BASE, [])
     assert errores == []
     ind = armar_indice(CFG, "2026-10-19T18:00:00-03:00", False, 0.4, 0.75, base_ent, entradas, refs)
     (carpeta / "indice.json").write_text(json.dumps(ind), encoding="utf-8")

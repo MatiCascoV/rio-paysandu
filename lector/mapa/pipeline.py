@@ -163,7 +163,7 @@ def preparar_terreno(cfg, cache: Cache, grilla, pbf: Path, curvas_textos):
         log.info("terreno y llegada desde la caché: %s", ruta_npz.name)
         z = np.load(ruta_npz, allow_pickle=False)
         info = json.loads(str(z["info"]))
-        return base, z["llegada"], z["fuente"], z["cauce"], z["agua"], info, insumos
+        return base, z["llegada"], z["fuente"], z["cauce"], z["agua"], info, insumos, osm_calc
 
     t0 = time.time()
     dem = T.mosaico(urb, grilla, cfg["remuestreo"], cfg["mdt_urbano"].get("nodata_min", -1000))
@@ -203,7 +203,7 @@ def preparar_terreno(cfg, cache: Cache, grilla, pbf: Path, curvas_textos):
              (L["max_cm"] - L["min_cm"]) // L["cuantizacion_cm"] + 1)
     del dem
     np.savez_compressed(ruta_npz, llegada=lleg, fuente=fuente, cauce=cauce, agua=agua, info=json.dumps(info))
-    return base, lleg, fuente, cauce, agua, info, insumos
+    return base, lleg, fuente, cauce, agua, info, insumos, osm_calc
 
 
 def calibrar(cfg, grilla, lleg, fuente, excluir, curvas) -> dict:
@@ -252,10 +252,24 @@ def calibrar(cfg, grilla, lleg, fuente, excluir, curvas) -> dict:
     return res
 
 
-def generar(cfg, salida_tmp: Path, grilla, lleg, excluir, delta_m, base: dict, curvas):
-    """Capas, curvas y base en `salida_tmp`. Devuelve (entradas de capas, geoms, base_ent, refs, areas)."""
+def generar(cfg, salida_tmp: Path, grilla, lleg, excluir, delta_m, base: dict, curvas, osm_calc: dict | None = None):
+    """Capas, curvas, base y (si la config lo pide) sin_validar.json en `salida_tmp`.
+
+    Devuelve (entradas de capas, geoms, base_ent, refs, areas, errores, extra); `extra` trae
+    la entrada de `sin_validar` para el índice y los números de los controles v1.1."""
+    import shapely
+    from shapely.geometry import shape
+    from . import zonas as Z
+    from .base_osm import poligonos_agua
     kc = cfg["capas"]
     dec = kc["decimales"]
+    extra = {"celdas_afuera": {}, "aisladas": {}, "aisladas_solo_capa": {}}
+    ventana = Z.Ventana(grilla, cfg["limites"])
+    ca = cfg.get("aisladas") if (cfg.get("aisladas") or {}).get("usar", True) else None
+    if ca:
+        calles = Z.Calles(base, grilla.crs)
+        polis_agua = poligonos_agua(base)
+        agua_base = shapely.union_all(polis_agua) if polis_agua else None
     min_celdas = int(np.ceil(kc["sieve_m2"] / grilla.res ** 2))
     min_seco = int(np.ceil(kc.get("rellenar_secos_m2", kc["sieve_m2"]) / grilla.res ** 2))
     (salida_tmp / "agua").mkdir(parents=True)
@@ -263,24 +277,79 @@ def generar(cfg, salida_tmp: Path, grilla, lleg, excluir, delta_m, base: dict, c
     entradas, geoms, areas = [], [], {}
     d_cm = int(round(delta_m * 100))
     errores = []
+    moj = None
     for h in C.alturas(cfg["min_m"], cfg["max_m"], cfg["paso_m"]):
         t = int(round(h * 100)) + d_cm
         moj = C.tamizar(C.mascara_nivel(lleg, t, excluir), excluir, min_celdas, min_seco)
         area_raster = float(moj.sum()) * grilla.res ** 2
         g = C.poligonizar(moj, grilla.transform, kc["simplify_m"], kc.get("buffer_m", 0.0))
         g = C.a_4326(g, grilla.crs, dec, cfg["limites"])
-        fc = C.feature_collection(g, {"altura_m": h}, dec)
-        datos = C.serializar(fc)
+        props = {"altura_m": h}
         nombre = C.nombre_capa(h)
+        if ca:
+            props["aisladas"] = Z.lomas_aisladas(g, agua_base, calles, cfg["limites"], ca["min_calles_m"], dec,
+                                                 ca.get("con_agua_base", True))
+            extra["aisladas"][h] = len(props["aisladas"])
+            extra["aisladas_solo_capa"][h] = len(Z.lomas_aisladas(g, None, calles, cfg["limites"],
+                                                                  ca["min_calles_m"], dec, False))
+        fc = C.feature_collection(g, props, dec)
+        datos = C.serializar(fc)
         (salida_tmp / nombre).write_bytes(datos)
-        errores += [f"{nombre}: {x}" for x in V.validar_capa(json.loads(datos), h, cfg["limites"])]
+        publicada = json.loads(datos)
+        errores += [f"{nombre}: {x}" for x in V.validar_capa(publicada, h, cfg["limites"],
+                                                              (ca or {}).get("min_calles_m", 0))]
+        # 11 §5: ninguna celda mojada afuera de la capa tal como se publica (después del redondeo)
+        n_fuera, ej = Z.celdas_afuera(moj, shape(publicada["features"][0]["geometry"]), ventana)
+        extra["celdas_afuera"][h] = n_fuera
+        if n_fuera:
+            errores.append(f"{nombre}: {n_fuera} celdas mojadas quedan afuera de la capa publicada (p. ej. {ej})")
         entradas.append({"altura_m": h, "archivo": nombre, "bytes": len(datos),
                          "sha256": hashlib.sha256(datos).hexdigest()})
         geoms.append(g)
         areas[nombre] = {"altura_m": h, "area_ha": round(area_raster / 1e4, 1),
                          "partes": len(g.geoms), "bytes": len(datos)}
-        log.info("%s: %.1f ha, %d partes, %d bytes", nombre, area_raster / 1e4, len(g.geoms), len(datos))
+        log.info("%s: %.1f ha, %d partes, %d bytes, %d aisladas, %d celdas afuera", nombre, area_raster / 1e4,
+                 len(g.geoms), len(datos), len(props.get("aisladas", [])), n_fuera)
     errores += V.validar_anidado(geoms, kc["tolerancia_anidado"])
+
+    # v1.1 §1: zonas sin validar (valle de un arroyo: todo lo que se moja hasta max_m)
+    sv = cfg.get("sin_validar")
+    if sv and moj is not None:
+        if osm_calc is None:
+            raise ErrorPipeline("sin_validar necesita las líneas de OSM de la caja de cálculo")
+        rio = rasterizar(Z.lineas_por_nombre(osm_calc, sv["rio"]), grilla, grilla.crs, all_touched=True)
+        if not rio.any():
+            raise ErrorPipeline(f"sin_validar: no encontré en OSM el río {sv['rio']}")
+        zonas = []
+        extra["sin_validar_zonas"] = []
+        f = sv["factor_celdas"]
+        for z in sv["zonas"]:
+            lineas = Z.lineas_por_nombre(osm_calc, z["cursos"])
+            if not lineas:
+                raise ErrorPipeline(f"sin_validar: no encontré en OSM los cursos {z['cursos']}")
+            curso = rasterizar(lineas, grilla, grilla.crs, all_touched=True)
+            gz, valle, _ = Z.zona_sin_validar(moj, excluir, curso, rio, grilla, f,
+                                              z["buffer_m"], sv["simplify_m"], cfg["limites"], dec)
+            if gz.is_empty:
+                raise ErrorPipeline(f"sin_validar: la zona {z['nombre']} quedó vacía")
+            zonas.append((gz, {"nombre": z["nombre"], "motivo": z["motivo"]}))
+            # control: la zona tiene que cubrir todo lo mojado del valle (dentro de limites)
+            mv = np.repeat(np.repeat(valle, f, 0), f, 1)[:moj.shape[0], :moj.shape[1]] & moj
+            n_fuera, _ = Z.celdas_afuera(mv, gz, ventana)
+            if n_fuera:
+                errores.append(f"sin_validar {z['nombre']}: {n_fuera} celdas mojadas del valle quedan afuera")
+            ha_valle = float((mv[ventana.sl] & ventana.enlim).sum()) * grilla.res ** 2 / 1e4
+            extra["sin_validar_zonas"].append({"nombre": z["nombre"], "ha_mojadas_max_m": round(ha_valle, 1),
+                                               "ha_zona": round(C.area_m2_4326(gz) / 1e4, 1),
+                                               "partes": len(gz.geoms), "celdas_afuera": n_fuera})
+            log.info("sin_validar %s: %.0f ha mojadas a %.2f m; zona de %.0f ha (%d partes)", z["nombre"], ha_valle,
+                     cfg["max_m"], C.area_m2_4326(gz) / 1e4, len(gz.geoms))
+        datos = C.serializar(Z.coleccion_zonas(zonas, dec))
+        (salida_tmp / "sin_validar.json").write_bytes(datos)
+        errores += [f"sin_validar.json: {x}" for x in V.validar_sin_validar(json.loads(datos), cfg["limites"], dec)]
+        extra["sin_validar"] = {"archivo": "sin_validar.json", "bytes": len(datos),
+                                "sha256": hashlib.sha256(datos).hexdigest()}
+        extra["sin_validar_geoms"] = [g for g, _ in zonas]
 
     datos = C.serializar(base)
     (salida_tmp / "base.json").write_bytes(datos)
@@ -301,7 +370,7 @@ def generar(cfg, salida_tmp: Path, grilla, lleg, excluir, delta_m, base: dict, c
         refs.append({"tipo": "crecida", "nombre": cu.nombre, "altura_m": cu.altura_m, "fecha": cu.fecha,
                      "archivo": nombre, "bytes": len(datos), "sha256": hashlib.sha256(datos).hexdigest(),
                      "fuente": "Dinagua"})
-    return entradas, geoms, base_ent, refs, areas, errores
+    return entradas, geoms, base_ent, refs, areas, errores, extra
 
 
 def capa_para(h: float, min_m: float, max_m: float, paso_m: float) -> float | None:
@@ -314,10 +383,11 @@ def capa_para(h: float, min_m: float, max_m: float, paso_m: float) -> float | No
     return round(min(min_m + n * paso_m, max_m), 2)
 
 
-def armar_indice(cfg, generado: str, validado: bool, delta: float, iou_val: float, base_ent, entradas, refs) -> dict:
-    """indice.json según docs/mapa/05-contrato.md."""
+def armar_indice(cfg, generado: str, validado: bool, delta: float, iou_val: float, base_ent, entradas, refs,
+                 sin_validar_ent: dict | None = None) -> dict:
+    """indice.json según docs/mapa/05-contrato.md (con los agregados v1.1)."""
     res_txt = f"{cfg['resolucion_m']:g}".replace(".", ",")
-    return {
+    ind = {
         "version": 1,
         "generado": generado,
         "cero": cfg["cero"],
@@ -338,6 +408,9 @@ def armar_indice(cfg, generado: str, validado: bool, delta: float, iou_val: floa
         "referencias": refs,
         "fuentes": cfg["fuentes"],
     }
+    if sin_validar_ent:
+        ind["sin_validar"] = sin_validar_ent
+    return ind
 
 
 def correr(salida: Path, ruta_config: Path, carpeta_cache: Path | None, pbf: Path | None,
@@ -392,7 +465,7 @@ def _correr(cfg, ruta_config, salida, tmp, carpeta_cache, pbf, generado, png):
     if not pbf.exists():
         raise ErrorPipeline(f"no existe el extracto OSM {pbf}")
 
-    base, lleg, fuente, cauce, agua, info_terreno, insumos = preparar_terreno(cfg, cache, grilla, pbf, textos)
+    base, lleg, fuente, cauce, agua, info_terreno, insumos, osm_calc = preparar_terreno(cfg, cache, grilla, pbf, textos)
     excluir = agua | cauce  # el cauce normal (y los espejos de agua de OSM) ya están en base.json
 
     cal = calibrar(cfg, grilla, lleg, fuente, excluir, curvas)
@@ -405,19 +478,22 @@ def _correr(cfg, ruta_config, salida, tmp, carpeta_cache, pbf, generado, png):
         log.info("  %s (%.2f m): IoU %.3f, borde %.1f m, mejor δ %.2f (IoU %.3f)", k, v["altura_m"], v["iou"],
                  v["error_borde_m"], v["mejor_delta_m"], v["iou_mejor_delta"])
 
-    entradas, geoms, base_ent, refs, areas, errores = generar(cfg, tmp, grilla, lleg, excluir, delta, base, curvas)
+    entradas, geoms, base_ent, refs, areas, errores, extra = generar(cfg, tmp, grilla, lleg, excluir, delta, base,
+                                                                     curvas, osm_calc)
 
     revision = not cfg["calibracion"].get("validado_requiere_revision_externa", True)
     validado = bool(cal["criterio_cumplido"] and revision)
     if generado is None:
         generado = dt.datetime.now(dt.timezone(dt.timedelta(hours=-3))).replace(microsecond=0).isoformat()
-    indice = armar_indice(cfg, generado, validado, delta, cal["iou_validacion_media"], base_ent, entradas, refs)
+    indice = armar_indice(cfg, generado, validado, delta, cal["iou_validacion_media"], base_ent, entradas, refs,
+                          extra.get("sin_validar"))
     datos_ind = json.dumps(indice, ensure_ascii=False, indent=1).encode("utf-8")
     (tmp / "indice.json").write_bytes(datos_ind)
 
     errores += V.validar_indice(indice, cfg["cero"])
     errores += V.validar_archivos(tmp, indice)
-    tamanos = {e["archivo"]: e["bytes"] for e in [base_ent] + entradas + refs}
+    sv_ent = [extra["sin_validar"]] if extra.get("sin_validar") else []
+    tamanos = {e["archivo"]: e["bytes"] for e in [base_ent] + entradas + refs + sv_ent}
     tamanos["indice.json"] = len(datos_ind)
     kc = cfg["capas"]
     errores += V.validar_bytes(tamanos, kc["tope_capa_bytes"], kc["tope_base_bytes"], kc["tope_total_bytes"])
@@ -426,6 +502,7 @@ def _correr(cfg, ruta_config, salida, tmp, carpeta_cache, pbf, generado, png):
              "agua_bytes": sum(e["bytes"] for e in entradas),
              "curvas_bytes": sum(r["bytes"] for r in refs),
              "base_bytes": base_ent["bytes"], "indice_bytes": len(datos_ind),
+             "sin_validar_bytes": sum(e["bytes"] for e in sv_ent),
              "capa_max": max(entradas, key=lambda e: e["bytes"])["archivo"],
              "capa_max_bytes": max(e["bytes"] for e in entradas)}
     import gzip
@@ -446,6 +523,11 @@ def _correr(cfg, ruta_config, salida, tmp, carpeta_cache, pbf, generado, png):
         "terreno": info_terreno,
         "areas": areas,
         "pesos": pesos,
+        "v11": {"celdas_afuera_total": sum(extra["celdas_afuera"].values()),
+                "celdas_afuera": {f"{h:.2f}": n for h, n in extra["celdas_afuera"].items() if n},
+                "aisladas_por_capa": {f"{h:.2f}": n for h, n in extra["aisladas"].items()},
+                "aisladas_solo_huecos_de_la_capa": {f"{h:.2f}": n for h, n in extra["aisladas_solo_capa"].items()},
+                "sin_validar": extra.get("sin_validar_zonas", [])},
         "insumos_sha256": {**insumos, "config": sha256_archivo(Path(ruta_config)),
                            "descargas": {u: i["sha256"] for u, i in sorted(cache.usados.items())}},
         "errores_validacion": errores,
@@ -468,7 +550,13 @@ def _correr(cfg, ruta_config, salida, tmp, carpeta_cache, pbf, generado, png):
             titulo = (f"Control (δ = {delta:.2f} m){iou_txt}: modelo vs {cu.nombre if cu else 'sin curva'}\n"
                       f"Calibración {'cumple' if cal['criterio_cumplido'] else 'NO cumple'} el criterio · "
                       f"NO validado por revisión externa")
-            dibujar(tmp / pc.get("archivo", "control.png"), base, sel, cu, titulo, cfg["limites"])
+            sv_g = extra.get("sin_validar_geoms") if pc.get("sin_validar") else None
+            ais = None
+            if pc.get("aisladas") and sel:
+                h_ais = max(x for x, _ in sel)
+                ais = json.loads((tmp / C.nombre_capa(h_ais)).read_text(encoding="utf-8"))["features"][0]["properties"].get("aisladas", [])
+                titulo += f"\nLomas aisladas a {h_ais:.2f} m: {len(ais)}".replace(".", ",")
+            dibujar(tmp / pc.get("archivo", "control.png"), base, sel, cu, titulo, cfg["limites"], sv_g, ais)
 
     log.info("pesos: %s", pesos)
     if errores:

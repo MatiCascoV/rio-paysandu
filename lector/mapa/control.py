@@ -4,7 +4,10 @@ from __future__ import annotations
 import math
 
 
-def dibujar(ruta_png, base: dict, capas: list[tuple[float, object]], curva, titulo: str, limites) -> None:
+def dibujar(ruta_png, base: dict, capas: list[tuple[float, object]], curva, titulo: str, limites,
+            sin_validar=None, aisladas=None) -> None:
+    """`sin_validar`: lista de geometrías (EPSG:4326) que se dibujan rayadas encima del agua.
+    `aisladas`: lista del contrato v1.1 ({"c", "ha", "calles_m"}) que se marcan con un punto."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -52,6 +55,21 @@ def dibujar(ruta_png, base: dict, capas: list[tuple[float, object]], curva, titu
         c = colores[(len(capas) - 1 - i) % len(colores)]
         pintar(g, color=c, alpha=0.55 if i == 0 else 0.8, lw=0, zorder=3 + i)
         leyenda.append(Patch(color=c, alpha=0.7, label=f"Modelo {h:.2f} m".replace(".", ",")))
+    if sin_validar:
+        for g in sin_validar:
+            for p in getattr(g, "geoms", [g]):
+                ax.add_patch(PathPatch(Path(np.asarray(p.exterior.coords)), facecolor="none", edgecolor="#b35900",
+                                       hatch="////", lw=1.2, zorder=8))
+        leyenda.append(Patch(facecolor="none", edgecolor="#b35900", hatch="////", label="Zona sin validar"))
+    if aisladas:
+        xs = [a["c"][0] for a in aisladas]; ys = [a["c"][1] for a in aisladas]
+        ax.scatter(xs, ys, s=46, marker="o", facecolor="#ffd400", edgecolor="#000", lw=0.9, zorder=12)
+        for a in aisladas:
+            ax.annotate(f"{a['ha']:.1f} ha · {a['calles_m']} m".replace(".", ","), a["c"], xytext=(4, 4),
+                        textcoords="offset points", fontsize=6.5, zorder=13,
+                        bbox=dict(boxstyle="round,pad=0.15", fc="white", ec="none", alpha=0.75))
+        leyenda.append(Line2D([0], [0], marker="o", color="none", markerfacecolor="#ffd400", markeredgecolor="#000",
+                              label=f"Loma aislada ({len(aisladas)}): ha · calles"))
     if curva is not None:
         for p in getattr(curva.geom, "geoms", [curva.geom]):
             ax.plot(*p.exterior.xy, color="#d62728", lw=1.4, zorder=10)

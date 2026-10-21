@@ -48,24 +48,35 @@ void main() {
       expect(e.margenCm, 430);
     });
 
-    test('el margen no pasa del máximo y no se repite con la capa', () {
+    test('el margen no pasa del máximo: ahí coincide con la capa máxima, pero se dibuja igual', () {
       expect(elegirAgua(420, ind).margenCm, 430);
-      expect(elegirAgua(430, ind).margenCm, isNull);
+      expect(elegirAgua(430, ind).margenCm, 430);
     });
 
-    test('debajo del mínimo: agua en su cauce (con margen si llega al mapa)', () {
+    test('debajo del mínimo: el agua no pasa de la zona baja; la zona baja y el margen se dibujan igual', () {
       final e = elegirAgua(390, ind);
-      expect(e.situacion, SituacionAgua.enCauce);
+      expect(e.situacion, SituacionAgua.debajoDelMinimo);
       expect(e.capaCm, isNull);
       expect(e.margenCm, 410);
-      expect(elegirAgua(300, ind).margenCm, isNull);
+      expect(e.zonaBajaCm, 400);
+      expect(e.noPasaDeLaZonaBaja, isTrue);
+      // muy por debajo: el margen queda en la capa más baja, nunca falta
+      expect(elegirAgua(300, ind).margenCm, 400);
+      expect(elegirAgua(300, ind).zonaBajaCm, 400);
     });
 
-    test('encima del máximo: la capa más alta, sin margen', () {
+    test('en el mínimo se dice lo mismo que justo debajo (sin salto de texto)', () {
+      expect(elegirAgua(400, ind).noPasaDeLaZonaBaja, isTrue);
+      expect(elegirAgua(400, ind).capaCm, 400);
+      expect(elegirAgua(410, ind).noPasaDeLaZonaBaja, isFalse);
+    });
+
+    test('encima del máximo: la capa más alta, con el margen en la máxima', () {
       final e = elegirAgua(900, ind);
       expect(e.situacion, SituacionAgua.sobreMaximo);
       expect(e.capaCm, 430);
-      expect(e.margenCm, isNull);
+      expect(e.margenCm, 430);
+      expect(e.zonaBajaCm, 400);
     });
   });
 
@@ -296,7 +307,7 @@ void main() {
       expect(elegirAgua(redondearArriba(6.73), ind).margenCm, 730);
       // 3,95 sube a 4,00: se pinta la capa más baja (más agua, no menos)
       expect(elegirAgua(redondearArriba(3.95), ind).situacion, SituacionAgua.enRango);
-      expect(elegirAgua(redondearArriba(3.85), ind).situacion, SituacionAgua.enCauce);
+      expect(elegirAgua(redondearArriba(3.85), ind).situacion, SituacionAgua.debajoDelMinimo);
       expect(elegirAgua(redondearArriba(3.85), ind).margenCm, 440); // los puntos igual se ven
       final arriba = elegirAgua(redondearArriba(10.83), ind);
       expect(arriba.situacion, SituacionAgua.sobreMaximo);

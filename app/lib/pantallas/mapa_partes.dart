@@ -37,11 +37,17 @@ const textoMapaProvisorio = 'Datos de prueba: el agua es inventada. No la uses p
 
 const textoTituloAproximado = 'Este mapa es aproximado';
 
+/// Aviso fijo del pie (01 §6, 04 §3.2 y condición 2 y 5 del control 11 §8):
+/// estimación no oficial, el borde puede variar una cuadra o más, no incluye
+/// lluvia, pluviales ni arroyos, quedar rodeado de agua también es riesgo, y
+/// no reemplaza al Cecoed ni a la Intendencia.
 const textoMapaAproximado =
-    'Muestra hasta dónde podría llegar el río con esa altura, según el terreno. '
-    'No tiene en cuenta la lluvia, los desagües ni las calles cortadas. '
-    'Que una calle no aparezca con agua no quiere decir que no se inunde. '
-    'Seguí siempre las indicaciones del Cecoed. Emergencias: 911.';
+    'Es una estimación comunitaria, no un mapa oficial. Muestra hasta dónde podría llegar el río con esa '
+    'altura, según el terreno de 2017–2018 y crecidas medidas por Dinagua. El borde puede variar una cuadra '
+    'o más. No tiene en cuenta la lluvia, los desagües y pluviales, las crecidas propias de los arroyos ni '
+    'las calles cortadas. Que una calle no aparezca con agua no quiere decir que no se inunde: si estás cerca '
+    'del borde, el agua te puede llegar. Si quedás rodeado de agua, también estás en riesgo. No reemplaza los '
+    'avisos del Cecoed ni de la Intendencia. Emergencias: 911.';
 
 const textoDatosMapa = 'Datos: OpenStreetMap, IDE Uruguay, Dinagua y CARU.';
 
@@ -75,6 +81,36 @@ const altoMapaMinimo = 240.0;
 /// Aviso que aparece un momento si alguien arrastra el mapa con un dedo: con
 /// un dedo se mueve la pantalla (para no quedar atrapado en el mapa).
 const textoDosDedos = 'Para mover el mapa usá dos dedos o las flechas de abajo.';
+
+/// Zona baja de la costa (contrato v1.1 §3): con la altura en `min_m` o por
+/// debajo, el agua no pasa de ahí. Nunca "en su cauce": esa capa ya moja
+/// islas y bañados (unas 450 ha).
+const textoZonaBaja =
+    'Con esta altura el agua no pasa de la zona baja de la costa: islas y bañados que se mojan con el río normal.';
+
+/// Se agrega a [textoZonaBaja] cuando el margen está dibujado.
+const textoZonaBajaMargen = 'Los puntos muestran hasta dónde podría llegar con un poco más.';
+
+/// Fila de la leyenda de la zona baja (sin la palabra del dibujo).
+const textoLeyendaZonaBaja = 'Zona baja de la costa: se moja con el río normal';
+
+/// Loma rodeada de agua (contrato v1.1 §2), al tocar su marca.
+const textoLomaAislada = 'Quedaría rodeada de agua: aunque no se inunde, puede quedar aislada.';
+
+/// Aviso de la lectura cuando la capa pintada tiene lomas aisladas.
+String textoAvisoAisladas(int cuantas) => cuantas == 1
+    ? 'Hay una loma marcada en el mapa. $textoLomaAislada'
+    : 'Hay $cuantas lomas marcadas en el mapa. Quedarían rodeadas de agua: aunque no se inunden, '
+          'pueden quedar aisladas.';
+
+/// Zona sin validar (contrato v1.1 §1): resumen textual.
+const textoSinValidar = 'En el valle del arroyo San Francisco el mapa no se pudo comparar con crecidas reales.';
+
+/// Fila de la leyenda de la zona sin validar (sin la palabra del dibujo).
+const textoLeyendaSinValidar = 'Zona sin validar: el mapa no se pudo comparar con crecidas reales';
+
+/// Fila de la leyenda de las lomas aisladas (sin la palabra del dibujo).
+const textoLeyendaAisladas = 'Loma que quedaría rodeada de agua: puede quedar aislada';
 
 /// Clave de SharedPreferences: la tarjeta "Cómo se usa" ya se vio.
 const claveComoSeUsa = 'mapa_como_se_usa_visto';
@@ -189,18 +225,27 @@ Aviso? avisoHoyMapa(HoyMapa hoy, DateTime ahora) {
 
 String _metros(int cm) => '${formatoAltura(cm / 100)} metros';
 
-/// Resumen textual equivalente al dibujo: qué altura se pinta, qué significan
-/// el rayado y los puntos, y que el agua puede llegar más lejos. No nombra
-/// calles ni barrios (09 §9, decisión 3): una lista incompleta se leería como
-/// "ahí no llega".
+/// Resumen textual equivalente al dibujo: qué altura se pinta, la zona baja,
+/// qué significan el rayado y los puntos, las lomas aisladas, la zona sin
+/// validar y que el agua puede llegar más lejos. No nombra calles ni barrios
+/// (09 §9, decisión 3): una lista incompleta se leería como "ahí no llega".
+///
+/// [minCm] es la capa más baja (zona baja de la costa); [zonaBajaDibujada]
+/// dice si esa capa se pudo leer. [aisladas] es la cantidad de lomas
+/// marcadas; [hoyCm], la altura de la línea "agua de hoy" si está dibujada.
 String resumenMapa({
   required SituacionAgua? situacion,
   required int? alturaCm,
   required int? dibujoCm,
   required int? margenCm,
+  required int minCm,
   required int maxCm,
+  bool zonaBajaDibujada = true,
   bool simulacion = false,
   bool dibujoIlegible = false,
+  int aisladas = 0,
+  bool sinValidar = false,
+  int? hoyCm,
   String? contorno,
 }) {
   final partes = <String>['Mapa de la costa de Paysandú, con el río, las calles y los barrios.'];
@@ -208,25 +253,38 @@ String resumenMapa({
   final masDeAltura = margenCm == null || dibujoCm == null && alturaCm == null
       ? null
       : unidadesEnPalabras('${formatoDiferencia((margenCm - (dibujoCm ?? alturaCm!)) / 100)} más de altura');
-  switch (situacion) {
-    case null:
-      break;
-    case SituacionAgua.enCauce:
-      partes.add('Con ${_metros(alturaCm!)} el agua queda en su cauce.');
-      if (margenCm != null) partes.add('Los puntos muestran hasta dónde podría llegar con un poco más.');
-    case SituacionAgua.enRango || SituacionAgua.sobreMaximo:
-      if (dibujoIlegible || dibujoCm == null) {
-        partes.add('No se pudo leer el dibujo del agua para esta altura.');
-      } else {
-        partes.add('Agua dibujada con ${_metros(dibujoCm)}: el rayado muestra hasta dónde llegaría.');
-        if (masDeAltura != null) partes.add('Los puntos, hasta dónde puede llegar con $masDeAltura.');
+  final noPasa = alturaCm != null && alturaCm <= minCm;
+  if (situacion != null && noPasa) {
+    // Igual con 3,90 que con 4,00: sin salto de texto en el mínimo.
+    partes.add(
+      'Con ${_metros(alturaCm)} el agua no pasa de la zona baja de la costa: '
+      'islas y bañados que se mojan con el río normal.',
+    );
+    if (!zonaBajaDibujada) partes.add('No se pudo leer el dibujo de la zona baja de la costa.');
+    if (margenCm != null && margenCm > alturaCm) {
+      partes.add('Los puntos muestran hasta dónde podría llegar con un poco más.');
+    }
+  } else if (situacion != null) {
+    if (dibujoIlegible || dibujoCm == null) {
+      partes.add('No se pudo leer el dibujo del agua para esta altura.');
+    } else {
+      partes.add('Agua dibujada con ${_metros(dibujoCm)}: el rayado muestra hasta dónde llegaría.');
+      if (masDeAltura != null && margenCm! > dibujoCm) {
+        partes.add('Los puntos, hasta dónde puede llegar con $masDeAltura.');
       }
-      if (situacion == SituacionAgua.sobreMaximo) {
-        partes.add(
-          'El mapa llega hasta ${_metros(maxCm)}. Con ${_metros(alturaCm!)} el agua llega más lejos de lo que se ve.',
-        );
-      }
+    }
+    if (zonaBajaDibujada) {
+      partes.add('La zona baja de la costa, que se moja con el río normal, tiene su propio dibujo.');
+    }
+    if (situacion == SituacionAgua.sobreMaximo) {
+      partes.add(
+        'El mapa llega hasta ${_metros(maxCm)}. Con ${_metros(alturaCm!)} el agua llega más lejos de lo que se ve.',
+      );
+    }
   }
+  if (aisladas > 0) partes.add(textoAvisoAisladas(aisladas));
+  if (sinValidar) partes.add(textoSinValidar);
+  if (hoyCm != null) partes.add('Línea gruesa: hasta dónde llega el agua con el río de hoy, ${_metros(hoyCm)}.');
   if (contorno != null) partes.add('Línea de trazos: el borde medido en la crecida "$contorno".');
   partes.add(
     'Es aproximado: el agua puede llegar más lejos. Este resumen no dice qué calles o barrios alcanza el agua.',
@@ -235,11 +293,34 @@ String resumenMapa({
 }
 
 /// Lo que se agrega al anuncio de la lectura cuando cambia la altura, para
-/// decir qué pasó con el agua. null si la lectura ya lo dice (cauce, sobre el
-/// máximo, dibujo ilegible).
-String? fraseAgua(SituacionAgua situacion, int? dibujoCm) => situacion == SituacionAgua.enRango && dibujoCm != null
+/// decir qué pasó con el agua. null si la lectura ya lo dice (zona baja,
+/// sobre el máximo, dibujo ilegible).
+String? fraseAgua(EleccionAgua e, int? dibujoCm) =>
+    e.situacion == SituacionAgua.enRango && !e.noPasaDeLaZonaBaja && dibujoCm != null
     ? 'El mapa ahora muestra el agua con ${_metros(dibujoCm)}. Puede llegar más lejos.'
     : null;
+
+/// Hoja con el aviso de una loma aislada (al tocar su marca en el mapa).
+Future<void> mostrarLomaAislada(BuildContext context, LomaAislada loma) => _hoja(context, (tema) {
+  final ha = loma.hectareas;
+  return [
+    Semantics(header: true, child: Text('Loma rodeada de agua', style: tema.titleMedium)),
+    const SizedBox(height: 8),
+    Text(textoLomaAislada, style: tema.bodyLarge),
+    if (ha != null) ...[
+      const SizedBox(height: 8),
+      Text(
+        'Mide unas ${ha < 10 ? ha.toStringAsFixed(1).replaceAll('.', ',') : ha.round()} hectáreas.',
+        style: tema.bodyMedium,
+      ),
+    ],
+    const SizedBox(height: 8),
+    Text(
+      'Si quedás rodeado de agua, también estás en riesgo. Seguí las indicaciones del Cecoed.',
+      style: tema.bodyLarge,
+    ),
+  ];
+});
 
 /// Colores del recuadro ámbar (los mismos de [Recuadro]).
 Color get _fondoAmbar => Colores.oscuro ? const Color(0xFF3A2E12) : const Color(0xFFFFF4D6);

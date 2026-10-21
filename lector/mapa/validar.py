@@ -51,8 +51,11 @@ def validar_indice(ind: dict, cero_esperado: str = "Local") -> list[str]:
             e.append(f"{k} no es número")
     if e:
         return e
+    extra_sv = [(ind["sin_validar"], "sin_validar")] if "sin_validar" in ind else []
+    if extra_sv and ind["sin_validar"].get("archivo") != "sin_validar.json":
+        e.append("sin_validar: archivo debe ser 'sin_validar.json'")
     for ent, nombre in [(ind["base"], "base")] + [(c, f"capa {i}") for i, c in enumerate(ind["capas"])] \
-            + [(r, f"referencia {i}") for i, r in enumerate(ind["referencias"])]:
+            + [(r, f"referencia {i}") for i, r in enumerate(ind["referencias"])] + extra_sv:
         for k in ("archivo", "bytes", "sha256"):
             if k not in ent:
                 e.append(f"{nombre} sin '{k}'")
@@ -86,7 +89,8 @@ def validar_indice(ind: dict, cero_esperado: str = "Local") -> list[str]:
 def validar_archivos(carpeta: Path, ind: dict) -> list[str]:
     """bytes y sha256 de cada archivo listado, tal como quedó en disco."""
     e = []
-    ents = [ind["base"]] + list(ind["capas"]) + list(ind["referencias"])
+    ents = [ind["base"]] + list(ind["capas"]) + list(ind["referencias"]) + \
+        ([ind["sin_validar"]] if "sin_validar" in ind else [])
     for ent in ents:
         ruta = Path(carpeta) / ent["archivo"]
         if not ruta.exists():
@@ -100,22 +104,26 @@ def validar_archivos(carpeta: Path, ind: dict) -> list[str]:
     return e
 
 
-def validar_capa(fc: dict, altura_m: float, limites) -> list[str]:
-    """Una capa agua/NNNN.json: estructura, MultiPolygon válido, dentro de los límites."""
+def validar_capa(fc: dict, altura_m: float, limites, min_calles_m: float = 0) -> list[str]:
+    """Una capa agua/NNNN.json: estructura, MultiPolygon válido, dentro de los límites y,
+    si está, la lista `aisladas` (v1.1 §2)."""
     import shapely
-    from shapely.geometry import shape
+    from shapely.geometry import Point, shape
     e = []
     if fc.get("type") != "FeatureCollection" or len(fc.get("features", [])) != 1:
         return ["no es una FeatureCollection con un solo Feature"]
     f = fc["features"][0]
     if f.get("type") != "Feature":
         e.append("el elemento no es un Feature")
-    if f.get("properties") != {"altura_m": altura_m}:
-        e.append(f"properties {f.get('properties')} ≠ {{'altura_m': {altura_m}}}")
+    props = f.get("properties") or {}
+    if props.get("altura_m") != altura_m or set(props) - {"altura_m", "aisladas"}:
+        e.append(f"properties {props} ≠ {{'altura_m': {altura_m}[, 'aisladas': [...]]}}")
     g = f.get("geometry") or {}
     if g.get("type") != "MultiPolygon":
         return e + ["la geometría no es MultiPolygon"]
     if g.get("coordinates") == []:
+        if props.get("aisladas"):
+            e.append("capa vacía con lomas aisladas")
         return e
     geom = shape(g)
     if not geom.is_valid:
@@ -125,6 +133,55 @@ def validar_capa(fc: dict, altura_m: float, limites) -> list[str]:
     tol = 1e-5
     if x0 < o - tol or x1 > es + tol or y0 < s - tol or y1 > n + tol:
         e.append(f"bbox {geom.bounds} fuera de los límites")
+    ais = props.get("aisladas")
+    if ais is not None:
+        if not isinstance(ais, list):
+            return e + ["aisladas no es una lista"]
+        for i, a in enumerate(ais):
+            if not isinstance(a, dict) or set(a) != {"c", "ha", "calles_m"}:
+                e.append(f"aislada {i}: claves {sorted(a) if isinstance(a, dict) else a} ≠ c, ha, calles_m")
+                continue
+            c = a["c"]
+            if not (isinstance(c, list) and len(c) == 2 and all(_num(x) for x in c)):
+                e.append(f"aislada {i}: c no es [lon, lat]")
+                continue
+            if not (o < c[0] < es and s < c[1] < n):
+                e.append(f"aislada {i}: c {c} fuera de los límites")
+            elif geom.intersects(Point(c)):
+                e.append(f"aislada {i}: c {c} cae sobre el agua de la capa")
+            if not _num(a["ha"]) or a["ha"] <= 0:
+                e.append(f"aislada {i}: ha inválido")
+            if not isinstance(a["calles_m"], int) or a["calles_m"] < min_calles_m:
+                e.append(f"aislada {i}: calles_m {a['calles_m']} < {min_calles_m}")
+    return e
+
+
+def validar_sin_validar(fc: dict, limites, decimales: int = 5) -> list[str]:
+    """sin_validar.json (v1.1 §1): FeatureCollection con un Feature Polygon/MultiPolygon por
+    zona, válido, dentro de los límites, a `decimales` decimales, con nombre y motivo."""
+    import shapely
+    from shapely.geometry import shape
+    e = []
+    if fc.get("type") != "FeatureCollection" or not fc.get("features"):
+        return ["no es una FeatureCollection con al menos un Feature"]
+    (s, o), (n, es) = limites
+    for i, f in enumerate(fc["features"]):
+        pr = f.get("properties") or {}
+        if set(pr) != {"nombre", "motivo"} or not all(isinstance(pr[k], str) and pr[k] for k in ("nombre", "motivo")):
+            e.append(f"zona {i}: properties {pr} ≠ {{nombre, motivo}}")
+        g = f.get("geometry") or {}
+        if g.get("type") not in ("Polygon", "MultiPolygon") or not g.get("coordinates"):
+            e.append(f"zona {i}: geometría {g.get('type')} vacía o no poligonal")
+            continue
+        geom = shape(g)
+        if not geom.is_valid:
+            e.append(f"zona {i}: geometría inválida: {shapely.is_valid_reason(geom)}")
+        x0, y0, x1, y1 = geom.bounds
+        if x0 < o - 1e-5 or x1 > es + 1e-5 or y0 < s - 1e-5 or y1 > n + 1e-5:
+            e.append(f"zona {i}: fuera de los límites")
+        xy = shapely.get_coordinates(geom)
+        if (abs(xy - xy.round(decimales)) > 1e-9).any():
+            e.append(f"zona {i}: coordenadas con más de {decimales} decimales")
     return e
 
 

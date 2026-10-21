@@ -164,6 +164,7 @@ void main() {
           alturaCm: 620,
           dibujoCm: 620,
           margenCm: 670,
+          minCm: 400,
           maxCm: 1050,
         ),
         'simulación con borde medido': resumenMapa(
@@ -171,15 +172,17 @@ void main() {
           alturaCm: 920,
           dibujoCm: 920,
           margenCm: 970,
+          minCm: 400,
           maxCm: 1050,
           simulacion: true,
           contorno: 'Crecida de dic. 2015',
         ),
-        'cauce': resumenMapa(
-          situacion: SituacionAgua.enCauce,
+        'zona baja': resumenMapa(
+          situacion: SituacionAgua.debajoDelMinimo,
           alturaCm: 390,
           dibujoCm: null,
           margenCm: 430,
+          minCm: 400,
           maxCm: 1050,
         ),
         'sobre el máximo': resumenMapa(
@@ -187,6 +190,7 @@ void main() {
           alturaCm: 1080,
           dibujoCm: 1050,
           margenCm: null,
+          minCm: 400,
           maxCm: 1050,
         ),
         'dibujo ilegible': resumenMapa(
@@ -194,6 +198,7 @@ void main() {
           alturaCm: 620,
           dibujoCm: null,
           margenCm: null,
+          minCm: 400,
           maxCm: 1050,
           dibujoIlegible: true,
         ),
@@ -202,7 +207,13 @@ void main() {
       expect(casos['en rango, hoy'], contains('con 50 centímetros más de altura'));
       expect(casos['simulación con borde medido'], contains('Simulación: no es el río de hoy.'));
       expect(casos['simulación con borde medido'], contains('borde medido en la crecida "Crecida de dic. 2015"'));
-      expect(casos['cauce'], contains('Con 3,90 metros el agua queda en su cauce.'));
+      expect(
+        casos['zona baja'],
+        contains(
+          'Con 3,90 metros el agua no pasa de la zona baja de la costa: islas y bañados que se mojan con el río normal.',
+        ),
+      );
+      expect(casos['zona baja'], isNot(contains('cauce')));
       expect(casos['sobre el máximo'], contains('Con 10,80 metros el agua llega más lejos de lo que se ve.'));
       expect(casos['dibujo ilegible'], contains('No se pudo leer el dibujo del agua'));
       for (final MapEntry(:key, :value) in casos.entries) {
