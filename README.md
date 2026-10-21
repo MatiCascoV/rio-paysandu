@@ -10,8 +10,8 @@ Ante cualquier duda hay que comunicarse con los canales oficiales (Cecoed Paysan
 ## Cómo está armado
 
 - `lector/` — programa en Python que lee los datos de CARU, los valida y genera los JSON.
-- `data/` — JSON generados por el lector. Desde el 21/10/2026 viven en la rama **`datos`**, que es la que
-  publica GitHub Pages; en `main` no se actualizan más.
+- `data/` — JSON generados por el lector. Desde el 21/10/2026 viven **solo** en la rama **`datos`**, que es
+  la que publica GitHub Pages (Settings → Pages → rama `datos`, raíz). En `main` no hay carpeta `data/`.
 - `.github/workflows/` — automatización que corre el lector cada unos 10 minutos (bucle que se relanza solo)
   y los tests del lector y de la app.
 - `app/` — app Flutter que lee los JSON publicados.
@@ -47,7 +47,9 @@ Después, cada vez:
 La configuración (direcciones de CARU, cero, límites de antigüedad) está en `lector/config.json`.
 Los umbrales de nivel están en `data/umbrales.json` **de la rama `datos`** (ahí se editan a mano) y son
 **provisorios** hasta que el Cecoed los valide. Para correr el lector local contra otra carpeta de datos:
-`$env:LECTOR_DATOS = 'ruta\data'` (sin la variable usa `data/` del repositorio).
+`$env:LECTOR_DATOS = 'C:\ruta\a\rio-datos\data'` (sin la variable usa `data/` de la carpeta del repositorio, que
+git ignora en `main`). Para controlar los umbrales con los tests, `LECTOR_DATOS` tiene que apuntar al `data/` de una
+copia de la rama `datos` (por ejemplo `git worktree add ..\rio-datos datos`); si no, ese test se saltea.
 
 ### Avisos que puede traer `actual.json`
 
@@ -179,7 +181,8 @@ firmado con la clave de depuración). Igual conviene correr `flutter test` y `fl
     gráfico de 7 días en Inicio y paleta azulada en modo claro y oscuro.
 - Fase 4 (notificaciones push): en curso. Hechos el margen al bajar y el lector de avisos (`lector/avisos.py`
   y `avisos.yml`, sin probar contra FCM). El 19/10/2026 se creó el proyecto de Firebase y se registró la app.
-  Falta la prueba de entrega en el celular, la app, la rama `datos` y la identidad federada. Ver
+  El 21/10/2026 entraron la app con avisos push (probada en el Redmi) y la rama `datos`. Falta la identidad
+  federada, la prueba completa con `avisos.yml` y la documentación de los envíos. Ver
   [docs/fase-4-avisos-push.md](docs/fase-4-avisos-push.md).
   - 17/10/2026: arreglados los avisos locales en el APK de release (la reducción de recursos borraba el ícono
     de notificación).
