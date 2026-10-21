@@ -4,6 +4,13 @@ Cada URL se guarda una sola vez en la carpeta de caché (fuera del repo). Un man
 (`manifiesto.json`) anota bytes y sha256 de cada archivo; si el archivo cacheado no
 coincide con su manifiesto se vuelve a bajar. Toda falla de red o de tamaño corta el
 pipeline con un error claro (fallar temprano y fuerte).
+
+Reproducibilidad: la caché solo garantiza el mismo resultado mientras no se vacíe. Las
+URL "latest" cambian de contenido (el extracto de Geofabrik se regenera todos los días) y
+la fecha de generación sale del reloj. Para dos corridas idénticas byte a byte hay que
+fijar `--osm-pbf ARCHIVO` (un extracto guardado, con su sha256 anotado) y
+`--generado AAAA-MM-DDTHH:MM:SS-03:00`; calibracion.json anota el sha256 de cada insumo
+para poder comprobarlo.
 """
 from __future__ import annotations
 

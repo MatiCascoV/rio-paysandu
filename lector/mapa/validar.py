@@ -27,8 +27,9 @@ def validar_indice(ind: dict, cero_esperado: str = "Local") -> list[str]:
             e.append(f"falta la clave '{k}'")
     if e:
         return e
-    if ind["version"] != 1:
-        e.append("version debe ser 1")
+    # estricto: True == 1 y 1.0 == 1 en Python, pero el contrato pide el entero 1
+    if type(ind["version"]) is not int or ind["version"] != 1:
+        e.append("version debe ser el entero 1")
     if ind["cero"] != cero_esperado:
         e.append(f"cero '{ind['cero']}' distinto de '{cero_esperado}'")
     if not isinstance(ind["validado"], bool):
@@ -39,6 +40,9 @@ def validar_indice(ind: dict, cero_esperado: str = "Local") -> list[str]:
     for k in ("metodo", "delta_m", "iou_validacion", "margen_m"):
         if k not in m:
             e.append(f"modelo sin '{k}'")
+    # la franja de margen es lo que cubre el error del modelo: nunca menos de 10 cm (una capa)
+    if "margen_m" in m and (not _num(m["margen_m"]) or m["margen_m"] < 0.1 - 1e-9):
+        e.append(f"modelo.margen_m {m['margen_m']} tiene que ser un número ≥ 0,1")
     lim = ind["limites"]
     try:
         (s, o), (n, es) = lim
@@ -51,6 +55,14 @@ def validar_indice(ind: dict, cero_esperado: str = "Local") -> list[str]:
             e.append(f"{k} no es número")
     if e:
         return e
+    min_cm, paso_cm = round(ind["min_m"] * 100, 6), round(ind["paso_m"] * 100, 6)
+    if paso_cm <= 0 or paso_cm != int(paso_cm) or min_cm != int(min_cm):
+        e.append("paso_m tiene que ser > 0 y paso_m y min_m tienen que ser centímetros enteros")
+        return e
+    # la app redondea hacia arriba al paso (capa_para): min_m fuera de la grilla del paso
+    # desarma los nombres agua/NNNN.json y el redondeo
+    if int(min_cm) % int(paso_cm):
+        e.append(f"min_m {ind['min_m']} no es múltiplo de paso_m {ind['paso_m']}")
     extra_sv = [(ind["sin_validar"], "sin_validar")] if "sin_validar" in ind else []
     if extra_sv and ind["sin_validar"].get("archivo") != "sin_validar.json":
         e.append("sin_validar: archivo debe ser 'sin_validar.json'")
@@ -195,6 +207,28 @@ def validar_anidado(geoms: list, tolerancia: float) -> list[str]:
         fuera = a.difference(b).area
         if fuera > tolerancia * a.area:
             e.append(f"capa {i} no está dentro de la {i + 1}: {fuera / a.area:.2%} afuera")
+    return e
+
+
+def validar_areas(alturas: list[float], areas_m2: list[float], max_vacia: bool) -> list[str]:
+    """Controles de plausibilidad de las capas (I3 b):
+    - la capa de `max_m` (la última) no puede estar vacía: con el río en el máximo del
+      mapa siempre hay agua sobre tierra; vacía quiere decir terreno, cauce o δ roto;
+    - el área mojada (raster, antes de poligonizar) no puede bajar al subir la altura
+      (las capas son anidadas) y tiene que crecer entre `min_m` y `max_m`. Dos capas
+      seguidas con la misma área se aceptan (en una franja angosta puede no entrar agua)."""
+    e = []
+    if not areas_m2:
+        return ["no hay capas"]
+    if max_vacia or areas_m2[-1] <= 0:
+        e.append(f"la capa de {alturas[-1]:.2f} m (max_m) está vacía")
+    for i in range(len(areas_m2) - 1):
+        if areas_m2[i + 1] < areas_m2[i]:
+            e.append(f"el área baja de {areas_m2[i] / 1e4:.2f} ha a {alturas[i]:.2f} m "
+                     f"a {areas_m2[i + 1] / 1e4:.2f} ha a {alturas[i + 1]:.2f} m")
+    if len(areas_m2) > 1 and areas_m2[-1] <= areas_m2[0]:
+        e.append(f"el área no crece entre {alturas[0]:.2f} m y {alturas[-1]:.2f} m "
+                 f"({areas_m2[0] / 1e4:.2f} ha → {areas_m2[-1] / 1e4:.2f} ha)")
     return e
 
 

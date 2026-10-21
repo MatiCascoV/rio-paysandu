@@ -23,14 +23,19 @@ def iou(modelo: np.ndarray, curva: np.ndarray, dominio: np.ndarray) -> float:
     return np.count_nonzero(m & c) / union
 
 
-def barrido(llegada_dom: np.ndarray, curva_dom: np.ndarray, h_local: float, deltas_cm: list[int]) -> list[float]:
-    """IoU para cada δ. `llegada_dom` y `curva_dom` ya recortados al dominio (1-D)."""
+def barrido(llegada_dom: np.ndarray, curva_dom: np.ndarray, h_local: float, deltas_cm: list[int],
+            umbral=None) -> list[float]:
+    """IoU para cada δ. `llegada_dom` y `curva_dom` ya recortados al dominio (1-D).
+
+    `umbral`, si se pasa, lleva h·100 + δ a la grilla de cuantización de la llegada
+    (p. ej. `llegada.umbral_en_grilla(..., redondear=True)`); el pipeline siempre lo pasa."""
     out = []
     c = curva_dom
     nc = np.count_nonzero(c)
     hc = int(round(h_local * 100))
     for d in deltas_cm:
-        m = llegada_dom <= hc + d
+        t = hc + d if umbral is None else umbral(hc + d)
+        m = llegada_dom <= t
         inter = np.count_nonzero(m & c)
         union = np.count_nonzero(m) + nc - inter
         out.append(inter / union if union else float("nan"))

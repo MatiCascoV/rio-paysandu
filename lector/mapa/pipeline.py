@@ -2,11 +2,21 @@
 
 Uso (desde lector/):
     python -m mapa <carpeta_salida> [--config mapa/config.json] [--cache DIR] [--osm-pbf ARCHIVO]
-                   [--generado 2026-10-19T18:00:00-03:00] [--sin-png]
+                   [--generado 2026-10-19T18:00:00-03:00] [--sin-png] [--forzar]
 
 Escribe en <carpeta_salida>: indice.json, base.json, agua/NNNN.json, curvas/AAAA-MM.json
 (lo que define docs/mapa/05-contrato.md) y además calibracion.json, control.png y mapa.log.
 Arma todo en una carpeta temporal y solo la pone en su lugar si todas las validaciones pasan.
+
+Controles que frenan la publicación (además de los del contrato):
+- la calibración no cumple el criterio de 01 §4.1 (`criterio_cumplido` false). Solo
+  `--forzar` lo deja pasar, siempre con `validado: false` y `forzado: true` en
+  calibracion.json. Es para diagnóstico: una salida forzada no se copia a la app;
+- la capa de `max_m` vacía o un área mojada que no crece con la altura;
+- demasiado terreno sin dato del lado uruguayo dentro de `limites` (`sin_dato` en config.json):
+  en `llegada.py` el sin dato es pared y dejaría secas zonas que se mojan;
+- umbrales h·100 + δ fuera de la grilla de cuantización de la llegada o por encima de
+  `llegada.max_cm` (se revisa al cargar la config para cada capa y cada δ del barrido).
 """
 from __future__ import annotations
 
@@ -55,7 +65,96 @@ def cargar_config(ruta: Path) -> dict:
                 raise ErrorPipeline(f"sin_validar {z.get('nombre')}: buffer_m < simplify_m")
             if not (z.get("nombre") and z.get("motivo") and z.get("cursos")):
                 raise ErrorPipeline("sin_validar: cada zona necesita nombre, motivo y cursos")
+    chequear_umbrales(cfg)
+    umbral_sin_dato(cfg)
     return cfg
+
+
+def deltas_cm(kc: dict) -> list[int]:
+    """δ del barrido de calibración, en cm enteros."""
+    paso = int(round(kc["delta_paso"] * 100))
+    if paso <= 0:
+        raise ErrorPipeline("calibracion.delta_paso tiene que ser > 0")
+    d = list(range(int(round(kc["delta_min"] * 100)), int(round(kc["delta_max"] * 100)) + 1, paso))
+    if not d:
+        raise ErrorPipeline("calibracion: el barrido de δ está vacío")
+    return d
+
+
+def chequear_umbrales(cfg) -> None:
+    """I4: `llegada <= t` solo es exacto en la grilla de cuantización (llegada.py). Cada capa
+    publicada usa t = h·100 + δ, con δ salido del barrido: se revisa toda combinación de
+    capa y δ antes de bajar nada. Fuera de la grilla o arriba de max_cm faltaría agua."""
+    from .llegada import umbral_en_grilla
+    L = cfg["llegada"]
+    for k in ("cuantizacion_cm", "min_cm", "max_cm"):
+        if type(L.get(k)) is not int:
+            raise ErrorPipeline(f"llegada.{k} tiene que ser un entero (cm)")
+    if L["cuantizacion_cm"] <= 0 or L["max_cm"] < L["min_cm"]:
+        raise ErrorPipeline("llegada: cuantizacion_cm > 0 y max_cm >= min_cm")
+    try:
+        hs = C.alturas(cfg["min_m"], cfg["max_m"], cfg["paso_m"])
+    except ValueError as e:
+        raise ErrorPipeline(str(e)) from e
+    for d in deltas_cm(cfg["calibracion"]):
+        for h in hs:
+            try:
+                umbral_en_grilla(int(round(h * 100)) + d, L["min_cm"], L["cuantizacion_cm"], L["max_cm"])
+            except ValueError as e:
+                raise ErrorPipeline(f"capa {h:.2f} m con δ {d / 100:+.2f} m: {e}") from e
+
+
+def umbral_sin_dato(cfg) -> float:
+    sd = cfg.get("sin_dato") or {}
+    u = sd.get("max_fraccion_tierra_uy")
+    if not isinstance(u, (int, float)) or isinstance(u, bool) or not 0 <= u < 1:
+        raise ErrorPipeline("config sin 'sin_dato.max_fraccion_tierra_uy' (fracción entre 0 y 1)")
+    return float(u)
+
+
+def fraccion_sin_dato_este(sin_dato: np.ndarray, tierra: np.ndarray, cauce: np.ndarray,
+                           dentro: np.ndarray) -> dict:
+    """I3 c: fracción de tierra sin dato del MDT del lado uruguayo (este) del río.
+
+    Aproximación: en cada fila de la grilla (EPSG:5382, filas ≈ norte-sur), la orilla
+    uruguaya es la última columna del cauce (la componente más grande del agua de OSM, el
+    Uruguay). Todo lo que queda al este de esa columna, dentro de `limites` y sin agua de
+    OSM, es tierra uruguaya. Las filas sin cauce toman la orilla de la fila con cauce más
+    cercana (interpolación lineal). Lo de la otra orilla (Argentina, sin MDT) y las islas
+    quedan afuera de la cuenta. Si el cauce trae brazos hacia el este, la zona contada se
+    achica: el control se vuelve menos sensible, nunca dispara de más.
+    Todos los argumentos son máscaras del mismo recorte (la ventana de `limites`)."""
+    alto, ancho = cauce.shape
+    filas = np.flatnonzero(cauce.any(axis=1))
+    if len(filas) == 0:
+        raise ErrorPipeline("no hay cauce dentro de limites: no se puede ubicar la orilla uruguaya")
+    ultima = ancho - 1 - np.argmax(cauce[filas, ::-1], axis=1)
+    orilla = np.interp(np.arange(alto), filas, ultima)
+    este = np.arange(ancho)[None, :] > orilla[:, None]
+    zona = este & tierra & dentro
+    n_t = int(zona.sum())
+    n_sd = int((zona & sin_dato).sum())
+    return {"celdas_tierra_este": n_t, "celdas_sin_dato_este": n_sd,
+            "fraccion": round(n_sd / n_t, 6) if n_t else 1.0}
+
+
+def control_sin_dato(cfg, grilla, fuente, agua, cauce) -> dict:
+    """Corta el pipeline si la tierra uruguaya dentro de `limites` tiene demasiado sin dato.
+    Usa `fuente` (también sirve con el terreno desde la caché). Cuenta como sin dato las
+    celdas de arroyos que `quemar_cursos` completó (no cambian `fuente`): son pocas y van del
+    lado prudente (el control dispara antes, no después)."""
+    from . import zonas as Z
+    from .terreno import SIN_DATO
+    v = Z.Ventana(grilla, cfg["limites"])
+    sl = v.sl
+    r = fraccion_sin_dato_este(fuente[sl] == SIN_DATO, ~agua[sl] & ~cauce[sl], cauce[sl], v.enlim)
+    r["umbral"] = umbral_sin_dato(cfg)
+    log.info("sin dato del MDT en tierra uruguaya dentro de limites: %d de %d celdas (%.3f%%; tope %.3f%%)",
+             r["celdas_sin_dato_este"], r["celdas_tierra_este"], 100 * r["fraccion"], 100 * r["umbral"])
+    if r["fraccion"] > r["umbral"]:
+        raise ErrorPipeline(f"{r['fraccion']:.2%} de la tierra uruguaya dentro de limites no tiene dato del MDT "
+                            f"(tope {r['umbral']:.2%}): en la llegada funciona como pared y faltaría agua")
+    return r
 
 
 def _bajar_grilla(cache: Cache, url_sin_ext: str) -> str:
@@ -222,9 +321,18 @@ def preparar_terreno(cfg, cache: Cache, grilla, pbf: Path, curvas_textos):
 def calibrar(cfg, grilla, lleg, fuente, excluir, curvas) -> dict:
     from . import calibracion as K
     from .terreno import URBANO
+    from .llegada import umbral_en_grilla
     kc = cfg["calibracion"]
-    deltas = list(range(int(round(kc["delta_min"] * 100)), int(round(kc["delta_max"] * 100)) + 1,
-                        int(round(kc["delta_paso"] * 100))))
+    deltas = deltas_cm(kc)
+    L = cfg["llegada"]
+
+    def umbral(t: int) -> int:
+        # I4: las curvas pueden tener cota impar en cm; se suben al umbral siguiente de la
+        # grilla (más agua, lado prudente) en vez de evaluarlas un escalón abajo
+        try:
+            return umbral_en_grilla(t, L["min_cm"], L["cuantizacion_cm"], L["max_cm"], redondear=True)
+        except ValueError as e:
+            raise ErrorPipeline(f"calibración: {e}") from e
     cobertura = (fuente == URBANO) if kc.get("solo_mdt_urbano", True) else (fuente > 0)
     tabla, detalle, mascaras = {}, {}, {}
     for cu in curvas:
@@ -234,7 +342,7 @@ def calibrar(cfg, grilla, lleg, fuente, excluir, curvas) -> dict:
             log.warning("curva %s fuera de la grilla", cu.clave); continue
         caja = np.zeros_like(m); caja[filas[0]:filas[-1] + 1, cols[0]:cols[-1] + 1] = True
         dom = caja & cobertura & ~excluir
-        tabla[cu.clave] = K.barrido(lleg[dom], m[dom], cu.altura_m, deltas)
+        tabla[cu.clave] = K.barrido(lleg[dom], m[dom], cu.altura_m, deltas, umbral)
         mascaras[cu.clave] = (m, dom)
         detalle[cu.clave] = {"altura_m": cu.altura_m, "tipo": cu.tipo,
                              "celdas_dominio": int(dom.sum()),
@@ -242,10 +350,15 @@ def calibrar(cfg, grilla, lleg, fuente, excluir, curvas) -> dict:
                              "cobertura_urbana_de_la_curva": round(float((m & caja & cobertura).sum()) / max(int((m & caja).sum()), 1), 3)}
     res = K.ajustar(tabla, deltas, kc["fija"], kc["validacion"], kc["iou_min"], kc["estabilidad_m"])
     d_cm = int(round(res["delta_m"] * 100))
-    zona_baja = lleg <= int(round(cfg["min_m"] * 100)) + d_cm  # mojado ya con la capa mínima
+    zona_baja = lleg <= umbral(int(round(cfg["min_m"] * 100)) + d_cm)  # mojado ya con la capa mínima
     for clave, (m, dom) in mascaras.items():
         h = detalle[clave]["altura_m"]
-        mod = lleg <= int(round(h * 100)) + d_cm
+        t = umbral(int(round(h * 100)) + d_cm)
+        if t != int(round(h * 100)) + d_cm:
+            log.info("curva %s: umbral %d cm fuera de la grilla, se evalúa en %d cm (hacia arriba)",
+                     clave, int(round(h * 100)) + d_cm, t)
+        detalle[clave]["umbral_cm"] = t
+        mod = lleg <= t
         cc = m & dom
         # fracción de la crecida real que el modelo SÍ marca (lo que no marca es lo peligroso)
         detalle[clave]["curva_cubierta"] = round(float((mod & cc).sum()) / max(int(cc.sum()), 1), 4)
@@ -288,13 +401,22 @@ def generar(cfg, salida_tmp: Path, grilla, lleg, excluir, delta_m, base: dict, c
     (salida_tmp / "agua").mkdir(parents=True)
     (salida_tmp / "curvas").mkdir()
     entradas, geoms, areas = [], [], {}
+    from .llegada import umbral_en_grilla
     d_cm = int(round(delta_m * 100))
+    L = cfg["llegada"]
     errores = []
     moj = None
-    for h in C.alturas(cfg["min_m"], cfg["max_m"], cfg["paso_m"]):
-        t = int(round(h * 100)) + d_cm
+    areas_m2 = []
+    hs = C.alturas(cfg["min_m"], cfg["max_m"], cfg["paso_m"])
+    for h in hs:
+        # I4: la capa publicada tiene que caer exacto en un umbral de la llegada
+        try:
+            t = umbral_en_grilla(int(round(h * 100)) + d_cm, L["min_cm"], L["cuantizacion_cm"], L["max_cm"])
+        except ValueError as e:
+            raise ErrorPipeline(f"capa {h:.2f} m con δ {delta_m:+.2f} m: {e}") from e
         moj = C.tamizar(C.mascara_nivel(lleg, t, excluir), excluir, min_celdas, min_seco)
         area_raster = float(moj.sum()) * grilla.res ** 2
+        areas_m2.append(area_raster)
         g = C.poligonizar(moj, grilla.transform, kc["simplify_m"], kc.get("buffer_m", 0.0))
         g = C.a_4326(g, grilla.crs, dec, cfg["limites"])
         props = {"altura_m": h}
@@ -324,6 +446,8 @@ def generar(cfg, salida_tmp: Path, grilla, lleg, excluir, delta_m, base: dict, c
         log.info("%s: %.1f ha, %d partes, %d bytes, %d aisladas, %d celdas afuera", nombre, area_raster / 1e4,
                  len(g.geoms), len(datos), len(props.get("aisladas", [])), n_fuera)
     errores += V.validar_anidado(geoms, kc["tolerancia_anidado"])
+    # I3 b: la capa de max_m no puede estar vacía y el área tiene que crecer con la altura
+    errores += V.validar_areas(hs, areas_m2, geoms[-1].is_empty)
 
     # v1.1 §1: zonas sin validar (valle de un arroyo: todo lo que se moja hasta max_m)
     sv = cfg.get("sin_validar")
@@ -427,7 +551,7 @@ def armar_indice(cfg, generado: str, validado: bool, delta: float, iou_val: floa
 
 
 def correr(salida: Path, ruta_config: Path, carpeta_cache: Path | None, pbf: Path | None,
-           generado: str | None, png: bool = True) -> dict:
+           generado: str | None, png: bool = True, forzar: bool = False) -> dict:
     cfg = cargar_config(ruta_config)
     salida = Path(salida).resolve()
     tmp = salida.parent / (salida.name + ".parcial")
@@ -439,7 +563,7 @@ def correr(salida: Path, ruta_config: Path, carpeta_cache: Path | None, pbf: Pat
     log.addHandler(manejador)
     t_ini = time.time()
     try:
-        calib = _correr(cfg, ruta_config, salida, tmp, carpeta_cache, pbf, generado, png)
+        calib = _correr(cfg, ruta_config, salida, tmp, carpeta_cache, pbf, generado, png, forzar)
     finally:
         # en Windows no se puede renombrar la carpeta con mapa.log abierto
         log.removeHandler(manejador)
@@ -457,7 +581,20 @@ def correr(salida: Path, ruta_config: Path, carpeta_cache: Path | None, pbf: Pat
     return calib
 
 
-def _correr(cfg, ruta_config, salida, tmp, carpeta_cache, pbf, generado, png):
+def errores_criterio(cal: dict, forzar: bool) -> list[str]:
+    """I3 a: una calibración que no cumple el criterio frena la publicación, salvo --forzar."""
+    if cal["criterio_cumplido"]:
+        return []
+    motivo = (f"la calibración NO cumple el criterio (IoU validación {cal['iou_validacion_media']}, "
+              f"cumple_iou {cal['cumple_iou']}, dispersión δ {cal['dispersion_delta_m']} m, "
+              f"cumple_estabilidad {cal['cumple_estabilidad']})")
+    if forzar:
+        log.warning("%s; se sigue por --forzar (validado: false)", motivo)
+        return []
+    return [motivo + "; no se publica (usar --forzar solo para diagnóstico)"]
+
+
+def _correr(cfg, ruta_config, salida, tmp, carpeta_cache, pbf, generado, png, forzar=False):
     from .curvas import leer_curvas, url_wfs
     from .terreno import grilla_desde_limites
 
@@ -480,6 +617,7 @@ def _correr(cfg, ruta_config, salida, tmp, carpeta_cache, pbf, generado, png):
 
     base, lleg, fuente, cauce, agua, info_terreno, insumos, osm_calc = preparar_terreno(cfg, cache, grilla, pbf, textos)
     excluir = agua | cauce  # el cauce normal (y los espejos de agua de OSM) ya están en base.json
+    info_terreno["sin_dato_tierra_uy"] = control_sin_dato(cfg, grilla, fuente, agua, cauce)
 
     cal = calibrar(cfg, grilla, lleg, fuente, excluir, curvas)
     delta = cal["delta_m"]
@@ -493,6 +631,7 @@ def _correr(cfg, ruta_config, salida, tmp, carpeta_cache, pbf, generado, png):
 
     entradas, geoms, base_ent, refs, areas, errores, extra = generar(cfg, tmp, grilla, lleg, excluir, delta, base,
                                                                      curvas, osm_calc)
+    errores = errores_criterio(cal, forzar) + errores
 
     revision = not cfg["calibracion"].get("validado_requiere_revision_externa", True)
     validado = bool(cal["criterio_cumplido"] and revision)
@@ -531,6 +670,7 @@ def _correr(cfg, ruta_config, salida, tmp, carpeta_cache, pbf, generado, png):
         "metrica": "IoU solo en tierra (sin agua de OSM), en la caja de cada curva y en la cobertura del MDT urbano",
         "criterio": {"iou_min": cfg["calibracion"]["iou_min"], "estabilidad_m": cfg["calibracion"]["estabilidad_m"]},
         "validado_indice": validado,
+        "forzado": bool(forzar and not cal["criterio_cumplido"]),
         "revision_externa": revision,
         **cal,
         "terreno": info_terreno,
@@ -589,6 +729,9 @@ def main(argv=None) -> int:
     p.add_argument("--osm-pbf", type=Path, default=None)
     p.add_argument("--generado", default=None, help="fecha ISO fija (para corridas idénticas)")
     p.add_argument("--sin-png", action="store_true")
+    p.add_argument("--forzar", action="store_true",
+                   help="generar aunque la calibración no cumpla el criterio (solo diagnóstico; "
+                        "sale con validado: false y forzado: true en calibracion.json; no copiar a la app)")
     a = p.parse_args(argv)
     # En Windows, con la salida redirigida, stdout queda en cp1252 y no puede escribir "δ".
     for flujo in (sys.stdout, sys.stderr):
@@ -596,7 +739,7 @@ def main(argv=None) -> int:
             flujo.reconfigure(encoding="utf-8", errors="replace")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", stream=sys.stdout)
     try:
-        correr(a.salida, a.config, a.cache, a.osm_pbf, a.generado, not a.sin_png)
+        correr(a.salida, a.config, a.cache, a.osm_pbf, a.generado, not a.sin_png, a.forzar)
     except Exception as e:  # fallar fuerte y claro
         log.error("el pipeline falló: %s", e)
         raise

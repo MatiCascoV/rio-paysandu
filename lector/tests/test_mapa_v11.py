@@ -305,6 +305,7 @@ def test_generar_con_sin_validar_y_aisladas(tmp_path):
                                    "cursos": ["Arroyo X"], "buffer_m": 100.0}]},
         "aisladas": {"usar": True, "min_calles_m": 50, "con_agua_base": True},
         "fuentes": ["© colaboradores de OpenStreetMap, ODbL"],
+        "llegada": {"cuantizacion_cm": 2, "min_cm": 300, "max_cm": 2000},
     }
     carpeta = tmp_path / "s"; carpeta.mkdir()
     entradas, geoms, base_ent, refs, areas, errores, extra = generar(cfg, carpeta, g, lleg, agua, 0.0, base, [], osm)

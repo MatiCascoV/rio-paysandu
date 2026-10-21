@@ -24,6 +24,7 @@ CFG = {
     "capas": {"sieve_m2": 16, "simplify_m": 1.5, "buffer_m": 2.5, "decimales": 5, "tolerancia_anidado": 0.01,
               "tope_capa_bytes": 200000, "tope_base_bytes": 200000, "tope_total_bytes": 2000000},
     "fuentes": ["© colaboradores de OpenStreetMap, ODbL"],
+    "llegada": {"cuantizacion_cm": 2, "min_cm": 360, "max_cm": 1200},
 }
 BASE = {"type": "FeatureCollection", "features": [], "lugares": [], "caja": [-58.2, -32.4, -57.95, -32.2]}
 

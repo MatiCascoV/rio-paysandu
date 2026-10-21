@@ -106,3 +106,33 @@ def llegada_referencia(dem: np.ndarray, semilla: np.ndarray) -> np.ndarray:
 def umbral_cm(h_local: float, delta: float) -> int:
     """Umbral entero (cm) en la referencia del MDT para una altura local y un desfase δ."""
     return int(round((h_local + delta) * 100))
+
+
+def umbral_en_grilla(t: int, min_cm: int, q: int, max_cm: int, redondear: bool = False) -> int:
+    """Comprueba que el umbral t (cm) sea uno de los que recorre `llegada_cm`.
+
+    `llegada <= t` solo es exacto si t está en la grilla de cuantización
+    (min_cm, min_cm + q, …) y entre min_cm y max_cm:
+    - con t fuera de la grilla, `llegada <= t` equivale a `llegada <= t'` con t' el umbral
+      de la grilla de abajo: se moja **menos** de lo que corresponde a t;
+    - con t > max_cm, las celdas que se mojarían entre max_cm y t quedan en NUNCA (secas);
+    - con t < min_cm no se moja nada (la llegada mínima es min_cm).
+
+    Con `redondear=False` (capas publicadas) cualquiera de esos casos es ValueError.
+    Con `redondear=True` (curvas de calibración, que pueden tener una cota impar en cm) un t
+    fuera de la grilla se sube al umbral siguiente de la grilla: del lado prudente (más
+    agua), en vez de evaluarlo un escalón abajo. Si al subir pasa max_cm, igual es error.
+    """
+    t, min_cm, q, max_cm = int(t), int(min_cm), int(q), int(max_cm)
+    if q <= 0:
+        raise ValueError(f"cuantizacion_cm {q} tiene que ser > 0")
+    if t < min_cm:
+        raise ValueError(f"umbral {t} cm debajo de min_cm {min_cm}: no se mojaría nada")
+    resto = (t - min_cm) % q
+    if resto:
+        if not redondear:
+            raise ValueError(f"umbral {t} cm fuera de la grilla de cuantización ({min_cm} + k·{q})")
+        t += q - resto
+    if t > max_cm:
+        raise ValueError(f"umbral {t} cm por encima de max_cm {max_cm}: faltaría agua")
+    return t

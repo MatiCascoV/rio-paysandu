@@ -36,6 +36,10 @@
     "rellenar_max_m2": 4000
   },
 
+  "sin_dato": {
+    "max_fraccion_tierra_uy": 0.05
+  },
+
   "curvas": {
     "wfs_url": "https://www.ambiente.gub.uy/dinagua-gs/dinagua/wfs",
     "capas": ["dinagua:curvas_cri", "dinagua:curvas_tr"],
