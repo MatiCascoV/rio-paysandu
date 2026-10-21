@@ -3,7 +3,15 @@ name: Tests del lector
 on:
   push:
     # data/umbrales.json se edita a mano: un test controla que siga siendo válido.
-    paths: ["lector/**", "data/umbrales.json", "pytest.ini", ".github/workflows/tests.yml"]
+    # lector/** ya cubre lector/mapa/** y lector/tests/test_mapa_*.py; se listan
+    # explícitos para que no se pierdan si alguien acota el primer filtro.
+    paths:
+      - "lector/**"
+      - "lector/mapa/**"
+      - "lector/tests/test_mapa_*.py"
+      - "data/umbrales.json"
+      - "pytest.ini"
+      - ".github/workflows/tests.yml"
   pull_request:
 
 permissions:
@@ -26,3 +34,25 @@ jobs:
             lector/requirements-dev.txt
       - run: "pip install --require-hashes --only-binary=:all: -r lector/requirements.txt -r lector/requirements-dev.txt" # entre comillas: ":all: " confundiría a YAML
       - run: python -m pytest -q
+
+  # Tests del pipeline del mapa (lector/tests/test_mapa_*.py). Van aparte porque
+  # necesitan numpy/scipy/rasterio/etc., que no están en lector/requirements.txt:
+  # en el job "pytest" se saltean por importorskip.
+  pytest-mapa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: lector/mapa/requirements-ci.txt
+      # requirements-ci.txt es lector/mapa/requirements.txt compilado con hashes.
+      # Si cambia requirements.txt, regenerarlo con Python 3.12 y pip-tools:
+      #   cd lector/mapa && pip-compile --allow-unsafe --generate-hashes \
+      #     --no-emit-index-url --strip-extras --output-file=requirements-ci.txt requirements.txt
+      - run: "pip install --require-hashes --only-binary=:all: -r lector/mapa/requirements-ci.txt" # entre comillas: ":all: " confundiría a YAML
+      - run: python -m pytest -q lector/tests/test_mapa_*.py
