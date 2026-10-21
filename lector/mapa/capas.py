@@ -29,34 +29,44 @@ def mascara_nivel(llegada: np.ndarray, umbral: int, excluir: np.ndarray) -> np.n
     return (llegada <= umbral) & ~excluir
 
 
-def tamizar(mojado: np.ndarray, excluir: np.ndarray, min_celdas: int) -> np.ndarray:
-    """Saca manchas de agua y rellena islas secas de menos de `min_celdas` (4-conectividad).
+def tamizar(mojado: np.ndarray, excluir: np.ndarray, min_celdas: int,
+            min_celdas_seco: int | None = None) -> np.ndarray:
+    """Saca manchas de agua de menos de `min_celdas` y rellena islas secas de menos de
+    `min_celdas_seco` (por defecto, el mismo umbral) (4-conectividad). Rellenar islas secas
+    solo agrega agua: es el sentido prudente para un mapa de seguridad.
 
     Conserva el anidado: si A ⊆ B, tamizar(A) ⊆ tamizar(B) (las manchas de A que quedan
     están dentro de manchas de B más grandes, y los huecos de B están dentro de huecos de A).
     """
     from scipy import ndimage
-    if min_celdas <= 1:
-        return mojado.copy()
+    if min_celdas_seco is None:
+        min_celdas_seco = min_celdas
     out = mojado.copy()
-    etq, n = ndimage.label(out, structure=CRUZ)
+    etq, n = ndimage.label(out, structure=CRUZ) if min_celdas > 1 else (None, 0)
     if n:
         tam = np.bincount(etq.ravel())
         chico = tam < min_celdas
         chico[0] = False
         out[chico[etq]] = False
     seco = ~out & ~excluir
-    etq, n = ndimage.label(seco, structure=CRUZ)
+    etq, n = ndimage.label(seco, structure=CRUZ) if min_celdas_seco > 1 else (None, 0)
     if n:
         tam = np.bincount(etq.ravel())
-        chico = tam < min_celdas
+        chico = tam < min_celdas_seco
         chico[0] = False
         out[chico[etq]] = True
     return out
 
 
-def poligonizar(mojado: np.ndarray, transform, simplify_m: float):
-    """Polígonos (en el CRS de la grilla) de las celdas mojadas, simplificados y válidos."""
+def poligonizar(mojado: np.ndarray, transform, simplify_m: float, buffer_m: float = 0.0):
+    """Polígonos (en el CRS de la grilla) de las celdas mojadas, simplificados y válidos.
+
+    Con `buffer_m` > 0 se agranda el agua antes de simplificar: así la simplificación no
+    deja celdas mojadas afuera (Douglas-Peucker mueve el borde a lo sumo `simplify_m`, así
+    que con `buffer_m >= simplify_m` ninguna celda mojada queda afuera). Solo agrega agua
+    (sentido prudente) y conserva el anidado (el buffer es monótono)."""
+    if 0 < buffer_m < simplify_m:
+        raise ValueError("buffer_m < simplify_m: la simplificación podría sacar agua")
     import shapely
     from rasterio import features
     from shapely.geometry import MultiPolygon, shape
@@ -67,9 +77,11 @@ def poligonizar(mojado: np.ndarray, transform, simplify_m: float):
     filas = np.flatnonzero(mojado.any(axis=1)); cols = np.flatnonzero(mojado.any(axis=0))
     f0, f1, c0, c1 = filas[0], filas[-1] + 1, cols[0], cols[-1] + 1
     sub = mojado[f0:f1, c0:c1].astype("uint8")
-    t = transform * transform.translation(c0, f0)
+    t = transform @ transform.translation(c0, f0)
     polis = [shape(g) for g, v in features.shapes(sub, mask=sub.astype(bool), transform=t, connectivity=4) if v == 1]
     geom = shapely.union_all(polis) if len(polis) > 1 else polis[0]
+    if buffer_m > 0:
+        geom = geom.buffer(buffer_m, join_style="mitre", mitre_limit=2.0)
     if simplify_m > 0:
         geom = geom.simplify(simplify_m, preserve_topology=True)
     geom = shapely.make_valid(geom)
@@ -93,14 +105,19 @@ def solo_poligonos(geom):
     return MultiPolygon(partes)
 
 
-def a_4326(geom, crs_origen: str, decimales: int):
-    """Reproyecta a EPSG:4326 [lon, lat] y redondea a `decimales` manteniendo validez."""
+def a_4326(geom, crs_origen: str, decimales: int, limites=None):
+    """Reproyecta a EPSG:4326 [lon, lat], recorta a `limites` ([[S, O], [N, E]]) si se da,
+    y redondea a `decimales` manteniendo validez."""
     import shapely
     from pyproj import Transformer
+    from shapely.geometry import box
     if geom.is_empty:
         return geom
     t = Transformer.from_crs(crs_origen, "EPSG:4326", always_xy=True)
     g = shapely.transform(geom, lambda xy: np.column_stack(t.transform(xy[:, 0], xy[:, 1])))
+    if limites is not None:
+        (s, o), (n, e) = limites
+        g = g.intersection(box(o, s, e, n))
     g = shapely.set_precision(g, 10 ** (-decimales))
     if not g.is_valid:
         g = shapely.set_precision(shapely.make_valid(g), 10 ** (-decimales))

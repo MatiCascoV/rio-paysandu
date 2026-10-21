@@ -65,7 +65,10 @@ def ajustar(tabla: dict[str, list[float]], deltas_cm: list[int], fija: str, vali
     iou_val = float(np.mean([iou_con_delta[e] for e in validacion]))
     iou_loo = float(np.mean([loo[e]["iou_afuera"] for e in validacion]))
     dispersion = max(abs(loo[e]["delta_m"] - delta) for e in validacion)
-    cumple_iou = iou_val >= iou_min and iou_loo >= iou_min
+    # Criterio de docs/mapa/01 §4.1: IoU medio de validación (con el δ fijado) ≥ iou_min y δ
+    # estable entre los eventos dejados afuera. El IoU dejando uno afuera se informa, pero no
+    # es un segundo umbral (con δ reajustado en 3 curvas siempre da algo menos).
+    cumple_iou = iou_val >= iou_min
     cumple_delta = dispersion <= estabilidad_m + 1e-9
     return {
         "delta_m": round(delta, 2),

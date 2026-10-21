@@ -81,3 +81,52 @@ def test_serializar_es_determinista():
     a = C.serializar({"b": 1, "a": [1.5, "ñ"]})
     assert a == C.serializar({"b": 1, "a": [1.5, "ñ"]})
     assert "ñ" in a.decode("utf-8")
+
+
+@pytest.mark.parametrize("h, capa", [(3.99, None), (4.0, 4.0), (6.58, 6.6), (9.12, 9.2), (6.6, 6.6),
+                                     (6.6000001, 6.6), (6.61, 6.7), (10.5, 10.5), (12.0, 10.5)])
+def test_capa_para_redondea_hacia_arriba(h, capa):
+    from mapa.pipeline import capa_para
+    assert capa_para(h, 4.0, 10.5, 0.1) == capa
+
+
+def test_tamizar_rellena_huecos_secos_mas_grandes_sin_sacar_agua():
+    moj = np.ones((40, 40), bool)
+    moj[5:10, 5:10] = False          # hueco seco de 25 celdas
+    moj[20:22, 20:22] = False        # hueco seco de 4 celdas
+    excluir = np.zeros_like(moj)
+    out = C.tamizar(moj, excluir, 3, 30)
+    assert out.all()                 # los dos huecos (< 30) quedan mojados
+    out = C.tamizar(moj, excluir, 3, 10)
+    assert not out[5:10, 5:10].any() and out[20:22, 20:22].all()
+    # anidado: con más umbral seco, siempre más (o igual) agua
+    assert (C.tamizar(moj, excluir, 3, 10) <= C.tamizar(moj, excluir, 3, 30)).all()
+
+
+def test_poligonizar_con_buffer_no_pierde_celdas_mojadas():
+    from rasterio.transform import from_origin
+    from shapely.geometry import box
+    rng = np.random.default_rng(3)
+    moj = np.zeros((80, 80), bool)
+    for _ in range(60):  # bordes irregulares
+        f, c = rng.integers(10, 70, 2); moj[f - 4:f + 4, c - 6:c + 6] = True
+    t = from_origin(0, 160, 2, 2)
+    g = C.poligonizar(moj, t, 4.0, 4.0)  # buffer >= simplify: garantía de no perder agua
+    assert g.is_valid
+    for f, c in zip(*np.nonzero(moj)):
+        x, y = t @ (c + 0.5, f + 0.5)
+        assert g.contains(box(x - 0.9, y - 0.9, x + 0.9, y + 0.9).centroid)
+    sin_buffer = C.poligonizar(moj, t, 4.0, 0.0)
+    assert g.area >= sin_buffer.area
+
+
+def test_a_4326_recorta_a_los_limites():
+    from shapely.geometry import box
+    from pyproj import Transformer
+    t = Transformer.from_crs("EPSG:4326", "EPSG:5382", always_xy=True)
+    x0, y0 = t.transform(-58.10, -32.30)
+    g = C.solo_poligonos(box(x0 - 5000, y0 - 5000, x0 + 5000, y0 + 5000))
+    lim = [[-32.31, -58.11], [-32.29, -58.09]]
+    out = C.a_4326(g, "EPSG:5382", 5, lim)
+    b = out.bounds
+    assert b[0] >= -58.11 - 1e-9 and b[2] <= -58.09 + 1e-9 and b[1] >= -32.31 - 1e-9 and b[3] <= -32.29 + 1e-9

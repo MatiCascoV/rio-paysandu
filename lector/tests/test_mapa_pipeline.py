@@ -152,3 +152,13 @@ def test_anidado_roto_falla():
     b = MultiPolygon([box(1, 0, 3, 2)])
     assert V.validar_anidado([a, b], 0.01)
     assert V.validar_anidado([b.intersection(a), b], 0.01) == []
+
+
+def test_limites_computo_tiene_que_contener_a_limites():
+    from mapa.pipeline import ErrorPipeline, limites_computo
+    lim = [[-32.365, -58.150], [-32.240, -58.030]]
+    assert limites_computo({"limites": lim}) == lim
+    grande = [[-32.38, -58.17], [-32.215, -58.005]]
+    assert limites_computo({"limites": lim, "limites_computo": grande}) == grande
+    with pytest.raises(ErrorPipeline):
+        limites_computo({"limites": lim, "limites_computo": [[-32.30, -58.17], [-32.215, -58.005]]})

@@ -2,6 +2,8 @@
   "version_config": 1,
   "cero": "Local",
   "limites": [[-32.365, -58.150], [-32.240, -58.030]],
+  "limites_computo": [[-32.380, -58.170], [-32.215, -58.005]],
+  "quemar_cursos": {"usar": true, "radio_celdas": 1, "max_hueco_m": 100},
   "crs_trabajo": "EPSG:5382",
   "resolucion_m": 2.0,
   "remuestreo": "average",
@@ -54,12 +56,14 @@
 
   "capas": {
     "sieve_m2": 100,
-    "simplify_m": 1.5,
+    "rellenar_secos_m2": 2000,
+    "buffer_m": 4.0,
+    "simplify_m": 4.0,
     "decimales": 5,
     "tolerancia_anidado": 0.01,
     "tope_capa_bytes": 600000,
     "tope_base_bytes": 600000,
-    "tope_total_bytes": 20000000
+    "tope_total_bytes": 6000000
   },
 
   "calibracion": {
@@ -75,11 +79,12 @@
     "validado_requiere_revision_externa": true
   },
 
-  "control_png": {
-    "capas": [5.70, 9.12],
-    "curva": "2015-12",
-    "archivo": "control.png"
-  },
+  "control_png": [
+    {"capas": [6.58, 7.08], "curva": "2025-07", "archivo": "control_2025-07.png"},
+    {"capas": [8.35, 8.85], "curva": "2017-06", "archivo": "control_2017-06.png"},
+    {"capas": [8.93, 9.43], "curva": "2009-11", "archivo": "control_2009-11.png"},
+    {"capas": [9.12, 9.62], "curva": "2015-12", "archivo": "control_2015-12.png"}
+  ],
 
   "fuentes": [
     "© colaboradores de OpenStreetMap, ODbL",

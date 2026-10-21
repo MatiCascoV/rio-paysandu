@@ -101,6 +101,17 @@ def mascara_cauce(agua: np.ndarray) -> np.ndarray:
     return etq == int(np.argmax(tam))
 
 
+def limites_computo(cfg) -> list:
+    """Caja de cálculo: más grande que `limites` para que las desembocaduras de los arroyos
+    queden adentro (si no, el remanso del río no entra). La salida se recorta a `limites`."""
+    lc = cfg.get("limites_computo") or cfg["limites"]
+    (s, o), (n, e) = lc
+    (s0, o0), (n0, e0) = cfg["limites"]
+    if not (s <= s0 and o <= o0 and n >= n0 and e >= e0):
+        raise ErrorPipeline("limites_computo tiene que contener a limites")
+    return lc
+
+
 def _hash_dict(d) -> str:
     return hashlib.sha256(json.dumps(d, sort_keys=True).encode()).hexdigest()
 
@@ -111,10 +122,11 @@ def preparar_terreno(cfg, cache: Cache, grilla, pbf: Path, curvas_textos):
     from .llegada import llegada_cm
     from .base_osm import extraer, poligonos_agua
 
-    urb = bajar_hojas(cache, cfg["mdt_urbano"], cfg["limites"], "MDT urbano 1 m")
+    lc = limites_computo(cfg)
+    urb = bajar_hojas(cache, cfg["mdt_urbano"], lc, "MDT urbano 1 m")
     nac = []
     if cfg.get("mdt_nacional", {}).get("usar"):
-        nac = bajar_hojas(cache, cfg["mdt_nacional"], cfg["limites"], "MDT nacional 2,5 m")
+        nac = bajar_hojas(cache, cfg["mdt_nacional"], lc, "MDT nacional 2,5 m")
 
     # base.json (OSM), con caché por sha256 del pbf
     sha_pbf = sha256_archivo(pbf)
@@ -127,12 +139,25 @@ def preparar_terreno(cfg, cache: Cache, grilla, pbf: Path, curvas_textos):
         base = extraer(str(pbf), cfg["limites"])
         ruta_base.write_text(json.dumps(base, ensure_ascii=False), encoding="utf-8")
     log.info("base OSM: %d elementos, %d lugares (pbf sha256 %s)", len(base["features"]), len(base["lugares"]), sha_pbf[:12])
+    # agua y cursos de OSM para el cálculo, en la caja de cálculo (puede ser más grande)
+    if lc == cfg["limites"]:
+        osm_calc = base
+    else:
+        clave_calc = _hash_dict({"pbf": sha_pbf, "limites": lc, "v": 1})
+        ruta_calc = cache.carpeta / f"base_{clave_calc[:16]}.json"
+        if ruta_calc.exists():
+            osm_calc = json.loads(ruta_calc.read_text(encoding="utf-8"))
+        else:
+            log.info("extrayendo OSM de la caja de cálculo %s", lc)
+            osm_calc = extraer(str(pbf), lc)
+            ruta_calc.write_text(json.dumps(osm_calc, ensure_ascii=False), encoding="utf-8")
 
     insumos = {"urbano": [sha256_archivo(r) for r in urb], "nacional": [sha256_archivo(r) for r in nac],
                "pbf": sha_pbf}
     clave = _hash_dict({"insumos": insumos, "grilla": grilla.__dict__, "remuestreo": cfg["remuestreo"],
                         "nac": cfg.get("mdt_nacional"), "huecos": cfg.get("huecos"), "llegada": cfg["llegada"],
-                        "nodata": cfg["mdt_urbano"].get("nodata_min"), "v": 3})
+                        "nodata": cfg["mdt_urbano"].get("nodata_min"), "limites_computo": lc,
+                        "quemar_cursos": cfg.get("quemar_cursos"), "v": 4})
     ruta_npz = cache.carpeta / f"terreno_{clave[:16]}.npz"
     if ruta_npz.exists():
         log.info("terreno y llegada desde la caché: %s", ruta_npz.name)
@@ -153,8 +178,16 @@ def preparar_terreno(cfg, cache: Cache, grilla, pbf: Path, curvas_textos):
         del dn
         log.info("MDT nacional: %s", info["nacional"])
 
-    agua = rasterizar(poligonos_agua(base), grilla, grilla.crs)
+    agua = rasterizar(poligonos_agua(osm_calc), grilla, grilla.crs)
     cauce = mascara_cauce(agua)
+    qc = cfg.get("quemar_cursos", {})
+    if qc.get("usar"):
+        from shapely.geometry import shape
+        lineas = [shape(f["geometry"]) for f in osm_calc["features"] if f["properties"].get("t") == "curso"]
+        mascara_lineas = rasterizar(lineas, grilla, grilla.crs, all_touched=True) & ~agua
+        info["cursos_quemados"] = T.quemar_cursos(dem, mascara_lineas, qc.get("radio_celdas", 1),
+                                                   int(qc.get("max_hueco_m", 100) / grilla.res))
+        log.info("cursos de agua de OSM quemados en el MDT: %s", info["cursos_quemados"])
     info["celdas_agua_osm"] = int(agua.sum()); info["celdas_cauce"] = int(cauce.sum())
     max_celdas = int(cfg.get("huecos", {}).get("rellenar_max_m2", 0) / grilla.res ** 2)
     info["celdas_huecos_rellenados"] = T.rellenar_huecos_chicos(dem, fuente, agua, max_celdas)
@@ -196,9 +229,17 @@ def calibrar(cfg, grilla, lleg, fuente, excluir, curvas) -> dict:
                              "cobertura_urbana_de_la_curva": round(float((m & caja & cobertura).sum()) / max(int((m & caja).sum()), 1), 3)}
     res = K.ajustar(tabla, deltas, kc["fija"], kc["validacion"], kc["iou_min"], kc["estabilidad_m"])
     d_cm = int(round(res["delta_m"] * 100))
+    zona_baja = lleg <= int(round(cfg["min_m"] * 100)) + d_cm  # mojado ya con la capa mínima
     for clave, (m, dom) in mascaras.items():
         h = detalle[clave]["altura_m"]
         mod = lleg <= int(round(h * 100)) + d_cm
+        cc = m & dom
+        # fracción de la crecida real que el modelo SÍ marca (lo que no marca es lo peligroso)
+        detalle[clave]["curva_cubierta"] = round(float((mod & cc).sum()) / max(int(cc.sum()), 1), 4)
+        detalle[clave]["modelo_fuera_de_curva"] = round(
+            float((mod & dom & ~m).sum()) / max(int((mod & dom).sum()), 1), 4)
+        # IoU sin las celdas que ya se mojan a min_m (no dependen de h ni de δ e inflan el IoU)
+        detalle[clave]["iou_sin_zona_baja"] = round(K.iou(mod, m, dom & ~zona_baja), 4)
         detalle[clave]["iou"] = round(K.iou(mod, m, dom), 4)
         detalle[clave]["error_borde_m"] = round(K.error_borde_m(mod, m, dom, grilla.res), 1)
         detalle[clave]["area_modelo_en_dominio_ha"] = round(float((mod & dom).sum()) * grilla.res ** 2 / 1e4, 1)
@@ -216,6 +257,7 @@ def generar(cfg, salida_tmp: Path, grilla, lleg, excluir, delta_m, base: dict, c
     kc = cfg["capas"]
     dec = kc["decimales"]
     min_celdas = int(np.ceil(kc["sieve_m2"] / grilla.res ** 2))
+    min_seco = int(np.ceil(kc.get("rellenar_secos_m2", kc["sieve_m2"]) / grilla.res ** 2))
     (salida_tmp / "agua").mkdir(parents=True)
     (salida_tmp / "curvas").mkdir()
     entradas, geoms, areas = [], [], {}
@@ -223,10 +265,10 @@ def generar(cfg, salida_tmp: Path, grilla, lleg, excluir, delta_m, base: dict, c
     errores = []
     for h in C.alturas(cfg["min_m"], cfg["max_m"], cfg["paso_m"]):
         t = int(round(h * 100)) + d_cm
-        moj = C.tamizar(C.mascara_nivel(lleg, t, excluir), excluir, min_celdas)
+        moj = C.tamizar(C.mascara_nivel(lleg, t, excluir), excluir, min_celdas, min_seco)
         area_raster = float(moj.sum()) * grilla.res ** 2
-        g = C.poligonizar(moj, grilla.transform, kc["simplify_m"])
-        g = C.a_4326(g, grilla.crs, dec)
+        g = C.poligonizar(moj, grilla.transform, kc["simplify_m"], kc.get("buffer_m", 0.0))
+        g = C.a_4326(g, grilla.crs, dec, cfg["limites"])
         fc = C.feature_collection(g, {"altura_m": h}, dec)
         datos = C.serializar(fc)
         nombre = C.nombre_capa(h)
@@ -260,6 +302,16 @@ def generar(cfg, salida_tmp: Path, grilla, lleg, excluir, delta_m, base: dict, c
                      "archivo": nombre, "bytes": len(datos), "sha256": hashlib.sha256(datos).hexdigest(),
                      "fuente": "Dinagua"})
     return entradas, geoms, base_ent, refs, areas, errores
+
+
+def capa_para(h: float, min_m: float, max_m: float, paso_m: float) -> float | None:
+    """Capa que pinta la app para la altura h: redondeo hacia arriba al paso (contrato).
+    None si h < min_m (agua en el cauce); max_m si h > max_m."""
+    import math
+    if h < min_m - 1e-9:
+        return None
+    n = math.ceil(round((h - min_m) / paso_m, 4))  # ruido < 0,1 mm no sube de capa
+    return round(min(min_m + n * paso_m, max_m), 2)
 
 
 def armar_indice(cfg, generado: str, validado: bool, delta: float, iou_val: float, base_ent, entradas, refs) -> dict:
@@ -299,11 +351,24 @@ def correr(salida: Path, ruta_config: Path, carpeta_cache: Path | None, pbf: Pat
     manejador = logging.FileHandler(tmp / "mapa.log", encoding="utf-8")
     manejador.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
     log.addHandler(manejador)
+    t_ini = time.time()
     try:
-        return _correr(cfg, ruta_config, salida, tmp, carpeta_cache, pbf, generado, png)
+        calib = _correr(cfg, ruta_config, salida, tmp, carpeta_cache, pbf, generado, png)
     finally:
+        # en Windows no se puede renombrar la carpeta con mapa.log abierto
         log.removeHandler(manejador)
         manejador.close()
+    # todo bien: se reemplaza la salida de una vez
+    anterior = salida.parent / (salida.name + ".anterior")
+    if anterior.exists():
+        shutil.rmtree(anterior)
+    if salida.exists():
+        os.replace(salida, anterior)
+    os.replace(tmp, salida)
+    if anterior.exists():
+        shutil.rmtree(anterior)
+    log.info("listo en %.0f s: %s", time.time() - t_ini, salida)
+    return calib
 
 
 def _correr(cfg, ruta_config, salida, tmp, carpeta_cache, pbf, generado, png):
@@ -313,7 +378,7 @@ def _correr(cfg, ruta_config, salida, tmp, carpeta_cache, pbf, generado, png):
     t_ini = time.time()
     cache = Cache(Path(carpeta_cache or cfg.get("cache_dir") or cache_por_defecto()))
     log.info("caché: %s; salida: %s", cache.carpeta, salida)
-    grilla = grilla_desde_limites(cfg["limites"], cfg["crs_trabajo"], cfg["resolucion_m"])
+    grilla = grilla_desde_limites(limites_computo(cfg), cfg["crs_trabajo"], cfg["resolucion_m"])
     log.info("grilla %s: %d × %d celdas de %.1f m", grilla.crs, grilla.ancho, grilla.alto, grilla.res)
 
     textos = [cache.texto(url_wfs(cfg["curvas"]["wfs_url"], capa, cfg["curvas"]["filtro"]))
@@ -389,12 +454,21 @@ def _correr(cfg, ruta_config, salida, tmp, carpeta_cache, pbf, generado, png):
 
     if png:
         from .control import dibujar
-        pc = cfg.get("control_png", {})
-        sel = [(h, geoms[[e["altura_m"] for e in entradas].index(round(h, 2))]) for h in pc.get("capas", [])]
-        cu = next((c for c in curvas if c.clave == pc.get("curva")), None)
-        titulo = (f"Control: modelo con δ = {delta:.2f} m sobre {cu.nombre if cu else ''} · IoU validación "
-                  f"{cal['iou_validacion_media']:.2f} · {'cumple' if cal['criterio_cumplido'] else 'NO cumple'} criterio")
-        dibujar(tmp / pc.get("archivo", "control.png"), base, sel, cu, titulo, cfg["limites"])
+        pcs = cfg.get("control_png", [])
+        pcs = [pcs] if isinstance(pcs, dict) else pcs
+        alturas_capas = [e["altura_m"] for e in entradas]
+        for pc in pcs:
+            sel = []
+            for h in pc.get("capas", []):
+                hc = capa_para(h, cfg["min_m"], cfg["max_m"], cfg["paso_m"])
+                if hc is not None and hc not in [x for x, _ in sel]:
+                    sel.append((hc, geoms[alturas_capas.index(hc)]))
+            cu = next((c for c in curvas if c.clave == pc.get("curva")), None)
+            iou_txt = f" · IoU {cal['curvas'][cu.clave]['iou']:.2f}" if cu and cu.clave in cal["curvas"] else ""
+            titulo = (f"Control (δ = {delta:.2f} m){iou_txt}: modelo vs {cu.nombre if cu else 'sin curva'}\n"
+                      f"Calibración {'cumple' if cal['criterio_cumplido'] else 'NO cumple'} el criterio · "
+                      f"NO validado por revisión externa")
+            dibujar(tmp / pc.get("archivo", "control.png"), base, sel, cu, titulo, cfg["limites"])
 
     log.info("pesos: %s", pesos)
     if errores:
@@ -402,16 +476,7 @@ def _correr(cfg, ruta_config, salida, tmp, carpeta_cache, pbf, generado, png):
             log.error("validación: %s", e)
         raise ErrorPipeline(f"{len(errores)} errores de validación; no se publica nada (ver {tmp / 'mapa.log'})")
 
-    # todo bien: se reemplaza la salida de una vez
-    anterior = salida.parent / (salida.name + ".anterior")
-    if anterior.exists():
-        shutil.rmtree(anterior)
-    if salida.exists():
-        os.replace(salida, anterior)
-    os.replace(tmp, salida)
-    if anterior.exists():
-        shutil.rmtree(anterior)
-    log.info("listo en %.0f s: %s", time.time() - t_ini, salida)
+    log.info("validaciones OK en %.0f s; se publica en %s", time.time() - t_ini, salida)
     return calib
 
 
@@ -424,6 +489,10 @@ def main(argv=None) -> int:
     p.add_argument("--generado", default=None, help="fecha ISO fija (para corridas idénticas)")
     p.add_argument("--sin-png", action="store_true")
     a = p.parse_args(argv)
+    # En Windows, con la salida redirigida, stdout queda en cp1252 y no puede escribir "δ".
+    for flujo in (sys.stdout, sys.stderr):
+        if hasattr(flujo, "reconfigure"):
+            flujo.reconfigure(encoding="utf-8", errors="replace")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", stream=sys.stdout)
     try:
         correr(a.salida, a.config, a.cache, a.osm_pbf, a.generado, not a.sin_png)

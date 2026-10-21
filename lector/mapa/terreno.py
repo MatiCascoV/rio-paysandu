@@ -177,3 +177,36 @@ def rellenar_huecos_chicos(dem: np.ndarray, fuente: np.ndarray, protegido: np.nd
         fuente[f0:f1, c0:c1][este] = RELLENO
         total += int(este.sum())
     return total
+
+
+def quemar_cursos(dem: np.ndarray, lineas: np.ndarray, radio: int = 1, max_hueco_celdas: int = 50) -> dict:
+    """"Quema" los cursos de agua (arroyos de OSM rasterizados) en el MDT para que el agua
+    del río pueda remontarlos (remanso).
+
+    - En cada celda de `lineas` se pone el mínimo del terreno válido en una ventana de
+      (2·radio+1)² celdas: el lecho angosto que el remuestreo a 2 m promedió hacia arriba.
+    - Las celdas de la línea sin dato (agua sin retorno del láser) a menos de
+      `max_hueco_celdas` de una celda válida de la línea toman la cota de la más cercana. Sin
+      dato, actuarían como pared y cortarían el arroyo. Los tramos largos sin dato (por
+      ejemplo, la otra orilla, fuera del MDT) quedan sin dato: no se inventa terreno.
+    Solo baja cotas: nunca saca agua del mapa (sentido prudente).
+    """
+    from scipy import ndimage
+    info = {"celdas_linea": int(lineas.sum())}
+    if not lineas.any():
+        return info
+    tam = 2 * radio + 1
+    lleno = np.where(np.isnan(dem), np.inf, dem)
+    minimo = ndimage.minimum_filter(lleno, size=tam, mode="nearest")
+    bajar = lineas & np.isfinite(minimo) & ~(minimo >= np.where(np.isnan(dem), np.inf, dem))
+    dem[bajar] = minimo[bajar]
+    info["celdas_bajadas"] = int(bajar.sum())
+    sin = lineas & np.isnan(dem)
+    validas = lineas & ~np.isnan(dem)
+    if sin.any() and validas.any():
+        dist, (fi, ci) = ndimage.distance_transform_edt(~validas, return_indices=True)
+        cerca = sin & (dist <= max_hueco_celdas)
+        dem[cerca] = dem[fi[cerca], ci[cerca]]
+        info["celdas_sin_dato_completadas"] = int(cerca.sum())
+        info["celdas_sin_dato_sin_completar"] = int((sin & ~cerca).sum())
+    return info
