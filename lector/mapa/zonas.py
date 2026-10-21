@@ -202,16 +202,23 @@ class Calles:
         return shapely.transform(g, lambda xy: np.column_stack(t.transform(xy[:, 0], xy[:, 1])))
 
 
-def huecos_rodeados(geom_4326, agua_4326, limites, con_agua_base: bool = True) -> list:
+def huecos_rodeados(geom_4326, agua_4326, limites, con_agua_base: bool = True,
+                    decimales: int | None = None) -> list:
     """Tierra seca (EPSG:4326) totalmente rodeada de agua: cada hueco interior de la capa (o de
     la capa unida al agua de base.json si `con_agua_base`) que no toca el borde de `limites`,
-    sin el agua que pueda haber adentro (un bajo mojado sobre la loma)."""
+    sin el agua que pueda haber adentro (un bajo mojado sobre la loma).
+
+    "Toca el borde" se mide a la precisión publicada: con `decimales`, un hueco a menos de
+    media unidad del último decimal del borde (≈ 0,5 m con 5 decimales) cae sobre el borde al
+    redondear, así que en la capa publicada ya no es un hueco. Además, del otro lado del borde
+    no sabemos nada: no se puede afirmar que esa tierra quede rodeada (contrato v1.1 §2)."""
     import shapely
     from shapely.geometry import Polygon, box
     if geom_4326.is_empty:
         return []
     (s, o), (n, e) = limites
     borde = box(o, s, e, n).exterior
+    tol = 0.5 * 10 ** -decimales if decimales is not None else 1e-9
     g = geom_4326
     if con_agua_base and agua_4326 is not None and not agua_4326.is_empty:
         g = C.solo_poligonos(shapely.make_valid(shapely.union_all([geom_4326, agua_4326.intersection(box(o, s, e, n))])))
@@ -220,7 +227,7 @@ def huecos_rodeados(geom_4326, agua_4326, limites, con_agua_base: bool = True) -
     for p in g.geoms:
         for anillo in p.interiors:
             h = Polygon(anillo)
-            if h.is_empty or h.area == 0 or h.distance(borde) <= 1e-9:
+            if h.is_empty or h.area == 0 or h.distance(borde) <= tol:
                 continue
             adentro = [g.geoms[int(k)] for k in arbol.query(h, predicate="intersects")]
             seco = h.difference(shapely.union_all(adentro)) if adentro else h
@@ -261,7 +268,7 @@ def lomas_aisladas(geom_4326, agua_4326, calles: Calles, limites, min_calles_m: 
     `min_calles_m` de calle adentro, ordenada por área (mayor primero)."""
     out = []
     a_grilla = _Proyector(calles)
-    for seco in huecos_rodeados(geom_4326, agua_4326, limites, con_agua_base):
+    for seco in huecos_rodeados(geom_4326, agua_4326, limites, con_agua_base, decimales):
         sg = a_grilla(seco)
         largo = calles.largo_dentro(sg)
         if largo < min_calles_m:

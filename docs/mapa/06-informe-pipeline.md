@@ -156,3 +156,58 @@ En la carpeta de salida: `control_2025-07.png`, `control_2017-06.png`, `control_
 - Correr el pipeline en GitHub Actions (memoria y tiempo); no se probó.
 - `base.json` se extrajo del extracto OSM del 21/10 (268.774 bytes, el mismo tamaño que figura en el ejemplo del contrato). No lo comparé contenido a contenido con el de la maqueta.
 - Script de validación vectorial (`validar_salida.py`): está en el scratchpad. Si se quiere en el repo, hay que pasarlo a `lector/mapa/`.
+
+## 9. v1.1 (21/10/2026, tras el control de calidad 11)
+
+Implementa la parte del pipeline de los "Agregados v1.1" de `05-contrato.md`. Todo es **compatible hacia atrás**: `version` sigue en 1 y los campos nuevos son opcionales. Ningún cambio saca agua de una capa; los agregados solo suman avisos.
+
+> **Estado: código y tests listos; la salida v1.1 todavía no se generó con datos reales** (hace falta la descarga de ~500 MB del MDT). Los números de §4 y §5 son de la v1, con buffer de 4 m.
+
+### 9.1 Qué cambia
+
+| Contrato v1.1 | Qué hace el pipeline | Dónde |
+|---|---|---|
+| §5 Buffer de 5 m | El agua se agranda **5 m** antes de simplificar con 4 m (antes 4 y 4). Después de reproyectar, recortar a `limites`, redondear a 5 decimales y serializar, se rasteriza la capa **tal como se publica** y se cuenta cada celda mojada (con centro dentro de `limites`) que haya quedado afuera. Si hay una sola, el pipeline **no publica**. `cargar_config` rechaza `buffer_m < simplify_m`, también si falta `buffer_m`. | `config.json` (`capas.buffer_m`), `zonas.celdas_afuera`, `pipeline.generar`, `pipeline.cargar_config` |
+| §1 Zonas sin validar | `sin_validar.json` con una zona: el valle del arroyo San Francisco Grande. Es todo lo que el modelo moja a `max_m` (10,50 m) y que queda más cerca del arroyo que del río Uruguay **caminando por el agua** (Voronoi geodésico sobre bloques de 10 m, en empate gana el río). Se agranda 100 m, se simplifica con 10 m y se recorta a `limites`. El valle se define con las líneas de OSM, sin dibujar nada a mano. Control bloqueante: ninguna celda mojada del valle puede quedar afuera de la zona. | `config.json` (`sin_validar`), `zonas.zona_sin_validar`, `zonas.coleccion_zonas`, `validar.validar_sin_validar` |
+| §1 Entrada en el índice | `indice.json` suma `"sin_validar": {"archivo": "sin_validar.json", "bytes", "sha256"}`. Se valida el nombre, los bytes y el sha256 igual que en las capas. | `pipeline.armar_indice`, `validar.validar_indice`, `validar.validar_archivos` |
+| §2 Lomas aisladas | Cada `agua/NNNN.json` suma `properties.aisladas: [{"c", "ha", "calles_m"}]` (lista vacía si no hay ninguna). Son los huecos interiores que **no tocan el borde de `limites`**, sin el agua que haya adentro (un bajo mojado) y con al menos 50 m de calle de `base.json` adentro. `c` es un punto interior (polylabel en metros, redondeado a 5 decimales y verificado adentro), `ha` tiene 2 decimales y `calles_m` es un entero. | `config.json` (`aisladas`), `zonas.lomas_aisladas`, `validar.validar_capa` |
+| §3 y §4 Zona baja y margen siempre | No cambian el pipeline: son reglas de la app sobre la capa de `min_m` y la franja de margen. | — |
+
+Detalles de las lomas aisladas:
+- **El borde se mide a la precisión publicada.** Un hueco a menos de media unidad del 5.º decimal del borde (≈ 0,5 m) cae sobre el borde al redondear, así que en la capa publicada ya no es un hueco. Además, del otro lado de `limites` no sabemos nada, así que no podemos afirmar que esa tierra quede rodeada. Antes la tolerancia era de 1e-9° y daba por aislada una loma pegada al borde: era un bug del código, no del test (`test_hueco_que_toca_el_borde_de_limites_no_es_aislada`). Un hueco a unos 10 m del borde sí cuenta (`test_hueco_cerca_del_borde_pero_sin_tocarlo_si_es_aislada`).
+- Con `aisladas.con_agua_base: true` (valor por defecto), los huecos se buscan en la capa **unida al agua de `base.json`**. Así también cuenta una loma que queda encerrada entre el agua de la capa y el cauce. Es un poco más amplio que la letra del contrato, que habla de "huecos interiores del MultiPolygon", y va en el sentido prudente porque da más avisos. Para comparar, en `calibracion.json` se informan las dos cuentas.
+- El validador rechaza una capa si alguna aislada tiene claves de más o de menos, si `c` cae sobre el agua o fuera de `limites`, si `calles_m` es menor que el mínimo o si la capa está vacía y aun así trae aisladas.
+
+### 9.2 Archivos de salida nuevos o cambiados
+
+| Archivo | ¿Va a `app/assets/mapa/`? | Novedad |
+|---|---|---|
+| `sin_validar.json` | **Sí** | Nuevo. `FeatureCollection` con un `Feature` `Polygon`/`MultiPolygon` por zona, EPSG:4326, 5 decimales y `properties: {nombre, motivo}` |
+| `indice.json` | Sí | Clave nueva `sin_validar` |
+| `agua/NNNN.json` | Sí | `properties.aisladas`. Las geometrías cambian un poco por el buffer de 5 m: aproximadamente +1 m de agua en todo el borde |
+| `calibracion.json` | No | Bloque `v11` con `celdas_afuera_total` (tiene que dar 0), `celdas_afuera` por capa (solo las que tengan alguna), `aisladas_por_capa`, `aisladas_solo_huecos_de_la_capa` y, por zona sin validar, `ha_mojadas_max_m`, `ha_zona`, `partes` y `celdas_afuera`. En `pesos` se suma `sin_validar_bytes` |
+| `control_aisladas_0840.png`, `control_aisladas_0920.png` | No | PNG nuevos: capa de 8,40 y de 9,20 m con la zona sin validar rayada y las lomas aisladas marcadas (punto amarillo con ha y metros de calle) |
+| `mapa.log` | No | Cada capa informa también la cantidad de aisladas y de celdas afuera |
+
+El tope total (`tope_total_bytes`, 6 MB) incluye `sin_validar.json`. Para copiar a la app vale lo de siempre (07 §5): `indice.json`, `base.json`, `agua/`, `curvas/` y ahora `sin_validar.json`. Nunca `calibracion.json`, los PNG ni el log.
+
+### 9.3 Cómo se corre
+
+Igual que en §1, con el mismo comando y las mismas opciones. Ejemplo en Linux:
+
+```bash
+cd lector
+python3 -m venv /root/venv-mapa && /root/venv-mapa/bin/pip install -r mapa/requirements.txt
+/root/venv-mapa/bin/python -m pytest -q tests/test_mapa_*.py
+/root/venv-mapa/bin/python -m mapa <CARPETA_SALIDA> --cache <CARPETA_CACHE> [--generado 2026-10-21T12:00:00-03:00] [--osm-pbf ARCHIVO] [--sin-png]
+```
+
+- La zona sin validar necesita las líneas de OSM de la caja de cálculo, con los nombres exactos "Arroyo San Francisco Grande" y "Río Uruguay". Si no las encuentra, el pipeline se corta con un error claro y no inventa la zona.
+- Un error de los controles v1.1 (celdas afuera, `sin_validar.json` inválido, aisladas mal formadas) frena la publicación igual que los demás: la salida anterior queda intacta y el detalle está en `.parcial/mapa.log` y en `errores_validacion` de `calibracion.json`.
+- Tests: `test_mapa_v11.py` (19 tests). Cubren el buffer de 5 m sin celdas afuera con la cadena completa hasta el JSON, la detección de agua faltante, el Voronoi geodésico, la zona sin validar y su validación, las lomas aisladas (umbral de calles, borde de `limites`, agua de base, bajo mojado adentro), la validación de `aisladas`, `generar` con todo junto más el índice con sha256, la config real y su rechazo de buffer < simplify, y el PNG de control. En total, `test_mapa_*` suma 80 tests.
+
+### 9.4 Pendiente de la v1.1
+
+- **Correr el pipeline con datos reales** y anotar acá los pesos, `celdas_afuera_total` (que tiene que dar 0), las hectáreas de la zona sin validar y las aisladas por capa. Revisar a ojo los dos PNG nuevos. Recién después se copia a `app/assets/mapa/`.
+- Medir cuánto suma el buffer de 5 m al peso: se estima un +2–3 % sobre los 4,90 MB, cerca del tope de ~5 MB del APK (ver §5 si hace falta achicar).
+- Confirmar con alguien que conozca la costa que las lomas aisladas que salgan estén habitadas de verdad. El criterio de 50 m de calle es una aproximación.

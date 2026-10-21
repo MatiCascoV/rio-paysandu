@@ -211,6 +211,17 @@ def test_hueco_que_toca_el_borde_de_limites_no_es_aislada():
     assert Z.lomas_aisladas(capa, None, calles, lim, 50, 5) == []
 
 
+def test_hueco_cerca_del_borde_pero_sin_tocarlo_si_es_aislada():
+    """La tolerancia del borde es la de la precisión publicada (media unidad del 5.º decimal),
+    no más: un hueco a ~11 m del borde sigue siendo una loma rodeada."""
+    from shapely.geometry import LineString, Polygon
+    lim = [[-32.31, -58.11], [-32.29, -58.09]]
+    capa = C.solo_poligonos(Polygon([(-58.11, -32.31), (-58.09, -32.31), (-58.09, -32.29), (-58.11, -32.29)],
+                                    [[(-58.105, -32.3099), (-58.1, -32.3099), (-58.1, -32.305), (-58.105, -32.305)]]))
+    calles = Z.Calles(_base([LineString([(-58.104, -32.307), (-58.101, -32.307)])]), "EPSG:5382")
+    assert len(Z.lomas_aisladas(capa, None, calles, lim, 50, 5)) == 1
+
+
 def test_loma_rodeada_por_la_capa_y_el_agua_de_base():
     """Una loma entre el agua de la capa y el cauce de base.json también queda rodeada."""
     from shapely.geometry import LineString, Polygon
@@ -320,3 +331,33 @@ def test_generar_con_sin_validar_y_aisladas(tmp_path):
     assert V.validar_archivos(carpeta, malo)
     malo = copy.deepcopy(ind); malo["sin_validar"]["archivo"] = "otra.json"
     assert V.validar_indice(malo)
+
+
+# ---------------------------------------------------------------- 5. config y control
+
+def test_config_real_carga_y_rechaza_buffer_menor_que_simplify(tmp_path):
+    from mapa.pipeline import ErrorPipeline, cargar_config
+    ruta = Path(__file__).resolve().parents[1] / "mapa" / "config.json"
+    cfg = cargar_config(ruta)
+    assert cfg["sin_validar"]["zonas"] and cfg["aisladas"]["min_calles_m"] == 50
+    for cambio in ({"capas": {**cfg["capas"], "buffer_m": 3.0}},
+                   {"capas": {k: v for k, v in cfg["capas"].items() if k != "buffer_m"}},
+                   {"sin_validar": {**cfg["sin_validar"], "zonas": [{**cfg["sin_validar"]["zonas"][0], "buffer_m": 5.0}]}},
+                   {"sin_validar": {**cfg["sin_validar"], "zonas": [{**cfg["sin_validar"]["zonas"][0], "motivo": ""}]}}):
+        malo = tmp_path / "c.json"
+        malo.write_text(json.dumps({**cfg, **cambio}), encoding="utf-8")
+        with pytest.raises(ErrorPipeline):
+            cargar_config(malo)
+
+
+def test_png_de_control_con_zona_sin_validar_y_aisladas(tmp_path):
+    pytest.importorskip("matplotlib")
+    from mapa.control import dibujar
+    capa, larga, _ = _agua_con_huecos()
+    base = _base([larga])
+    ais = Z.lomas_aisladas(capa, None, Z.Calles(base, "EPSG:5382"), LIM, 50, 5)
+    from shapely.geometry import box
+    zona = C.solo_poligonos(box(-58.106, -32.306, -58.099, -32.299))
+    ruta = tmp_path / "control.png"
+    dibujar(ruta, base, [(6.0, capa)], None, "prueba", LIM, [zona], ais)
+    assert ruta.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"

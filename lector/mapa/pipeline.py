@@ -42,6 +42,19 @@ def cargar_config(ruta: Path) -> dict:
               "mdt_urbano", "curvas", "llegada", "capas", "calibracion", "fuentes"):
         if k not in cfg:
             raise ErrorPipeline(f"config sin '{k}'")
+    kc = cfg["capas"]
+    # v1.1 §5 (11 §5): el agua se agranda antes de simplificar, nunca menos que la tolerancia;
+    # si no, Douglas-Peucker puede dejar celdas mojadas afuera de la capa publicada.
+    if kc.get("buffer_m", 0.0) < kc.get("simplify_m", 0.0):
+        raise ErrorPipeline(f"capas.buffer_m ({kc.get('buffer_m', 0.0)}) < capas.simplify_m ({kc['simplify_m']}): "
+                            "la simplificación podría sacar agua")
+    sv = cfg.get("sin_validar")
+    if sv:
+        for z in sv.get("zonas", []):
+            if z.get("buffer_m", 0.0) < sv.get("simplify_m", 0.0):
+                raise ErrorPipeline(f"sin_validar {z.get('nombre')}: buffer_m < simplify_m")
+            if not (z.get("nombre") and z.get("motivo") and z.get("cursos")):
+                raise ErrorPipeline("sin_validar: cada zona necesita nombre, motivo y cursos")
     return cfg
 
 
