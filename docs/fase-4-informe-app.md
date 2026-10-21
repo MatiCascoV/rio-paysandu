@@ -208,3 +208,26 @@ resolver.
   conviene confirmarlo con el dueño.
 - Con el permiso negado, los temas siguen suscritos (los push llegan y no se muestran): no molesta, y al
   volver a permitir funciona sin hacer nada.
+
+## Prueba en el Redmi (21/10/2026, con el río en alerta real)
+
+APK de release firmado con la clave propia y `--dart-define=TEMAS_PRUEBA=true`; envíos con
+`herramientas/enviar_aviso_prueba.ps1`. Urgente prendido "Desde alerta", resumen prendido.
+
+| # | Envío | App | Resultado |
+|---|---|---|---|
+| 1 | urgente `alerta` | abierta | "Río Uruguay: subió a ALERTA" con la altura real (5,55 m, 09:00), < 1 s |
+| 2 | urgente `evacuacion` (condición) | cerrada | genérico "hay novedades" (el dato sigue en alerta): correcto. **La condición tardó 42 s** en llegar (el tema directo, < 1 s) |
+| 3 | resumen `estacion` | cerrada | "Río hoy: 5,55 m · Alerta", con el dato de la estación de las 10:00, < 1 s |
+| 4 | resumen repetido | cerrada | llegó el mensaje y **no** se mostró nada (ya había salido el de hoy): correcto |
+| — | resumen antes de que corresponda (dato de las 09:21, sin Prefectura del día) | abierta | llegó y no se mostró nada: correcto |
+
+Notas:
+
+- La suscripción a los temas funcionó; el primer intento del urgente no llegó porque el interruptor todavía no
+  estaba prendido.
+- Mejora propuesta para `avisos.yml`: el urgente de evacuación, en vez de una condición, como **dos mensajes**
+  (uno a `alerta-paysandu` y otro a `evacuacion-paysandu`). Cada teléfono está en un solo tema urgente, así que
+  nadie lo recibe dos veces, y los temas directos llegan en menos de un segundo.
+- Si un push urgente llega mientras GitHub Pages todavía publica el dato nuevo, sale el genérico y el aviso
+  real lo reemplaza en el reintento o en la próxima revisión.
