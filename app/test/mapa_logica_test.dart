@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rio_paysandu/datos.dart';
 import 'package:rio_paysandu/mapa/fuente_mapa.dart';
@@ -84,8 +85,10 @@ void main() {
     test('rechaza lo que no cuadra', () {
       expect(() => indiceCon((j) => j.remove('cero')), rechazaPor('cero'));
       expect(() => indiceCon((j) => j['version'] = 0), rechazaPor('version'));
-      expect(() => indiceCon((j) => (j['capas'] as List).insert(0, (j['capas'] as List).removeAt(1))),
-          rechazaPor('orden'));
+      expect(
+        () => indiceCon((j) => (j['capas'] as List).insert(0, (j['capas'] as List).removeAt(1))),
+        rechazaPor('orden'),
+      );
       expect(() => indiceCon((j) => (j['capas'] as List).removeAt(2)), rechazaPor('capas'));
       expect(() => indiceCon((j) => j['paso_m'] = 0.20), rechazaPor('paso'));
       expect(() => indiceCon((j) => j['paso_m'] = 0), rechazaPor('paso_m'));
@@ -96,9 +99,24 @@ void main() {
       expect(() => indiceCon((j) => (j['capas'] as List)[1]['bytes'] = TopesMapa.bytesCapa + 1), rechazaPor('bytes'));
       expect(() => indiceCon((j) => j['base']['archivo'] = '../secreto.json'), rechazaPor('archivo'));
       expect(() => indiceCon((j) => j['base']['archivo'] = '/base.json'), rechazaPor('archivo'));
-      expect(() => indiceCon((j) => j['limites'] = [[10, 10], [11, 11]]), rechazaPor('limites'));
       expect(
-          () => indiceCon((j) => j['limites'] = [[-32.3, -58.0], [-32.4, -58.1]]), rechazaPor('limites')); // al revés
+        () => indiceCon(
+          (j) => j['limites'] = [
+            [10, 10],
+            [11, 11],
+          ],
+        ),
+        rechazaPor('limites'),
+      );
+      expect(
+        () => indiceCon(
+          (j) => j['limites'] = [
+            [-32.3, -58.0],
+            [-32.4, -58.1],
+          ],
+        ),
+        rechazaPor('limites'),
+      ); // al revés
       expect(() => indiceCon((j) => j['modelo']['margen_m'] = 5), rechazaPor('margen'));
       expect(() => indiceCon((j) => j.remove('modelo')), rechazaPor('modelo'));
       expect(() => IndiceMapa.desdeJson([1, 2]), rechazaPor('objeto'));
@@ -106,9 +124,16 @@ void main() {
 
     test('tope de bytes totales', () {
       expect(
-          () => indiceCon((j) => (j['referencias'] as List)
-              .add({'tipo': 'crecida', 'nombre': 'X', 'altura_m': 5, 'bytes': TopesMapa.bytesTotales})),
-          rechazaPor('demasiados bytes'));
+        () => indiceCon(
+          (j) => (j['referencias'] as List).add({
+            'tipo': 'crecida',
+            'nombre': 'X',
+            'altura_m': 5,
+            'bytes': TopesMapa.bytesTotales,
+          }),
+        ),
+        rechazaPor('demasiados bytes'),
+      );
     });
 
     test('PROVISORIO se reconoce', () {
@@ -134,9 +159,9 @@ void main() {
     test('coordenadas fuera del mapa o que no son números', () {
       Map<String, dynamic> con(List<Object> punto) {
         final c = jsonDecode(jsonEncode(capaDePrueba(410))) as Map<String, dynamic>; // listas sin tipo, como en un JSON
-        final anillo = (((((c['features'] as List).first as Map)['geometry'] as Map)['coordinates'] as List).first
-            as List)
-            .first as List;
+        final anillo =
+            (((((c['features'] as List).first as Map)['geometry'] as Map)['coordinates'] as List).first as List).first
+                as List;
         anillo[1] = punto;
         return c;
       }
@@ -155,7 +180,7 @@ void main() {
             [-58.09, -32.39],
             [-58.08, -32.39],
             [-58.08, -32.31],
-          ]
+          ],
         ],
       };
       final capa = CapaAgua.desdeJson(c, capa410, ind);
@@ -213,7 +238,13 @@ void main() {
     });
 
     test('fondo con la huella cambiada: no hay fondo', () async {
-      final r = RepositorioMapa(fuenteDePrueba(archivos: {'base.json': jsonABytes({'type': 'FeatureCollection'})}));
+      final r = RepositorioMapa(
+        fuenteDePrueba(
+          archivos: {
+            'base.json': jsonABytes({'type': 'FeatureCollection'}),
+          },
+        ),
+      );
       expect(await r.base(), isNull);
     });
 
@@ -245,6 +276,134 @@ void main() {
       await r.capa(420);
       await r.capa(420);
       expect(f.lecturas['agua/0420.json'], 1);
+    });
+  });
+
+  group('datos reales: rango 4,00–10,50, curvas y validado', () {
+    test('el índice del rango del contrato valida con 66 capas', () {
+      final ind = IndiceMapa.desdeJson(indiceDePrueba(desde: 400, hasta: 1050));
+      expect(ind.capas, hasLength(66));
+      expect(ind.capaDe(1050)!.archivo, 'agua/1050.json');
+      expect(ind.validado, isFalse);
+      expect(ind.cero, ceroDelMapa);
+    });
+
+    test('elección en el rango real: redondeo, cauce, máximo y margen de 50 cm', () {
+      final ind = IndiceMapa.desdeJson(
+        indiceDePrueba(desde: 400, hasta: 1050)..['modelo'] = {'metodo': 'x', 'margen_m': 0.5},
+      );
+      expect(elegirAgua(redondearArriba(6.73), ind).capaCm, 680);
+      expect(elegirAgua(redondearArriba(6.73), ind).margenCm, 730);
+      // 3,95 sube a 4,00: se pinta la capa más baja (más agua, no menos)
+      expect(elegirAgua(redondearArriba(3.95), ind).situacion, SituacionAgua.enRango);
+      expect(elegirAgua(redondearArriba(3.85), ind).situacion, SituacionAgua.enCauce);
+      expect(elegirAgua(redondearArriba(3.85), ind).margenCm, 440); // los puntos igual se ven
+      final arriba = elegirAgua(redondearArriba(10.83), ind);
+      expect(arriba.situacion, SituacionAgua.sobreMaximo);
+      expect(arriba.capaCm, 1050);
+      expect(elegirAgua(1030, ind).margenCm, 1050); // el margen no pasa del máximo
+    });
+
+    test('referencia con curva: se lee el archivo; si está mal, queda sin contorno', () {
+      final ind = indiceCon();
+      final ref = ind.referencias.single;
+      expect(ref.nombre, 'Crecida de prueba');
+      expect(ref.alturaCm, 425);
+      expect(ref.archivo!.archivo, 'curvas/2015-12.json');
+      Map<String, dynamic> conRef(void Function(Map r) cambio) {
+        final j = indiceDePrueba();
+        cambio((j['referencias'] as List).first as Map);
+        return j;
+      }
+
+      for (final cambio in <void Function(Map)>[
+        (r) => r['sha256'] = 'abc',
+        (r) => r['bytes'] = 0, // como el ejemplo del contrato
+        (r) => r['archivo'] = 'agua/0420.json', // las curvas van en curvas/
+        (r) => r['archivo'] = '../curvas/x.json',
+      ]) {
+        final i = IndiceMapa.desdeJson(conRef(cambio));
+        expect(i.referencias.single.archivo, isNull);
+        expect(i.referencias.single.alturaM, 4.25);
+      }
+    });
+
+    test('las referencias se ordenan por altura', () {
+      final ind = indiceCon(
+        (j) => (j['referencias'] as List).insert(0, {'tipo': 'crecida', 'nombre': 'Más alta', 'altura_m': 9.12}),
+      );
+      expect(ind.referencias.map((r) => r.nombre), ['Crecida de prueba', 'Más alta']);
+    });
+
+    test('curva: valida forma y altura', () {
+      final ind = indiceCon();
+      final ref = ind.referencias.single;
+      expect(CurvaMapa.desdeJson(curvaDePrueba(), ref, ind).poligonos, hasLength(1));
+      expect(() => CurvaMapa.desdeJson(curvaDePrueba(altura: 8.35), ref, ind), rechazaPor('altura_m'));
+      expect(
+        () => CurvaMapa.desdeJson({'type': 'FeatureCollection', 'features': []}, ref, ind),
+        rechazaPor('Features'),
+      );
+    });
+
+    test('repositorio: curva verificada, guardada, y null si la huella no coincide', () async {
+      final f = fuenteDePrueba();
+      final r = RepositorioMapa(f);
+      final ref = ((await r.indice()) as IndiceListo).indice.referencias.single;
+      expect(await r.curva(ref), isNotNull);
+      await r.curva(ref);
+      expect(f.lecturas['curvas/2015-12.json'], 1);
+      final roto = RepositorioMapa(
+        fuenteDePrueba(archivos: {'curvas/2015-12.json': jsonABytes(curvaDePrueba(nombre: 'cambiada'))}),
+      );
+      expect(await roto.curva(ref), isNull);
+      expect(await roto.capa(420), isNotNull); // lo demás sigue
+    });
+
+    test('en segundo plano (compute, otro isolate de verdad) arma lo mismo', () async {
+      // Capas grandes para pasar el umbral del segundo plano.
+      final grande = <String, dynamic>{
+        'type': 'FeatureCollection',
+        'features': [
+          {
+            'type': 'Feature',
+            'properties': {'altura_m': 4.2},
+            'geometry': {
+              'type': 'MultiPolygon',
+              'coordinates': [
+                for (var k = 0; k < 400; k++)
+                  [
+                    [
+                      for (var i = 0; i < 20; i++) [-58.09 + i * 0.0001, -32.39 + k * 0.0002],
+                      [-58.09, -32.39 + k * 0.0002],
+                    ],
+                  ],
+              ],
+            },
+          },
+        ],
+      };
+      final bytes = jsonABytes(grande);
+      expect(bytes.length, greaterThan(96 * 1024));
+      final fuente = fuenteDePrueba(
+        indice: (j) {
+          final c = (j['capas'] as List)[2] as Map;
+          c['bytes'] = bytes.length;
+          c['sha256'] = sha256.convert(bytes).toString();
+        },
+        archivos: {'agua/0420.json': bytes},
+      );
+      final r = RepositorioMapa(fuente, enSegundoPlano: true);
+      final capa = await r.capa(420);
+      expect(capa!.alturaCm, 420);
+      expect(capa.reemplazada, isFalse);
+      expect(capa.capa.poligonos, hasLength(400));
+      expect(await r.base(), isNotNull);
+      final ref = ((await r.indice()) as IndiceListo).indice.referencias.single;
+      expect(await r.curva(ref), isNotNull);
+      // y una huella rota en segundo plano también se descarta
+      final mala = RepositorioMapa(fuenteDePrueba(archivos: {'agua/0420.json': bytes}), enSegundoPlano: true);
+      expect((await mala.capa(420))!.alturaCm, 430);
     });
   });
 
@@ -309,5 +468,30 @@ void main() {
       final capa = await r.capa(c.alturaCm);
       expect(capa?.reemplazada, isFalse, reason: 'capa ${c.archivo}');
     }
+    for (final ref in ind.referencias) {
+      if (ref.archivo == null) continue;
+      expect(await r.curva(ref), isNotNull, reason: 'curva ${ref.archivo!.archivo}');
+    }
+  });
+
+  // pubspec.yaml no busca en subcarpetas: cada carpeta con archivos del mapa
+  // tiene que estar declarada, o el archivo no entra en el APK y la capa se
+  // pierde sin aviso (la app usaría la de arriba).
+  test('pubspec.yaml declara todas las carpetas de assets/mapa/', () {
+    final carpeta = Directory('assets/mapa');
+    if (!carpeta.existsSync()) return;
+    final pubspec = File('pubspec.yaml').readAsStringSync();
+    final declaradas = RegExp(
+      r'^\s*-\s*(assets/\S+/)\s*$',
+      multiLine: true,
+    ).allMatches(pubspec).map((m) => m.group(1)).toSet();
+    final carpetas = [
+      carpeta,
+      ...carpeta.listSync(recursive: true).whereType<Directory>(),
+    ].map((d) => '${d.path.replaceAll(r'\', '/')}/');
+    for (final c in carpetas) {
+      expect(declaradas, contains(c), reason: 'falta "- $c" en pubspec.yaml');
+    }
+    expect(declaradas, contains('assets/mapa/curvas/'));
   });
 }

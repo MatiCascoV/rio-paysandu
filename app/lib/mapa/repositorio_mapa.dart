@@ -49,7 +49,7 @@ class RepositorioMapa {
   /// Capas decodificadas que se guardan en memoria (las más recientes).
   final int capasEnMemoria;
 
-  RepositorioMapa(this.fuente, {this.enSegundoPlano = false, this.capasEnMemoria = 20});
+  RepositorioMapa(this.fuente, {this.enSegundoPlano = false, this.capasEnMemoria = 12});
 
   Future<EstadoIndice>? _indice;
   Future<BaseMapa?>? _base;
@@ -73,19 +73,22 @@ class RepositorioMapa {
     }
   }
 
-  /// Bytes de [a] si existen, pesan lo que dice el índice y su huella coincide.
-  Future<Uint8List?> _leerVerificado(ArchivoMapa a, int tope) async {
+  /// Lee [a] y lo arma con [armar] si existe, pesa lo que dice el índice y su
+  /// huella coincide; si no, null. La huella, el JSON y el armado de los
+  /// objetos van juntos: con [enSegundoPlano] y un archivo grande, todo eso
+  /// pasa en otro hilo y la pantalla no se traba.
+  Future<T?> _leerYArmar<T, A>(ArchivoMapa a, int tope, T Function(Object?, A) armar, A extra) async {
     final bytes = await fuente.leer(a.archivo, tope: tope);
     if (bytes == null || bytes.length != a.bytes) return null;
-    if (crypto.sha256.convert(bytes).toString() != a.sha256) return null;
-    return bytes;
-  }
-
-  Future<T> _decodificar<T>(Uint8List bytes, T Function(Object?) armar) async {
-    if (enSegundoPlano && bytes.length >= _bytesParaSegundoPlano) {
-      return compute(_decodificarYArmar<T>, (bytes, armar));
+    final pedido = _Pedido<T, A>(bytes, a.sha256, armar, extra);
+    try {
+      if (enSegundoPlano && bytes.length >= _bytesParaSegundoPlano) {
+        return await compute(_verificarYArmar<T, A>, pedido, debugLabel: 'mapa ${a.archivo}');
+      }
+      return _verificarYArmar(pedido);
+    } catch (_) {
+      return null; // JSON roto o que no valida: se trata como si faltara
     }
-    return armar(jsonDecode(utf8.decode(bytes)));
   }
 
   /// El fondo, o null si falta o no valida.
@@ -95,13 +98,7 @@ class RepositorioMapa {
     final e = await indice();
     if (e is! IndiceListo) return null;
     final ind = e.indice;
-    final bytes = await _leerVerificado(ind.base, TopesMapa.bytesBase);
-    if (bytes == null) return null;
-    try {
-      return await _decodificar(bytes, (j) => BaseMapa.desdeJson(j, ind));
-    } catch (_) {
-      return null;
-    }
+    return _leerYArmar(ind.base, TopesMapa.bytesBase, _armarBase, ind);
   }
 
   /// La capa de [cm] (múltiplo del paso, dentro del rango). Si esa no se
@@ -123,13 +120,7 @@ class RepositorioMapa {
     if (_rotas.contains(cm)) return null;
     final c = ind.capaDe(cm);
     if (c == null) return null;
-    final bytes = await _leerVerificado(c, TopesMapa.bytesCapa);
-    CapaAgua? capa;
-    if (bytes != null) {
-      try {
-        capa = await _decodificar(bytes, (j) => CapaAgua.desdeJson(j, c, ind));
-      } catch (_) {}
-    }
+    final capa = await _leerYArmar(c, TopesMapa.bytesCapa, _armarCapa, (c, ind));
     if (capa == null) {
       _rotas.add(cm); // no se vuelve a intentar en esta sesión
       return null;
@@ -143,6 +134,37 @@ class RepositorioMapa {
 
   /// Alturas de las capas que hay en memoria, de la más vieja a la más nueva.
   List<int> get capasGuardadas => List.unmodifiable(_capas.keys);
+
+  final _curvas = <String, Future<CurvaMapa?>>{};
+
+  /// Contorno medido de una crecida real (curvas/…), o null si la referencia
+  /// no trae archivo o el archivo no valida. Se guarda una vez leído.
+  Future<CurvaMapa?> curva(ReferenciaMapa ref) {
+    final a = ref.archivo;
+    if (a == null) return Future.value(null);
+    return _curvas[a.archivo] ??= () async {
+      final e = await indice();
+      if (e is! IndiceListo) return null;
+      return _leerYArmar(a, TopesMapa.bytesCurva, _armarCurva, (ref, e.indice));
+    }();
+  }
 }
 
-T _decodificarYArmar<T>((Uint8List, T Function(Object?)) e) => e.$2(jsonDecode(utf8.decode(e.$1)));
+/// Lo que viaja al otro hilo. Todo es enviable: bytes, textos, objetos del
+/// índice y funciones de nivel superior (no clausuras con estado).
+class _Pedido<T, A> {
+  final Uint8List bytes;
+  final String sha256;
+  final T Function(Object?, A) armar;
+  final A extra;
+  const _Pedido(this.bytes, this.sha256, this.armar, this.extra);
+}
+
+T? _verificarYArmar<T, A>(_Pedido<T, A> p) {
+  if (crypto.sha256.convert(p.bytes).toString() != p.sha256) return null;
+  return p.armar(jsonDecode(utf8.decode(p.bytes)), p.extra);
+}
+
+BaseMapa _armarBase(Object? j, IndiceMapa ind) => BaseMapa.desdeJson(j, ind);
+CapaAgua _armarCapa(Object? j, (CapaIndice, IndiceMapa) e) => CapaAgua.desdeJson(j, e.$1, e.$2);
+CurvaMapa _armarCurva(Object? j, (ReferenciaMapa, IndiceMapa) e) => CurvaMapa.desdeJson(j, e.$1, e.$2);

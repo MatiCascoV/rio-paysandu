@@ -13,6 +13,7 @@ abstract final class TopesMapa {
   static const bytesIndice = 256 * 1024;
   static const bytesBase = 4 * 1024 * 1024;
   static const bytesCapa = 2 * 1024 * 1024;
+  static const bytesCurva = 2 * 1024 * 1024;
 
   /// Suma de todo lo que declara el índice (base + capas + curvas).
   static const bytesTotales = 48 * 1024 * 1024;
@@ -20,6 +21,11 @@ abstract final class TopesMapa {
   /// Más de esto en una sola capa es un error del pipeline.
   static const puntosPorCapa = 400000;
 }
+
+/// Escala de alturas que entiende la app: la de CARU en el puerto de Paysandú
+/// (el `cero` de actual.json y umbrales.json). Un mapa hecho en otra escala no
+/// se pinta: un error de cero corre el borde del agua varias cuadras.
+const ceroDelMapa = 'Local';
 
 /// Rectángulo grueso de Uruguay: un límite fuera de acá es un error.
 const _latMin = -35.2, _latMax = -30.0, _lonMin = -58.7, _lonMax = -53.0;
@@ -79,8 +85,10 @@ class CapaIndice extends ArchivoMapa {
   const CapaIndice(this.alturaCm, super.archivo, super.bytes, super.sha256);
 }
 
-/// Crecida u otra altura de referencia (para botones futuros). Se lee de
-/// forma tolerante: una referencia rara se saltea, no invalida el índice.
+/// Crecida real u otra altura de referencia. Se lee de forma tolerante: una
+/// referencia rara se saltea y no invalida el índice. Si trae un archivo de
+/// curva (curvas/AAAA-MM.json) que no valida, la referencia queda igual como
+/// altura, pero sin contorno.
 class ReferenciaMapa {
   final String tipo;
   final String nombre;
@@ -88,20 +96,43 @@ class ReferenciaMapa {
   final DateTime? fecha;
   final String? fuente;
 
-  const ReferenciaMapa({required this.tipo, required this.nombre, required this.alturaM, this.fecha, this.fuente});
+  /// Contorno medido de esa crecida (Dinagua), o null si no hay.
+  final ArchivoMapa? archivo;
+
+  const ReferenciaMapa({
+    required this.tipo,
+    required this.nombre,
+    required this.alturaM,
+    this.fecha,
+    this.fuente,
+    this.archivo,
+  });
+
+  int get alturaCm => aCm(alturaM);
 
   static ReferenciaMapa? desdeJson(Object? j) {
     if (j is! Map) return null;
-    final tipo = _texto(j['tipo']), nombre = _texto(j['nombre']);
+    final tipo = _texto(j['tipo']), nombre = _texto(j['nombre'])?.trim();
     final altura = _numero(j['altura_m']);
-    if (tipo == null || nombre == null || altura == null || altura < 0 || altura > 20) return null;
+    if (tipo == null || nombre == null || nombre.isEmpty || altura == null || altura < 0 || altura > 20) return null;
     final fecha = _texto(j['fecha']);
+    ArchivoMapa? archivo;
+    if (j['archivo'] != null) {
+      try {
+        final a = ArchivoMapa.desdeJson(j, 'referencia', TopesMapa.bytesCurva);
+        if (a.archivo.startsWith('curvas/')) archivo = a;
+      } on ErrorMapa {
+        // Sin contorno: la altura de la crecida sigue sirviendo.
+      }
+    }
+    final fuente = _texto(j['fuente']);
     return ReferenciaMapa(
       tipo: tipo,
       nombre: nombre.length > 80 ? nombre.substring(0, 80) : nombre,
       alturaM: altura,
       fecha: fecha == null ? null : DateTime.tryParse(fecha),
-      fuente: _texto(j['fuente']),
+      fuente: fuente == null || fuente.length > 80 ? null : fuente,
+      archivo: archivo,
     );
   }
 }
@@ -178,7 +209,11 @@ class IndiceMapa {
     if (metodo == null || metodo.isEmpty) throw const ErrorMapa('modelo sin metodo');
     if (margen == null || margen < 0 || margen > 2) throw const ErrorMapa('margen_m fuera de rango');
     final modelo = ModeloMapa(
-        metodo: metodo, margenM: margen, deltaM: _numero(m['delta_m']), iouValidacion: _numero(m['iou_validacion']));
+      metodo: metodo,
+      margenM: margen,
+      deltaM: _numero(m['delta_m']),
+      iouValidacion: _numero(m['iou_validacion']),
+    );
 
     final lim = j['limites'];
     if (lim is! List || lim.length != 2 || lim[0] is! List || lim[1] is! List) {
@@ -232,6 +267,7 @@ class IndiceMapa {
         referencias.add(ref);
         final b = r is Map ? r['bytes'] : null;
         if (b is int && b > 0) total += b;
+        if (referencias.length >= 40) break; // más que esto no entra en la pantalla
       }
     }
     if (total > TopesMapa.bytesTotales) throw const ErrorMapa('el mapa declara demasiados bytes');
@@ -251,8 +287,13 @@ class IndiceMapa {
       maxCm: maxCm,
       base: base,
       capas: capas,
-      referencias: referencias,
-      fuentes: fuentes is List ? [for (final f in fuentes.take(12)) if (f is String && f.length <= 300) f] : const [],
+      referencias: referencias..sort((a, b) => a.alturaCm.compareTo(b.alturaCm)),
+      fuentes: fuentes is List
+          ? [
+              for (final f in fuentes.take(12))
+                if (f is String && f.length <= 300) f,
+            ]
+          : const [],
     );
   }
 }
@@ -367,10 +408,38 @@ class CapaAgua {
     final altura = p is Map ? _numero(p['altura_m']) : null;
     if (altura == null || aCm(altura) != capa.alturaCm) throw const ErrorMapa('altura_m no coincide con el índice');
     final poligonos = _poligonos(f['geometry'], indice);
-    final puntos = poligonos.fold<int>(
-        0, (s, p) => s + p.exterior.length + p.huecos.fold<int>(0, (t, h) => t + h.length));
-    if (puntos > TopesMapa.puntosPorCapa) throw const ErrorMapa('la capa tiene demasiados puntos');
+    if (_puntos(poligonos) > TopesMapa.puntosPorCapa) throw const ErrorMapa('la capa tiene demasiados puntos');
     return CapaAgua(capa.alturaCm, poligonos);
+  }
+}
+
+int _puntos(List<PoligonoMapa> ps) =>
+    ps.fold<int>(0, (s, p) => s + p.exterior.length + p.huecos.fold<int>(0, (t, h) => t + h.length));
+
+/// Contorno medido de una crecida real (curvas/AAAA-MM.json): solo se dibuja
+/// como línea de referencia, nunca en lugar de la capa del modelo.
+class CurvaMapa {
+  final ReferenciaMapa referencia;
+  final List<PoligonoMapa> poligonos;
+  const CurvaMapa(this.referencia, this.poligonos);
+
+  static CurvaMapa desdeJson(Object? j, ReferenciaMapa ref, IndiceMapa indice) {
+    if (j is! Map || j['type'] != 'FeatureCollection' || j['features'] is! List) {
+      throw const ErrorMapa('la curva no es una FeatureCollection');
+    }
+    final features = j['features'] as List;
+    if (features.isEmpty || features.length > 50) throw const ErrorMapa('la curva no tiene Features');
+    final poligonos = <PoligonoMapa>[];
+    for (final f in features) {
+      if (f is! Map) throw const ErrorMapa('Feature inválido');
+      final p = f['properties'];
+      final altura = p is Map ? _numero(p['altura_m']) : null;
+      if (altura != null && aCm(altura) != ref.alturaCm) throw const ErrorMapa('altura_m no coincide con el índice');
+      poligonos.addAll(_poligonos(f['geometry'], indice));
+    }
+    if (poligonos.isEmpty) throw const ErrorMapa('la curva está vacía');
+    if (_puntos(poligonos) > TopesMapa.puntosPorCapa) throw const ErrorMapa('la curva tiene demasiados puntos');
+    return CurvaMapa(ref, poligonos);
   }
 }
 

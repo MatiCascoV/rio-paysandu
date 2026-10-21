@@ -43,8 +43,8 @@ EleccionAgua elegirAgua(int alturaCm, IndiceMapa indice) {
   final situacion = alturaCm < indice.minCm
       ? SituacionAgua.enCauce
       : alturaCm > indice.maxCm
-          ? SituacionAgua.sobreMaximo
-          : SituacionAgua.enRango;
+      ? SituacionAgua.sobreMaximo
+      : SituacionAgua.enRango;
   final capa = switch (situacion) {
     SituacionAgua.enCauce => null,
     SituacionAgua.enRango => alturaCm,
