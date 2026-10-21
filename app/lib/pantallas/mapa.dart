@@ -14,6 +14,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../datos.dart';
+import '../mapa/estilo_mapa.dart';
 import '../mapa/logica_mapa.dart';
 import '../mapa/modelos_mapa.dart';
 import '../mapa/repositorio_mapa.dart';
@@ -137,13 +138,19 @@ class _PantallaMapaState extends State<PantallaMapa> {
   int _turno = 0;
 
   final _controlador = MapController();
-  final _rotulos = _CacheRotulos();
+  final _rotulos = CacheRotulos();
   final _poligonos = <(int, bool), List<Polygon>>{};
+
+  /// Contorno del agua visible ya proyectado, para el rayado (uno solo).
+  (int, TrazadoAgua)? _rayado;
+
+  /// Paleta con la que se armó el fondo (si cambia el tema, se rearma).
+  ColoresMapa? _coloresFondo;
   List<Polygon> _cauce = const [];
   List<Polygon> _contorno = const [];
   List<Polyline> _calles = const [];
   List<Polyline> _cursos = const [];
-  List<_Rotulo> _candidatos = const [];
+  List<Rotulo> _candidatos = const [];
 
   DateTime get _ahora => widget.ahora ?? DateTime.now();
 
@@ -208,6 +215,7 @@ class _PantallaMapaState extends State<PantallaMapa> {
       _contorno = const [];
       _motivoNoDisponible = null;
       _poligonos.clear();
+      _rayado = null;
       _turno++;
       _iniciar();
       return;
@@ -271,21 +279,10 @@ class _PantallaMapaState extends State<PantallaMapa> {
     if (!ver || ref == null || _curva != null) return;
     final curva = await widget.repositorio.curva(ref);
     if (!mounted || ref != _referencia) return;
-    final c = _ColoresMapa.actuales();
     setState(() {
       _curva = curva;
       _curvaFallo = curva == null;
-      _contorno = [
-        for (final p in curva?.poligonos ?? const <PoligonoMapa>[])
-          Polygon(
-            points: p.exterior,
-            holePointsList: p.huecos,
-            color: const Color(0x00000000),
-            borderColor: c.contorno,
-            borderStrokeWidth: 2.6,
-            pattern: StrokePattern.dashed(segments: const [10, 6]),
-          ),
-      ];
+      _contorno = poligonosContorno(curva?.poligonos ?? const [], ColoresMapa.actuales());
     });
   }
 
@@ -322,47 +319,35 @@ class _PantallaMapaState extends State<PantallaMapa> {
 
   // ----- Fondo -----
 
+  /// Arma el fondo (cauce, calles, arroyos y nombres) con la paleta actual.
+  /// El estilo está en mapa/estilo_mapa.dart.
   void _armarFondo(BaseMapa base) {
-    final c = _ColoresMapa.actuales();
-    _cauce = [
-      for (final p in base.agua)
-        Polygon(points: p.exterior, holePointsList: p.huecos, color: c.cauce, borderStrokeWidth: 0),
-    ];
-    final calles = [...base.calles]..sort((a, b) => b.clase.compareTo(a.clase)); // las principales, arriba
-    _calles = [
-      for (final t in calles)
-        for (final l in t.lineas)
-          Polyline(
-            points: l.puntos,
-            color: c.calle(t.clase),
-            strokeWidth: switch (t.clase) {
-              1 => 4.0,
-              2 => 3.0,
-              _ => 1.6,
-            },
-          ),
-    ];
-    _cursos = [
-      for (final t in base.cursos)
-        for (final l in t.lineas) Polyline(points: l.puntos, color: c.cauce, strokeWidth: 2.2),
-    ];
-    _candidatos = _armarRotulos(base);
+    final c = _coloresFondo = ColoresMapa.actuales();
+    _cauce = poligonosCauce(base, c);
+    _calles = lineasCalles(base, c);
+    _cursos = lineasCursos(base, c);
+    _candidatos = armarRotulos(base);
   }
 
-  List<Polygon> _poligonosDe(CapaElegida capa, {required bool margen}) {
-    final clave = (capa.alturaCm, margen);
-    final c = _ColoresMapa.actuales();
-    return _poligonos[clave] ??= [
-      for (final p in capa.capa.poligonos)
-        Polygon(
-          points: p.exterior,
-          holePointsList: p.huecos,
-          color: margen ? c.margen : c.agua,
-          borderColor: c.bordeAgua,
-          borderStrokeWidth: margen ? 1.6 : 1.4,
-          pattern: margen ? StrokePattern.dotted(spacingFactor: 2.5) : const StrokePattern.solid(),
-        ),
-    ];
+  /// Si cambió el modo claro / oscuro desde que se armó el fondo, se vuelve a
+  /// pintar todo con la paleta nueva.
+  void _seguirPaleta(ColoresMapa c) {
+    if (identical(c, _coloresFondo) || _base == null) return;
+    _armarFondo(_base!);
+    _poligonos.clear();
+    if (_curva case final curva?) _contorno = poligonosContorno(curva.poligonos, c);
+  }
+
+  List<Polygon> _poligonosDe(CapaElegida capa, {required bool margen}) =>
+      _poligonos[(capa.alturaCm, margen)] ??= poligonosAgua(capa.capa.poligonos, ColoresMapa.actuales(), margen: margen);
+
+  /// El contorno del agua visible, proyectado una sola vez para el rayado.
+  TrazadoAgua _rayadoDe(CapaElegida capa) {
+    final r = _rayado;
+    if (r != null && r.$1 == capa.alturaCm) return r.$2;
+    final nuevo = TrazadoAgua(capa.capa.poligonos);
+    _rayado = (capa.alturaCm, nuevo);
+    return nuevo;
   }
 
   // ----- Pantalla -----
@@ -543,7 +528,8 @@ class _PantallaMapaState extends State<PantallaMapa> {
   }
 
   Widget _mapa(IndiceMapa ind, EleccionAgua? eleccion) {
-    final c = _ColoresMapa.actuales();
+    final c = ColoresMapa.actuales();
+    _seguirPaleta(c);
     final limites = LatLngBounds(ind.surOeste, ind.norEste);
     final lugares = _base!.lugares;
     // Arranca en el centro de los barrios (la ciudad), no en todo el recorte.
@@ -585,14 +571,29 @@ class _PantallaMapaState extends State<PantallaMapa> {
                     cameraConstraint: CameraConstraint.containCenter(bounds: limites),
                     interactionOptions: const InteractionOptions(flags: InteractiveFlag.all & ~InteractiveFlag.rotate),
                   ),
+                  // De abajo hacia arriba (docs/mapa/08-cartografia.md): cauce
+                  // y arroyos; calles (los puentes quedan sobre el río); el
+                  // margen y el agua, translúcidos sobre las calles para que
+                  // se lean primero y dejen ver por dónde pasan; el rayado; el
+                  // borde medido de una crecida y, arriba, los nombres con halo.
                   children: [
                     PolygonLayer(polygons: _cauce),
+                    PolylineLayer(polylines: _cursos),
+                    PolylineLayer(polylines: _calles),
                     if (margen != null) PolygonLayer(polygons: _poligonosDe(margen, margen: true)),
                     if (capa != null) PolygonLayer(polygons: _poligonosDe(capa, margen: false)),
-                    PolylineLayer(polylines: _calles),
-                    PolylineLayer(polylines: _cursos),
+                    if (capa != null) CapaRayado(trazado: _rayadoDe(capa), color: c.rayado),
                     if (_verContorno && _contorno.isNotEmpty) PolygonLayer(polygons: _contorno),
-                    _CapaRotulos(candidatos: _candidatos, cache: _rotulos, colores: c),
+                    CapaRotulos(
+                      candidatos: _candidatos,
+                      cache: _rotulos,
+                      colores: c,
+                      // Sin nombres debajo de los botones + / − ni de la atribución.
+                      tapadas: (s) => [
+                        Rect.fromLTWH(s.width - 64, 0, 64, 120),
+                        Rect.fromLTWH(0, s.height - 26, math.min(s.width, 300), 26),
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -668,102 +669,6 @@ class _PantallaMapaState extends State<PantallaMapa> {
       ],
     );
   }
-
-  // ----- Rótulos -----
-
-  List<_Rotulo> _armarRotulos(BaseMapa base) {
-    final lista = <_Rotulo>[for (final l in base.lugares) _Rotulo(l.nombre, 0, 12.5, l.punto, null, null, 0)];
-    void tramos(List<TramoConNombre> ts, int Function(int clase) prioridad, double Function(int clase) zoom) {
-      for (final t in ts) {
-        final nombre = t.nombre;
-        if (nombre == null) continue;
-        for (final l in t.lineas) {
-          final r = _medio(l.puntos);
-          if (r == null || r.$4 < 60) continue; // tramos muy cortos no llevan nombre
-          lista.add(_Rotulo(nombre, prioridad(t.clase), zoom(t.clase), r.$1, r.$2, r.$3, r.$4));
-        }
-      }
-    }
-
-    tramos(base.cursos, (_) => 1, (_) => 13.5);
-    tramos(
-      base.calles,
-      (k) => k + 1,
-      (k) => switch (k) {
-        1 => 14.0,
-        2 => 14.5,
-        _ => 15.5,
-      },
-    );
-    lista.sort((a, b) => a.prioridad != b.prioridad ? a.prioridad - b.prioridad : b.largoM.compareTo(a.largoM));
-    return lista;
-  }
-}
-
-/// Punto medio de una línea (por largo), el tramo donde cae y el largo en metros.
-(LatLng, LatLng, LatLng, double)? _medio(List<LatLng> pts) {
-  const d = Distance();
-  final tramos = [for (var i = 1; i < pts.length; i++) d.as(LengthUnit.Meter, pts[i - 1], pts[i])];
-  final total = tramos.fold<double>(0, (a, b) => a + b);
-  if (total <= 0) return null;
-  var falta = total / 2;
-  for (var i = 0; i < tramos.length; i++) {
-    if (falta <= tramos[i] || i == tramos.length - 1) {
-      final f = tramos[i] == 0 ? 0.0 : (falta / tramos[i]).clamp(0.0, 1.0);
-      final a = pts[i], b = pts[i + 1];
-      final medio = LatLng(a.latitude + (b.latitude - a.latitude) * f, a.longitude + (b.longitude - a.longitude) * f);
-      return (medio, a, b, total);
-    }
-    falta -= tramos[i];
-  }
-  return null;
-}
-
-/// Colores del mapa. El agua es siempre azul; el nivel va en texto.
-class _ColoresMapa {
-  final Color terreno, cauce, agua, margen, bordeAgua, halo, texto, textoCurso, contorno;
-  final List<Color> _calles;
-
-  const _ColoresMapa(
-    this.terreno,
-    this.cauce,
-    this.agua,
-    this.margen,
-    this.bordeAgua,
-    this.halo,
-    this.texto,
-    this.textoCurso,
-    this.contorno,
-    this._calles,
-  );
-
-  Color calle(int clase) => _calles[(clase - 1).clamp(0, 2)];
-
-  static _ColoresMapa actuales() => Colores.oscuro
-      ? const _ColoresMapa(
-          Color(0xFF1B2A37),
-          Color(0xFF0F4C85),
-          Color(0x736CB4FF),
-          Color(0x336CB4FF),
-          Color(0xFFD6ECFF),
-          Color(0xFF1B2A37),
-          Color(0xFFEAF2F8),
-          Color(0xFF9CCBFF),
-          Color(0xFFFFB0D8),
-          [Color(0xFF7D95AB), Color(0xFF5F7890), Color(0xFF3E566D)],
-        )
-      : const _ColoresMapa(
-          Color(0xFFF3F0E8),
-          Color(0xFF2F6FAD),
-          Color(0x8C3D8BD9),
-          Color(0x383D8BD9),
-          Color(0xFF0B3C5D),
-          Color(0xFFF3F0E8),
-          Color(0xFF0B2A3F),
-          Color(0xFF1D4F80),
-          Color(0xFF8A1C5B),
-          [Color(0xFF9C9079), Color(0xFFB4AA96), Color(0xFFD3CCBE)],
-        );
 }
 
 // ---------------------------------------------------------------------------
@@ -998,7 +903,7 @@ class _Leyenda extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c = _ColoresMapa.actuales();
+    final c = ColoresMapa.actuales();
     final tema = Theme.of(context).textTheme;
     Widget fila(Widget muestra, String texto) => Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -1014,181 +919,11 @@ class _Leyenda extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Semantics(header: true, child: Text('Cómo leer el mapa', style: tema.titleMedium)),
-        fila(ColoredBox(color: c.cauce), 'Río y arroyos, en su cauce'),
-        fila(
-          DecoratedBox(
-            decoration: BoxDecoration(
-              color: Color.alphaBlend(c.agua, c.terreno),
-              border: Border.all(color: c.bordeAgua, width: 1.4),
-            ),
-          ),
-          'Hasta dónde llegaría el agua (borde continuo)',
-        ),
-        fila(CustomPaint(painter: _MuestraMargen(c)), 'Puede llegar un poco más (borde de puntos)'),
-        if (conContorno)
-          fila(
-            Center(
-              child: SizedBox(height: 3, width: 36, child: ColoredBox(color: c.contorno)),
-            ),
-            'Borde medido en esa crecida real (trazos)',
-          ),
+        fila(CustomPaint(painter: MuestraCauce(c)), 'Río y arroyos, en su cauce'),
+        fila(CustomPaint(painter: MuestraAgua(c)), 'Hasta dónde llegaría el agua (borde continuo)'),
+        fila(CustomPaint(painter: MuestraMargen(c)), 'Puede llegar un poco más (borde de puntos)'),
+        if (conContorno) fila(CustomPaint(painter: MuestraContorno(c)), 'Borde medido en esa crecida real (trazos)'),
       ],
     );
   }
-}
-
-class _MuestraMargen extends CustomPainter {
-  final _ColoresMapa c;
-  _MuestraMargen(this.c);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    canvas.drawRect(Offset.zero & size, Paint()..color = Color.alphaBlend(c.margen, c.terreno));
-    final punto = Paint()..color = c.bordeAgua;
-    for (var x = 2.0; x < size.width; x += 6) {
-      canvas.drawCircle(Offset(x, 1.5), 1.3, punto);
-      canvas.drawCircle(Offset(x, size.height - 1.5), 1.3, punto);
-    }
-    for (var y = 2.0; y < size.height; y += 6) {
-      canvas.drawCircle(Offset(1.5, y), 1.3, punto);
-      canvas.drawCircle(Offset(size.width - 1.5, y), 1.3, punto);
-    }
-  }
-
-  @override
-  bool shouldRepaint(_MuestraMargen old) => false;
-}
-
-// ---------------------------------------------------------------------------
-// Rótulos: nombres de barrios, arroyos y calles, sin pisarse.
-
-class _Rotulo {
-  final String texto;
-
-  /// 0 barrio · 1 arroyo · 2 principal · 3 avenida · 4 calle.
-  final int prioridad;
-  final double zoomMin;
-  final LatLng punto;
-
-  /// Tramo donde va el nombre (para girarlo como la calle); null en barrios.
-  final LatLng? a, b;
-  final double largoM;
-
-  const _Rotulo(this.texto, this.prioridad, this.zoomMin, this.punto, this.a, this.b, this.largoM);
-}
-
-/// Textos ya medidos, para no medir cientos de nombres en cada cuadro.
-class _CacheRotulos {
-  final _textos = <(String, int, double), TextPainter>{};
-
-  TextPainter texto(String t, int prioridad, double escala, _ColoresMapa c, {required bool halo}) {
-    final clave = (t, prioridad * 2 + (halo ? 1 : 0), escala);
-    return _textos[clave] ??= () {
-      final base = switch (prioridad) {
-        0 => const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, letterSpacing: 0.3),
-        1 => const TextStyle(fontSize: 12.5, fontStyle: FontStyle.italic, fontWeight: FontWeight.w600),
-        2 || 3 => const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
-        _ => const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w500),
-      };
-      final color = prioridad == 1 ? c.textoCurso : c.texto;
-      final estilo = halo
-          ? base.copyWith(
-              foreground: Paint()
-                ..style = PaintingStyle.stroke
-                ..strokeWidth = 3.5
-                ..strokeJoin = StrokeJoin.round
-                ..color = c.halo,
-            )
-          : base.copyWith(color: color);
-      return TextPainter(
-        text: TextSpan(text: prioridad == 0 ? t.toUpperCase() : t, style: estilo),
-        textDirection: TextDirection.ltr,
-        textScaler: TextScaler.linear(escala),
-        maxLines: 1,
-      )..layout();
-    }();
-  }
-}
-
-class _CapaRotulos extends StatelessWidget {
-  final List<_Rotulo> candidatos;
-  final _CacheRotulos cache;
-  final _ColoresMapa colores;
-
-  const _CapaRotulos({required this.candidatos, required this.cache, required this.colores});
-
-  @override
-  Widget build(BuildContext context) {
-    final camara = MapCamera.of(context);
-    // Los nombres crecen con la letra del teléfono, con tope para que entren.
-    final escala = MediaQuery.textScalerOf(context).clamp(maxScaleFactor: 1.3).scale(1);
-    return IgnorePointer(
-      child: CustomPaint(size: Size.infinite, painter: _PintorRotulos(camara, candidatos, cache, colores, escala)),
-    );
-  }
-}
-
-class _PintorRotulos extends CustomPainter {
-  final MapCamera camara;
-  final List<_Rotulo> candidatos;
-  final _CacheRotulos cache;
-  final _ColoresMapa c;
-  final double escala;
-
-  _PintorRotulos(this.camara, this.candidatos, this.cache, this.c, this.escala);
-
-  /// Tope de nombres a la vez: más que esto es ruido en un celular.
-  static const maximo = 70;
-
-  /// Distancia mínima entre dos rótulos con el mismo nombre (en píxeles).
-  static const separacionMismoNombre = 260.0;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final zoom = camara.zoom;
-    final pantalla = Offset.zero & size;
-    final ocupados = <Rect>[];
-    final porNombre = <String, List<Offset>>{};
-    for (final r in candidatos) {
-      if (ocupados.length >= maximo) break;
-      if (zoom < r.zoomMin) continue;
-      final p = camara.getOffsetFromOrigin(r.punto);
-      if (!pantalla.inflate(-8).contains(p)) continue;
-      final texto = cache.texto(r.texto, r.prioridad, escala, c, halo: false);
-      final w = texto.width, h = texto.height;
-      var angulo = 0.0;
-      if (r.a != null && r.b != null) {
-        final pa = camara.getOffsetFromOrigin(r.a!), pb = camara.getOffsetFromOrigin(r.b!);
-        // El nombre no puede ser más largo que el tramo de calle que se ve.
-        final largoPantalla = r.largoM / _metrosPorPixel(r.punto.latitude, zoom);
-        if (largoPantalla < w * 1.1) continue;
-        angulo = math.atan2(pb.dy - pa.dy, pb.dx - pa.dx);
-        if (angulo > math.pi / 2) angulo -= math.pi;
-        if (angulo < -math.pi / 2) angulo += math.pi;
-      }
-      final cos = math.cos(angulo).abs(), sin = math.sin(angulo).abs();
-      final caja = Rect.fromCenter(center: p, width: w * cos + h * sin, height: w * sin + h * cos).inflate(3);
-      if (!pantalla.contains(caja.topLeft) || !pantalla.contains(caja.bottomRight)) continue;
-      if (ocupados.any((o) => o.overlaps(caja))) continue;
-      final cerca = porNombre[r.texto];
-      if (cerca != null && cerca.any((q) => (q - p).distance < separacionMismoNombre)) continue;
-      ocupados.add(caja);
-      (porNombre[r.texto] ??= []).add(p);
-      canvas.save();
-      canvas.translate(p.dx, p.dy);
-      canvas.rotate(angulo);
-      final origen = Offset(-w / 2, -h / 2);
-      cache.texto(r.texto, r.prioridad, escala, c, halo: true).paint(canvas, origen);
-      texto.paint(canvas, origen);
-      canvas.restore();
-    }
-  }
-
-  /// Metros por píxel lógico en Web Mercator a esa latitud y zoom.
-  static double _metrosPorPixel(double lat, double zoom) =>
-      156543.03392 * math.cos(lat * math.pi / 180) / math.pow(2, zoom);
-
-  @override
-  bool shouldRepaint(_PintorRotulos old) =>
-      old.camara != camara || old.candidatos != candidatos || old.escala != escala;
 }

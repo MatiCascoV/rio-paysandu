@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pantalla del Mapa</title>
+<style>
+  /* ---------- Página (no es la app) ---------- */
+  :root {
+    --pg-fondo: #F2F4F6; --pg-tinta: #18222B; --pg-sec: #4F5D69; --pg-borde: #D3DAE0; --pg-nota: #FFFFFF;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --pg-fondo: #0B1117; --pg-tinta: #E6ECF1; --pg-sec: #A3B1BD; --pg-borde: #2A3743; --pg-nota: #141D25;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --pg-fondo: #0B1117; --pg-tinta: #E6ECF1; --pg-sec: #A3B1BD; --pg-borde: #2A3743; --pg-nota: #141D25;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--pg-fondo); color: var(--pg-tinta);
+    font-family: Roboto, "Segoe UI", system-ui, -apple-system, sans-serif; line-height: 1.4; }
+  .pagina { max-width: 1640px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 26px; margin: 0 0 6px; }
+  h2 { font-size: 20px; margin: 40px 0 4px; }
+  .intro { color: var(--pg-sec); max-width: 900px; margin: 0 0 8px; font-size: 15px; }
+  .claves { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 12px 0 0; padding: 0; list-style: none; font-size: 14px; color: var(--pg-sec); }
+  .claves b { color: var(--pg-tinta); }
+  .fila { display: flex; gap: 28px; overflow-x: auto; padding: 16px 4px 12px; align-items: flex-start; }
+  .col { flex: 0 0 auto; }
+  .rotulo { font-size: 15px; font-weight: 700; margin: 0 0 2px; }
+  .nota { font-size: 13px; color: var(--pg-sec); margin: 0 0 10px; max-width: 360px; }
+
+  /* ---------- Teléfono: paletas de la app (tema.dart, textos.dart) ---------- */
+  .tel.claro {
+    --primario: #0B3C5D; --sobrePrimario: #FFFFFF; --primarioSuave: #D6E6F2; --fondo: #EEF4F8; --superficie: #FFFFFF;
+    --superficieAlta: #E4EEF5; --tinta: #0B2A3F; --tintaSec: #3F5566; --divisor: #D2DEE7; --bordeSuave: #C3D2DE;
+    --recFondo: #FFF4D6; --recIcono: #7A4A00; --invFondo: #0B2A3F; --invTinta: #EEF4F8;
+    --terreno: #F3F0E8; --manzana: #E3DCCD; --cauce: #2F6FAD; --agua: rgba(61,139,217,.55); --rayado: #0B3C5D;
+    --margen: rgba(61,139,217,.20); --punto: #0B3C5D; --bordeHoy: #0B2A3F; --contorno: #8A1C5B; --rotulo: #0B2A3F; --halo: #F3F0E8;
+  }
+  .tel.oscuro {
+    --primario: #8CCBEE; --sobrePrimario: #06283D; --primarioSuave: #1D3A50; --fondo: #0E1A24; --superficie: #16283A;
+    --superficieAlta: #22374B; --tinta: #EAF2F8; --tintaSec: #A9BCCB; --divisor: #26394A; --bordeSuave: #2E4457;
+    --recFondo: #3A2E12; --recIcono: #FFC857; --invFondo: #EAF2F8; --invTinta: #0E1A24;
+    --terreno: #1B2A37; --manzana: #2B3E51; --cauce: #0F4C85; --agua: rgba(108,180,255,.45); --rayado: #D6ECFF;
+    --margen: rgba(108,180,255,.18); --punto: #BFE0FF; --bordeHoy: #FFFFFF; --contorno: #FFB0D8; --rotulo: #EAF2F8; --halo: #1B2A37;
+  }
+  .tel { --s: 1; width: var(--w, 360px); background: var(--fondo); color: var(--tinta); border-radius: 28px;
+    border: 8px solid #1A1F24; overflow: hidden; position: relative; box-shadow: 0 6px 24px rgba(0,0,0,.18);
+    font-size: calc(18px * var(--s)); }
+  .barraEstado { height: 24px; font-size: 12px; padding: 4px 16px; display: flex; justify-content: space-between; }
+  .appbar { height: 56px; display: flex; align-items: center; padding: 0 4px 0 16px; gap: 4px; }
+  .appbar .t { flex: 1; font-size: 18px; font-weight: 600; white-space: nowrap; overflow: hidden; }
+  .appbar .ib { width: 48px; height: 48px; display: grid; place-items: center; color: var(--primario); }
+  .cuerpo { position: relative; padding: 12px 16px 24px; background-repeat: no-repeat; background-size: 100% 628px; }
+  .pliegue { position: absolute; left: 0; right: 0; top: 628px; border-top: 2px dashed #E0457B; pointer-events: none; z-index: 5; }
+  .pliegue span { position: absolute; right: 6px; top: -20px; font-size: 11px; font-weight: 700; color: #fff; background: #E0457B; padding: 1px 6px; border-radius: 4px; }
+  .nav { height: 72px; display: flex; border-top: 1px solid var(--bordeSuave); background: var(--fondo); }
+  .nav div { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 13px; color: var(--tintaSec); gap: 2px; }
+  .nav .sel { color: var(--primario); font-weight: 600; }
+  .nav .sel i { background: var(--primarioSuave); border-radius: 16px; padding: 2px 16px; }
+  .nav i { font-style: normal; height: 24px; display: grid; place-items: center; }
+  svg.ic { width: 1em; height: 1em; flex: 0 0 auto; }
+
+  /* Bloques */
+  .franja .l1 { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: calc(22px * var(--s)); font-weight: 800; line-height: 1.25; }
+  .franja .niv { display: inline-flex; align-items: center; gap: 4px; }
+  .franja .niv svg { width: 24px; height: 24px; }
+  .franja .l2 { font-size: calc(16px * var(--s)); margin-top: 2px; }
+  .renglon { display: flex; gap: 10px; align-items: flex-start; font-size: calc(18px * var(--s)); font-weight: 600; margin-top: 8px; }
+  .renglon svg { width: 24px; height: 24px; margin-top: 2px; }
+  .recuadro { background: var(--recFondo); border-radius: 20px; padding: 16px; display: flex; gap: 12px; margin-top: 12px; line-height: 1.4; }
+  .recuadro svg { width: 24px; height: 24px; color: var(--recIcono); margin-top: 2px; }
+  .tarjeta { background: var(--superficie); border-radius: 20px; padding: 16px; margin-top: 12px; }
+  .tarjeta h3 { font-size: calc(18px * var(--s)); margin: 0 0 6px; }
+  .tarjeta ol { margin: 0 0 12px; padding-left: 1.3em; }
+  .tarjeta li { margin: 2px 0; }
+  .btn { min-height: 56px; border-radius: 12px; display: flex; align-items: center; justify-content: center; gap: 8px;
+    font-size: calc(18px * var(--s)); font-weight: 600; padding: 10px 16px; text-align: center; line-height: 1.2; }
+  .btnLleno { background: var(--primario); color: var(--sobrePrimario); }
+  .btnBorde { border: 1.5px solid var(--primario); color: var(--primario); }
+  .lectura { margin-top: 16px; }
+  .cap { color: var(--tintaSec); font-size: calc(18px * var(--s)); }
+  .num { font-size: calc(40px * min(var(--s), 1.4)); font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; letter-spacing: -.5px; }
+  .sub { font-size: calc(16px * var(--s)); margin-top: 4px; }
+  .linea { font-size: calc(18px * var(--s)); margin-top: 8px; display: flex; gap: 8px; align-items: flex-start; }
+  .linea svg { width: 24px; height: 24px; margin-top: 2px; }
+  .inv { background: var(--invFondo); color: var(--invTinta); border-radius: 20px; padding: 16px; }
+  .inv .cap { color: var(--invTinta); opacity: .85; }
+  .inv .tit { display: flex; gap: 8px; align-items: center; font-weight: 800; font-size: calc(18px * var(--s)); }
+  .inv .tit svg { width: 24px; height: 24px; }
+  .inv .btnBorde { border-color: var(--invTinta); color: var(--invTinta); margin-top: 12px; }
+  .numFila { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+  .pastilla { display: inline-flex; align-items: center; gap: 6px; height: calc(32px * min(var(--s),1.3)); padding: 0 12px; border-radius: 999px;
+    font-weight: 800; font-size: calc(15px * min(var(--s),1.3)); letter-spacing: .3px; }
+  .pastilla svg { width: 18px; height: 18px; }
+  .ref { font-size: calc(16px * var(--s)); }
+  .marco { margin-top: 12px; border-radius: 20px; overflow: hidden; background: var(--superficie); }
+  .sello { background: var(--recFondo); padding: 10px 12px; display: flex; gap: 10px; font-size: calc(16px * var(--s)); font-weight: 600; line-height: 1.35; }
+  .sello svg { width: 24px; height: 24px; color: var(--recIcono); }
+  .mapa { position: relative; height: 300px; background: var(--terreno); }
+  .mapa svg.dib { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .relleno { position: absolute; top: 8px; left: 8px; font-size: 10px; font-weight: 700; letter-spacing: .4px; background: rgba(0,0,0,.55); color: #fff; padding: 2px 6px; border-radius: 4px; }
+  .zoom { position: absolute; right: 8px; top: 8px; display: flex; flex-direction: column; gap: 8px; }
+  .zoom div { width: 48px; height: 48px; border-radius: 24px; background: var(--superficie); color: var(--primario); display: grid; place-items: center; font-size: 26px; font-weight: 500; box-shadow: 0 1px 3px rgba(0,0,0,.25); }
+  .atrib { position: absolute; left: 0; bottom: 0; font-size: 12px; padding: 2px 6px; background: color-mix(in srgb, var(--terreno) 85%, transparent); }
+  .pieMarco { padding: 8px 12px; display: flex; gap: 8px; align-items: flex-start; font-size: calc(16px * var(--s)); }
+  .pieMarco svg { width: 20px; height: 20px; margin-top: 2px; color: var(--tintaSec); }
+  .queHacer { margin-top: 16px; min-height: 56px; border-radius: 999px; display: grid; place-items: center; font-size: calc(18px * var(--s)); font-weight: 600; }
+  h4 { font-size: calc(18px * var(--s)); font-weight: 600; margin: 24px 0 4px; }
+  .elegida { font-size: calc(18px * var(--s)); font-weight: 800; }
+  .control { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+  .paso { width: 56px; height: 56px; border-radius: 28px; background: var(--primarioSuave); color: var(--primario); display: grid; place-items: center; font-size: 30px; flex: 0 0 56px; }
+  .pista { flex: 1; position: relative; height: 48px; }
+  .pista .tr { position: absolute; left: 0; right: 0; top: 20px; height: 8px; border-radius: 4px; background: var(--primarioSuave); }
+  .pista .ll { position: absolute; left: 0; top: 20px; height: 8px; border-radius: 4px; background: var(--primario); }
+  .pista .pu { position: absolute; top: 10px; width: 28px; height: 28px; margin-left: -14px; border-radius: 50%; background: var(--primario); box-shadow: 0 1px 3px rgba(0,0,0,.3); }
+  .pista .mk { position: absolute; top: 34px; width: 2px; height: 10px; background: var(--tinta); }
+  .marcas { display: flex; flex-wrap: wrap; gap: 2px 14px; font-size: calc(16px * var(--s)); margin-top: 2px; }
+  .marcas span { display: inline-flex; align-items: center; gap: 4px; }
+  .marcas svg { width: 18px; height: 18px; }
+  .grilla { display: grid; gap: 8px; margin-top: 8px; }
+  .ba { min-height: 64px; border-radius: 12px; padding: 8px 12px; border: 1.5px solid var(--primario); color: var(--primario); line-height: 1.25; }
+  .ba .r1 { font-weight: 600; font-size: calc(18px * var(--s)); display: flex; gap: 6px; align-items: center; }
+  .ba .r2 { font-size: calc(17px * var(--s)); }
+  .ba.sel { background: var(--primario); color: var(--sobrePrimario); }
+  .ba .r1 svg { width: 20px; height: 20px; }
+  .interruptor { display: flex; align-items: center; gap: 12px; margin-top: 12px; min-height: 56px; }
+  .interruptor .tx { flex: 1; }
+  .interruptor .sb { font-size: calc(16px * var(--s)); color: var(--tintaSec); }
+  .sw { width: 52px; height: 32px; border-radius: 16px; background: var(--primario); position: relative; flex: 0 0 52px; }
+  .sw::after { content: ""; position: absolute; right: 4px; top: 4px; width: 24px; height: 24px; border-radius: 50%; background: var(--sobrePrimario); }
+  .ley { display: flex; gap: 12px; align-items: flex-start; margin: 8px 0; font-size: calc(18px * var(--s)); line-height: 1.35; }
+  .ley svg { flex: 0 0 40px; width: 40px; height: 24px; margin-top: 2px; border-radius: 3px; }
+  hr { border: 0; border-top: 1px solid var(--divisor); margin: 20px 0 16px; }
+  .fin p { margin: 4px 0; }
+  .apoyo { color: var(--tintaSec); font-size: calc(16px * var(--s)); }
+  .enlaces { display: flex; flex-wrap: wrap; gap: 0 20px; }
+  .enlace { min-height: 48px; display: flex; align-items: center; color: var(--primario); font-weight: 600; text-decoration: underline; text-decoration-thickness: 1.5px; }
+</style>
+</head>
+<body>
+<div class="pagina">
+  <h1>Pestaña Mapa: pantalla completa, 4 estados</h1>
+  <p class="intro">Maqueta de la especificación <b>09-diseno-pantalla.md</b>. Cada teléfono muestra la pantalla entera, de arriba abajo; la línea rosa marca dónde termina la primera pantalla en un teléfono de 360 × 780. El mapa es un <b>relleno</b>: el dibujo real (colores del agua, rayado, rótulos) lo define el cartógrafo en 08-cartografia.md.</p>
+  <ul class="claves">
+    <li><b>Un solo recuadro ámbar</b>: el del dato de hoy.</li>
+    <li><b>Sello pegado al mapa</b>: "Mapa en prueba".</li>
+    <li><b>Panel oscuro</b> = no es el río de hoy.</li>
+    <li><b>Tinte</b> = nivel de hoy, igual que Inicio.</li>
+  </ul>
+
+  <h2>Modo claro</h2>
+  <div class="fila" id="claro"></div>
+
+  <h2>Modo oscuro</h2>
+  <div class="fila" id="oscuro"></div>
+
+  <h2>320 dp con letra al 200 %</h2>
+  <p class="intro">Mismo estado de evacuación probando otra altura. El número grande tiene tope (1,4 ×), la pastilla baja de renglón, la grilla pasa a una columna y los avisos crecen sin cortarse.</p>
+  <div class="fila" id="grande"></div>
+</div>
+
+<script>
+// ---------- Íconos (formas simples; en la app son Material Icons) ----------
+const I = {
+  ok: '<svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="currentColor"/><path d="M7 12.5l3.2 3.2L17 9" stroke="var(--fondoIc,#fff)" stroke-width="2.4" fill="none"/></svg>',
+  alerta: '<svg class="ic" viewBox="0 0 24 24"><path d="M12 2L1 21h22z" fill="currentColor"/><rect x="11" y="9" width="2" height="6" fill="var(--fondoIc,#fff)"/><rect x="11" y="16.5" width="2" height="2" fill="var(--fondoIc,#fff)"/></svg>',
+  evac: '<svg class="ic" viewBox="0 0 24 24"><path d="M7.9 2h8.2L22 7.9v8.2L16.1 22H7.9L2 16.1V7.9z" fill="currentColor"/><rect x="11" y="6" width="2" height="8" fill="var(--fondoIc,#fff)"/><rect x="11" y="16" width="2" height="2" fill="var(--fondoIc,#fff)"/></svg>',
+  sinDato: '<svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="currentColor"/><text x="12" y="17" text-anchor="middle" font-size="14" font-weight="700" fill="var(--fondoIc,#fff)">?</text></svg>',
+  info: '<svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><rect x="11" y="10" width="2" height="7" fill="currentColor"/><rect x="11" y="6.5" width="2" height="2" fill="currentColor"/></svg>',
+  obra: '<svg class="ic" viewBox="0 0 24 24"><path d="M3 20h18M6 20l4-14h4l4 14" stroke="currentColor" stroke-width="2" fill="none"/><path d="M8 13h8" stroke="currentColor" stroke-width="2"/></svg>',
+  ayuda: '<svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><text x="12" y="16.5" text-anchor="middle" font-size="12" font-weight="700" fill="currentColor">?</text></svg>',
+  prueba: '<svg class="ic" viewBox="0 0 24 24"><path d="M9 3h6M10 3v6l-5 10a2 2 0 002 3h10a2 2 0 002-3l-5-10V3" stroke="currentColor" stroke-width="2" fill="none"/></svg>',
+  check: '<svg class="ic" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7" stroke="currentColor" stroke-width="2.6" fill="none"/></svg>',
+  volver: '<svg class="ic" viewBox="0 0 24 24"><path d="M9 7L4 12l5 5M4 12h11a5 5 0 010 10h-2" stroke="currentColor" stroke-width="2" fill="none"/></svg>',
+  luna: '<svg class="ic" viewBox="0 0 24 24"><path d="M20 15A8 8 0 019 4a8 8 0 1011 11z" fill="currentColor"/></svg>',
+  recarga: '<svg class="ic" viewBox="0 0 24 24"><path d="M20 12a8 8 0 11-2.3-5.7M20 4v5h-5" stroke="currentColor" stroke-width="2" fill="none"/></svg>',
+};
+const nivelIcono = { normal: I.ok, alerta: I.alerta, evac: I.evac, sinDato: I.sinDato };
+const nombre = { normal: 'Normal', alerta: 'Alerta', evac: 'Evacuación', sinDato: 'Sin dato' };
+
+// Colores por nivel (textos.dart: ColoresNivel y EstiloNivel)
+const NIV = {
+  claro: {
+    tinte: { normal: '#DBE5DB', alerta: '#FCE7D6', evac: '#F3DBDB', sinDato: '#E5E7E8' },
+    familia: { normal: '#1B5E20', alerta: '#9A3F00', evac: '#8E1515', sinDato: '#44525E' },
+    pastilla: { normal: ['#1B5E20', '#FFFFFF'], alerta: ['#EF6C00', '#111B24'], evac: ['#B71C1C', '#FFFFFF'], sinDato: ['#424242', '#FFFFFF'] },
+    boton: { alerta: ['#EF6C00', '#111B24'], evac: ['#B71C1C', '#FFFFFF'] },
+  },
+  oscuro: {
+    tinte: { normal: '#112923', alerta: '#402C1C', evac: '#331A22', sinDato: '#1F2B35' },
+    familia: { normal: '#81C784', alerta: '#FF9F40', evac: '#FF8A80', sinDato: '#BDBDBD' },
+    pastilla: { normal: ['#2E7D32', '#FFFFFF'], alerta: ['#EF6C00', '#111B24'], evac: ['#C62828', '#FFFFFF'], sinDato: ['#5A6570', '#FFFFFF'] },
+    boton: { alerta: ['#FF9F40', '#0E1A24'], evac: ['#FF8A80', '#0E1A24'] },
+  },
+};
+
+// Escala del deslizador: 3,90 a 10,50 m
+const fr = (m) => Math.max(0, Math.min(1, (m - 3.9) / 6.6));
+const crecidas = [['Crecida de jul. 2025', '6,58 m'], ['Crecida de jun. 2017', '8,35 m'], ['Crecida de ene. 2019', '8,45 m'], ['Crecida de nov. 2009', '8,93 m'], ['Crecida de dic. 2015', '9,12 m']];
+
+let idSvg = 0;
+function mapaSvg(e) {
+  // Relleno: río a la izquierda, manzanas, agua rayada hasta x, margen punteado, borde de hoy opcional.
+  const n = ++idSvg;
+  const W = 328, H = 300;
+  const x = 70 + e.agua * 220, xm = x + 26;
+  let manz = '';
+  for (let r = 0; r < 9; r++) for (let c = 0; c < 9; c++) manz += `<rect x="${80 + c * 30}" y="${10 + r * 32}" width="24" height="26" rx="2" fill="var(--manzana)"/>`;
+  const borde = (xx, ondas) => `M0,0 L${xx},0 C${xx + 18},60 ${xx - 14},120 ${xx + 6},170 S${xx - 10},260 ${xx + 8},${H} L0,${H} Z`;
+  const linea = (xx) => `M${xx},0 C${xx + 18},60 ${xx - 14},120 ${xx + 6},170 S${xx - 10},260 ${xx + 8},${H}`;
+  return `<svg class="dib" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+    <defs>
+      <pattern id="ry${n}" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="8" height="8" fill="var(--agua)"/><line x1="0" y1="0" x2="0" y2="8" stroke="var(--rayado)" stroke-width="2"/></pattern>
+      <pattern id="pt${n}" width="7" height="7" patternUnits="userSpaceOnUse"><rect width="7" height="7" fill="var(--margen)"/><circle cx="3.5" cy="3.5" r="1.2" fill="var(--punto)"/></pattern>
+    </defs>
+    ${manz}
+    <path d="${borde(xm)}" fill="url(#pt${n})"/>
+    ${e.agua > 0 ? `<path d="${borde(x)}" fill="url(#ry${n})" stroke="var(--rayado)" stroke-width="1.4"/>` : ''}
+    <path d="M0,0 L48,0 C62,70 36,140 52,190 S40,270 50,${H} L0,${H} Z" fill="var(--cauce)"/>
+    ${e.hoyX != null ? `<path d="${linea(70 + e.hoyX * 220)}" fill="none" stroke="var(--bordeHoy)" stroke-width="3"/>` : ''}
+    ${e.contorno ? `<path d="${linea(x + 14)}" fill="none" stroke="var(--contorno)" stroke-width="2.6" stroke-dasharray="10 6"/>` : ''}
+    <text x="20" y="150" transform="rotate(-80 20 150)" font-size="12" font-style="italic" font-weight="600" fill="var(--rotulo)" stroke="var(--halo)" stroke-width="3" paint-order="stroke">Río Uruguay</text>
+    <text x="200" y="120" text-anchor="middle" font-size="13" font-weight="800" letter-spacing=".5" fill="var(--rotulo)" stroke="var(--halo)" stroke-width="3.5" paint-order="stroke">CENTRO</text>
+    <text x="130" y="250" text-anchor="middle" font-size="13" font-weight="800" letter-spacing=".5" fill="var(--rotulo)" stroke="var(--halo)" stroke-width="3.5" paint-order="stroke">PUERTO</text>
+  </svg>`;
+}
+
+function muestra(tipo) {
+  const n = ++idSvg;
+  const defs = `<defs><pattern id="mr${n}" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="var(--agua)"/><line x1="0" y1="0" x2="0" y2="6" stroke="var(--rayado)" stroke-width="1.6"/></pattern><pattern id="mp${n}" width="6" height="6" patternUnits="userSpaceOnUse"><rect width="6" height="6" fill="var(--margen)"/><circle cx="3" cy="3" r="1.1" fill="var(--punto)"/></pattern></defs>`;
+  const fondo = '<rect width="40" height="24" fill="var(--terreno)"/>';
+  const c = {
+    cauce: '<rect width="40" height="24" fill="var(--cauce)"/>',
+    agua: `${fondo}<rect width="40" height="24" fill="url(#mr${n})" stroke="var(--rayado)" stroke-width="1.4"/>`,
+    margen: `${fondo}<rect width="40" height="24" fill="url(#mp${n})"/>`,
+    hoy: `${fondo}<line x1="2" y1="12" x2="38" y2="12" stroke="var(--bordeHoy)" stroke-width="3"/>`,
+    contorno: `${fondo}<line x1="2" y1="12" x2="38" y2="12" stroke="var(--contorno)" stroke-width="2.6" stroke-dasharray="7 4"/>`,
+  }[tipo];
+  return `<svg viewBox="0 0 40 24" aria-hidden="true">${defs}${c}</svg>`;
+}
+
+function telefono(e, tema, opts = {}) {
+  const N = NIV[tema];
+  const s = opts.s || 1, w = opts.w || 360;
+  const tinte = N.tinte[e.tinte];
+  const fam = (n) => N.familia[n];
+  const pas = (n) => N.pastilla[n];
+  const cols = (w - 32) / s >= 300 ? 2 : 1;
+  const out = [];
+
+  // 1. Franja de hoy
+  out.push(`<div class="franja"><div class="l1"><span>${e.franja.t}</span><span class="niv" style="color:${fam(e.franja.n)};--fondoIc:${tinte}">${nivelIcono[e.franja.n]}${nombre[e.franja.n]}</span></div>${e.franja.l2 ? `<div class="l2">${e.franja.l2}</div>` : ''}</div>`);
+  // 2. Recuadro único
+  if (e.recuadro) out.push(`<div class="recuadro">${e.recuadro.i}<div>${e.recuadro.t}</div></div>`);
+  // 3. Cómo se usa
+  if (e.comoSeUsa) out.push(`<div class="tarjeta"><h3>Cómo se usa</h3><ol><li>Mové la barra o tocá <b>−</b> y <b>+</b> para elegir una altura del río.</li><li>El mapa pinta hasta dónde llegaría el agua con esa altura.</li><li>Es aproximado: el agua puede llegar más lejos. No reemplaza la alerta oficial.</li></ol><div class="btn btnLleno">Entendido</div></div>`);
+  // 4. Lectura
+  const L = e.lectura;
+  if (L.modo === 'hoy') {
+    out.push(`<div class="lectura"><div class="cap">${L.cap}</div><div class="num">${L.num}</div>${L.sub ? `<div class="sub">${L.sub}</div>` : ''}${(L.lineas || []).map((x) => `<div class="linea">${x}</div>`).join('')}</div>`);
+  } else {
+    const [pf, pt] = pas(L.nivel);
+    out.push(`<div class="lectura inv">${L.tit ? `<div class="tit">${I.prueba}${L.tit}</div>` : ''}<div class="cap">Prueba con</div><div class="numFila"><span class="num">${L.num}</span><span class="pastilla" style="background:${pf};color:${pt};--fondoIc:${pf}">${nivelIcono[L.nivel]}${nombre[L.nivel].toUpperCase()}</span>${L.deRef ? '<span class="ref">(de referencia)</span>' : ''}</div>${(L.lineas || []).map((x) => `<div class="linea">${x}</div>`).join('')}${L.boton ? `<div class="btn btnBorde">${I.volver}${L.boton}</div>` : ''}</div>`);
+  }
+  // 5. Marco del mapa
+  out.push(`<div class="marco">${e.sello ? `<div class="sello">${I.obra}<div>Mapa en prueba: el agua puede llegar más lejos de lo que muestra.</div></div>` : ''}<div class="mapa">${mapaSvg(e.mapa)}<span class="relleno">RELLENO · DIBUJO DEL CARTÓGRAFO (08)</span><div class="zoom"><div>+</div><div>−</div></div><div class="atrib">© OpenStreetMap · IDE Uruguay · Dinagua</div></div><div class="pieMarco">${I.info}<div>Aproximado. No reemplaza la alerta oficial.</div></div></div>`);
+  // 6. Qué hacer
+  if (e.queHacer) { const [bf, bt] = N.boton[e.queHacer]; out.push(`<div class="queHacer" style="background:${bf};color:${bt}">Ver qué hacer</div>`); }
+  // 7. Control
+  const f = fr(e.elegida);
+  const ref = e.deRef ? ' (de referencia)' : '';
+  out.push(`<h4>Probar otra altura</h4><div class="elegida">Altura elegida: ${e.elegidaTxt}</div><div class="control"><div class="paso">−</div><div class="pista"><div class="tr"></div><div class="ll" style="width:${f * 100}%"></div><div class="mk" style="left:${fr(4.39) * 100}%"></div><div class="mk" style="left:${fr(6.89) * 100}%"></div><div class="pu" style="left:${f * 100}%"></div></div><div class="paso">+</div></div><div class="marcas"><span style="color:${fam('alerta')}">${I.alerta}<span style="color:var(--tinta)">Alerta: 4,39 m${ref}</span></span><span style="color:${fam('evac')}">${I.evac}<span style="color:var(--tinta)">Evacuación: 6,89 m${ref}</span></span></div>`);
+  // 8. Grilla
+  const botones = e.botones.map(([t, d, sel]) => `<div class="ba${sel ? ' sel' : ''}"><div class="r1">${sel ? I.check : ''}${t}</div><div class="r2">${d}</div></div>`).join('');
+  out.push(`<h4>Alturas para comparar</h4><div class="grilla" style="grid-template-columns:repeat(${cols},1fr)">${botones}</div>`);
+  if (e.mapa.contorno) out.push(`<div class="interruptor"><div class="tx">Ver el borde medido en esa crecida<div class="sb">Línea de trazos sobre el mapa. Fuente: Dinagua.</div></div><div class="sw"></div></div>`);
+  // 9. Leyenda
+  const ley = [['cauce', 'Río y arroyos, en su cauce'], ['agua', 'Hasta dónde llegaría el agua con la altura elegida (rayado)'], ['margen', 'Puede llegar un poco más: hasta 50 cm más de altura (puntos)']];
+  if (e.mapa.hoyX != null) ley.push(['hoy', 'Hasta dónde llega el agua con el río de hoy (línea gruesa)']);
+  if (e.mapa.contorno) ley.push(['contorno', 'Borde medido en esa crecida, según Dinagua (trazos)']);
+  out.push(`<h4>Qué muestra el mapa</h4>${ley.map(([m, t]) => `<div class="ley">${muestra(m)}<div>${t}</div></div>`).join('')}`);
+  // 10. Pie
+  out.push(`<hr><div class="fin"><h4 style="margin-top:0">Este mapa es aproximado</h4><p>Muestra hasta dónde podría llegar el río con esa altura, según el terreno. No tiene en cuenta la lluvia, los desagües ni las calles cortadas. Que una calle no aparezca con agua no quiere decir que no se inunde. Seguí siempre las indicaciones del Cecoed. Emergencias: 911.</p><p class="apoyo">Datos: OpenStreetMap, IDE Uruguay, Dinagua y CARU.<br>Mapa armado el 3/10/2026.</p><div class="enlaces"><span class="enlace">Ver fuentes</span><span class="enlace">Cómo se usa</span></div></div>`);
+
+  const grad = `linear-gradient(${tinte} 0%, ${tinte} 10%, var(--fondo) 34%)`;
+  return `<div class="tel ${tema}" style="--w:${w}px;--s:${s}">
+    <div class="barraEstado" style="background:${tinte}"><span>9:41</span><span>▮▮▮ 80 %</span></div>
+    <div class="appbar" style="background:${tinte}"><span class="t">Río Uruguay en Paysandú</span><span class="ib">${I.luna}</span><span class="ib">${I.recarga}</span></div>
+    <div class="cuerpo" style="background-image:${grad}">${out.join('')}<div class="pliegue"><span>fin de la 1.ª pantalla</span></div></div>
+    <div class="nav"><div><i>≈</i>Inicio</div><div><i>⌇</i>Gráfico</div><div class="sel"><i>▦</i>Mapa</div><div><i>✚</i>Qué hacer</div><div><i>◔</i>Avisos</div></div>
+  </div>`;
+}
+
+// ---------- Estados ----------
+const umbrales = (sel) => [['Nivel de alerta', '4,39 m', sel === 'a'], ['Nivel de evacuación', '6,89 m', sel === 'e']];
+const crec = (sel) => crecidas.map(([t, d]) => [t, d, t === sel]);
+const ESTADOS = [
+  {
+    titulo: '1 · Normal (primera vez, mapa ya validado)',
+    nota: 'Río en 3,62 m: queda debajo del mapa (en su cauce). Sin pastilla verde ni tilde junto al agua. Tarjeta "Cómo se usa" solo la primera vez. Sin sello: el índice ya dice validado.',
+    tinte: 'normal', franja: { t: 'Río hoy: 3,62 m', n: 'normal', l2: 'Hoy 15:00 · CARU' },
+    comoSeUsa: true,
+    lectura: { modo: 'hoy', cap: 'Altura de hoy en el mapa', num: '3,70 m', sub: 'Hoy el río está en 3,62 m. El mapa lo redondea hacia arriba.', lineas: ['Con esta altura el agua queda en su cauce. Los puntos muestran hasta dónde podría llegar con un poco más.'] },
+    sello: false, mapa: { agua: 0 }, elegida: 3.7, elegidaTxt: '3,70 m',
+    botones: [['Hoy', '3,70 m', true], ...umbrales(), ...crec()],
+  },
+  {
+    titulo: '2 · Alerta, mirando hoy (mapa en prueba)',
+    nota: 'Tinte naranja como Inicio. El sello "en prueba" va pegado arriba del mapa, no como segundo recuadro. "Ver qué hacer" en el color del nivel. Botón de pronóstico de CARU porque hay informe vigente.',
+    tinte: 'alerta', franja: { t: 'Río hoy: 5,63 m', n: 'alerta', l2: 'Hoy 15:00 · CARU' },
+    lectura: { modo: 'hoy', cap: 'Altura de hoy en el mapa', num: '5,70 m', sub: 'Hoy el río está en 5,63 m. El mapa lo redondea hacia arriba.' },
+    sello: true, mapa: { agua: 0.28 }, queHacer: 'alerta', elegida: 5.7, elegidaTxt: '5,70 m',
+    botones: [['Hoy', '5,70 m', true], ['Pronóstico CARU', 'hasta 6,10 m · 18/10', false], ...umbrales(), ...crec()],
+  },
+  {
+    titulo: '3 · Evacuación, probando una crecida',
+    nota: 'La lectura se invierte: "No es el río de hoy". El tinte sigue siendo el de HOY. La línea gruesa muestra el agua de hoy; los trazos, el borde medido por Dinagua.',
+    tinte: 'evac', franja: { t: 'Río hoy: 7,05 m', n: 'evac', l2: 'Hoy 15:00 · CARU' },
+    lectura: { modo: 'prueba', tit: 'No es el río de hoy', num: '9,20 m', nivel: 'evac', lineas: ['2,10 m más que hoy.', 'Crecida de dic. 2015: 9,12 m. El mapa lo redondea hacia arriba a 9,20 m.'], boton: 'Volver a hoy' },
+    sello: true, mapa: { agua: 0.72, hoyX: 0.42, contorno: true }, queHacer: 'evac', elegida: 9.2, elegidaTxt: '9,20 m',
+    botones: [['Hoy', '7,10 m', false], ['Pronóstico CARU', 'hasta 7,60 m · 20/10', false], ...umbrales(), ...crec('Crecida de dic. 2015')],
+  },
+  {
+    titulo: '4 · Sin dato + mapa en prueba',
+    nota: 'Tinte gris. Un recuadro (el del dato) y el sello del mapa: nunca dos recuadros. Abre en el nivel de alerta, como prueba; no hay botón Hoy ni "Volver a hoy". Umbrales de referencia.',
+    tinte: 'sinDato', franja: { t: 'Río hoy: sin dato', n: 'sinDato' },
+    recuadro: { i: I.ayuda, t: 'No hay un dato confiable de hoy. Esto no quiere decir que el río esté bajo. Igual podés probar alturas.' },
+    lectura: { modo: 'prueba', num: '4,40 m', nivel: 'alerta', deRef: true, lineas: ['No hay dato del río de hoy.'] },
+    sello: true, mapa: { agua: 0.12 }, elegida: 4.4, elegidaTxt: '4,40 m', deRef: true,
+    botones: [['Nivel de alerta', '4,39 m (de referencia)', true], ['Nivel de evacuación', '6,89 m (de referencia)', false], ...crec()],
+  },
+];
+
+function columna(e, tema, opts) {
+  return `<div class="col"><p class="rotulo">${e.titulo}</p><p class="nota">${e.nota}</p>${telefono(e, tema, opts)}</div>`;
+}
+document.getElementById('claro').innerHTML = ESTADOS.map((e) => columna(e, 'claro')).join('');
+document.getElementById('oscuro').innerHTML = ESTADOS.map((e) => columna(e, 'oscuro')).join('');
+const grande = { ...ESTADOS[2], titulo: '3 · Evacuación probando otra altura · 320 dp · letra 200 %', nota: 'Grilla en una columna. El mapa no se achica por la letra (alto entre 240 y 320 dp).' };
+document.getElementById('grande').innerHTML = columna(grande, 'claro', { w: 320, s: 2 }) + columna(grande, 'oscuro', { w: 320, s: 2 });
+</script>
+</body>
+</html>
