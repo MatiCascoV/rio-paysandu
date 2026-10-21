@@ -38,12 +38,21 @@ jobs:
     # (fetch 1 min + lector 7 min + push con reintento 3 min) y ~2 min de preparación.
     timeout-minutes: 355
     permissions:
-      contents: write # guardar data/ en el repositorio
+      contents: write # guardar data/ en la rama datos
     steps:
+      # El código sale de main (la rama de este workflow).
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # El token no queda guardado en .git/config. Es una reducción de exposición,
           # no aislamiento: ver el comentario del paso de lectura.
+          persist-credentials: false
+
+      # Los datos viven en la rama datos (la que publica GitHub Pages), en otra carpeta:
+      # el trabajo que procesa contenido de CARU nunca sube nada a main.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: datos
+          path: publicado
           persist-credentials: false
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -56,10 +65,11 @@ jobs:
       # un paquete alterado en PyPI no se instala.
       - run: "pip install --require-hashes --only-binary=:all: -r lector/requirements.txt" # entre comillas: ":all: " confundiría a YAML
 
-      - name: Leer CARU cada 10 minutos y guardar data/ cuando cambia
+      - name: Leer CARU cada 10 minutos y guardar data/ en la rama datos cuando cambia
         env:
           TOKEN_PARA_SUBIR: ${{ github.token }}
           GIT_TERMINAL_PROMPT: "0"
+          LECTOR_DATOS: ${{ github.workspace }}/publicado/data # ver lector/lector.py
         run: |
           # El token se convierte en el encabezado que usa git y se saca del entorno
           # que heredan los procesos: el lector y git fetch no lo reciben; solo el push
@@ -74,8 +84,8 @@ jobs:
             # Guarda barata: el commit a subir solo puede tocar data/. Si trae otra
             # cosa (algo raro pasó en el checkout o en el lector), no se sube.
             local cambios fuera
-            cambios=$(git diff --name-only origin/main HEAD) || {
-              echo "::error::No se pudo comparar con origin/main; no se sube"; return 1; }
+            cambios=$(git -C publicado diff --name-only origin/datos HEAD) || {
+              echo "::error::No se pudo comparar con origin/datos; no se sube"; return 1; }
             fuera=$(printf '%s\n' "$cambios" | grep -v -e '^data/' -e '^$' || true)
             if [ -n "$fuera" ]; then
               echo "::error::El commit a subir toca archivos fuera de data/; no se sube: $(echo "$fuera" | tr '\n' ' ')"
@@ -84,7 +94,7 @@ jobs:
             GIT_CONFIG_COUNT=1 \
             GIT_CONFIG_KEY_0="http.https://github.com/.extraheader" \
             GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $auth" \
-              timeout 60 git push --quiet origin HEAD:main
+              timeout 60 git -C publicado push --quiet origin HEAD:datos
           }
 
           # Las entradas del arranque a mano llegan como texto: solo se aceptan números
@@ -103,16 +113,17 @@ jobs:
             echo "::error::minutos_de_trabajo debe ser al menos 1 y, sumado a minutos_entre_lecturas, como mucho 330 (vino $trabajo + $entre)"; exit 1
           fi
 
-          git config user.name "lector-caru[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C publicado config user.name "lector-caru[bot]"
+          git -C publicado config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           fin=$(( $(date +%s) + trabajo * 60 ))
           fallos=0     # pasadas seguidas en las que el lector terminó con error
           sin_subir=0  # pasadas seguidas con datos nuevos que no se pudieron subir
           while :; do
-            # Partir siempre de lo publicado en main (por ejemplo, umbrales editados a mano).
+            # Partir siempre de lo publicado en datos (por ejemplo, umbrales editados a mano).
             # El repositorio es público: se trae sin token. Si quedó un commit sin subir
             # de la pasada anterior, se descarta: el lector vuelve a generar data/.
-            if ! { timeout 60 git fetch --quiet origin main && git reset --quiet --hard origin/main; }; then
+            if ! { timeout 60 git -C publicado fetch --quiet origin +refs/heads/datos:refs/remotes/origin/datos &&
+                   git -C publicado reset --quiet --hard origin/datos; }; then
               echo "::warning::No se pudo traer el repositorio"
             fi
 
@@ -127,14 +138,14 @@ jobs:
               fallos=0
             fi
 
-            rm -f data/*.tmp # restos de una escritura cortada por timeout
-            git add data
-            if ! git diff --cached --quiet; then
-              git commit --quiet -m "Datos de CARU $(TZ=America/Montevideo date '+%d/%m/%Y %H:%M')"
-              if subir || { timeout 60 git pull --rebase --quiet origin main && subir; }; then
+            rm -f publicado/data/*.tmp # restos de una escritura cortada por timeout
+            git -C publicado add data
+            if ! git -C publicado diff --cached --quiet; then
+              git -C publicado commit --quiet -m "Datos de CARU $(TZ=America/Montevideo date '+%d/%m/%Y %H:%M')"
+              if subir || { timeout 60 git -C publicado pull --rebase --quiet origin datos && subir; }; then
                 sin_subir=0
               else
-                git rebase --abort 2>/dev/null || true
+                git -C publicado rebase --abort 2>/dev/null || true
                 sin_subir=$(( sin_subir + 1 ))
                 echo "::warning::No se pudieron subir los datos ($sin_subir pasadas seguidas)"
               fi
