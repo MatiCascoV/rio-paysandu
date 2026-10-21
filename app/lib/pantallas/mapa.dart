@@ -6,6 +6,7 @@
 /// docs/mapa/09-diseno-pantalla.md; dibujo: docs/mapa/08-cartografia.md.
 library;
 
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -109,6 +110,12 @@ class _PantallaMapaState extends State<PantallaMapa> {
   /// Altura al empezar a arrastrar (para vibrar si al soltar cruzó un umbral).
   int? _cmAlEmpezar;
 
+  /// Aviso de "dos dedos" sobre el mapa (un momento, tras arrastrar con uno).
+  bool _avisoDosDedos = false;
+  Timer? _relojAviso;
+  final _dedos = <int, Offset>{};
+  Offset _arrastre = Offset.zero;
+
   /// La tarjeta "Cómo se usa" de la primera vez.
   late bool _comoSeUsa = widget.prefs != null && !(widget.prefs!.getBool(claveComoSeUsa) ?? false);
 
@@ -127,6 +134,7 @@ class _PantallaMapaState extends State<PantallaMapa> {
 
   @override
   void dispose() {
+    _relojAviso?.cancel();
     _controlador.dispose();
     super.dispose();
   }
@@ -280,7 +288,13 @@ class _PantallaMapaState extends State<PantallaMapa> {
     }
   }
 
-  String _textoAnuncio() => _datosLectura(_eleccion!).anuncio;
+  /// Lo que se anuncia al soltar o tocar: la lectura en palabras y qué pasó
+  /// con el agua en el mapa.
+  String _textoAnuncio() {
+    final e = _eleccion!;
+    final agua = fraseAgua(e.situacion, _capa?.alturaCm);
+    return [_datosLectura(e).anuncio, ?agua].join(' ');
+  }
 
   /// Umbrales que el mapa puede marcar, de menor a mayor.
   List<MarcaUmbral> get _marcas {
@@ -420,6 +434,8 @@ class _PantallaMapaState extends State<PantallaMapa> {
           tipo: TipoAltura.pronostico,
           titulo: 'Pronóstico CARU',
           detalle: 'hasta ${formatoAltura(esperada)} m${informe == null ? '' : ' · ${informe.day}/${informe.month}'}',
+          detalleVoz:
+              'hasta ${formatoAltura(esperada)} m${informe == null ? '' : ', informe del ${informe.day}/${informe.month}'}',
           metros: esperada,
           elegido: elegidoSin(esperada),
         ),
@@ -490,8 +506,8 @@ class _PantallaMapaState extends State<PantallaMapa> {
     if (_curva case final curva?) _contorno = poligonosContorno(curva.poligonos, c);
   }
 
-  List<Polygon> _poligonosDe(CapaElegida capa, {required bool margen}) =>
-      _poligonos[(capa.alturaCm, margen)] ??= poligonosAgua(capa.capa.poligonos, ColoresMapa.actuales(), margen: margen);
+  List<Polygon> _poligonosDe(CapaElegida capa, {required bool margen}) => _poligonos[(capa.alturaCm, margen)] ??=
+      poligonosAgua(capa.capa.poligonos, ColoresMapa.actuales(), margen: margen);
 
   /// El contorno del agua visible, proyectado una sola vez para el rayado.
   TrazadoAgua _rayadoDe(CapaElegida capa) {
@@ -563,15 +579,12 @@ class _PantallaMapaState extends State<PantallaMapa> {
               alVolver: _hoyCm == null || cm == _hoyCm ? null : () => _ir(_hoyCm!),
             ),
           const SizedBox(height: 12),
-          MarcoMapa(indice: ind, mapa: _mapa(ind, eleccion)),
+          MarcoMapa(indice: ind, mapa: _mapa(ind, eleccion), mover: _flechas()),
           if (hoy.grave && widget.alVerQueHacer != null) ...[
             const SizedBox(height: 16),
             BotonQueHacer(nivel: hoy.nivel, alTocar: widget.alVerQueHacer),
           ],
-          if (cm != null) ...[
-            const SizedBox(height: 24),
-            _control(ind, cm),
-          ],
+          if (cm != null) ...[const SizedBox(height: 24), _control(ind, cm)],
           if (cm == null ? const <AlturaComparar>[] : _alturas(ind, cm) case final alturas when alturas.isNotEmpty) ...[
             const SizedBox(height: 24),
             Semantics(header: true, child: Text('Alturas para comparar', style: tema.titleMedium)),
@@ -587,7 +600,10 @@ class _PantallaMapaState extends State<PantallaMapa> {
               value: _verContorno,
               onChanged: _mostrarContorno,
               title: Text('Ver el borde medido en esa crecida', style: tema.bodyLarge),
-              subtitle: Text('Línea de trazos sobre el mapa. Fuente: ${ref.fuente ?? 'Dinagua'}.', style: tema.bodyMedium),
+              subtitle: Text(
+                'Línea de trazos sobre el mapa. Fuente: ${ref.fuente ?? 'Dinagua'}.',
+                style: tema.bodyMedium,
+              ),
             ),
           if (ref != null && _verContorno && _curvaFallo)
             Text('No se pudo leer el borde medido de esa crecida.', style: tema.bodyMedium),
@@ -613,15 +629,18 @@ class _PantallaMapaState extends State<PantallaMapa> {
             lugares.map((l) => l.punto.longitude).reduce((a, b) => a + b) / lugares.length,
           );
     final margen = _margen, capa = _capa;
-    final altura = eleccion == null ? '' : formatoAltura((eleccion.capaCm ?? eleccion.alturaCm) / 100);
-    final descripcion =
-        'Mapa de la costa de Paysandú, con el río, las calles y los barrios. '
-        '${eleccion == null
-            ? ''
-            : eleccion.situacion == SituacionAgua.enCauce
-            ? 'Con esta altura el agua queda en su cauce. '
-            : 'Agua dibujada con $altura metros. '}'
-        'Es aproximado.';
+    // El dibujo no se puede recorrer con TalkBack: lo reemplaza este resumen.
+    final descripcion = resumenMapa(
+      situacion: eleccion?.situacion,
+      alturaCm: eleccion?.alturaCm,
+      dibujoCm: capa?.alturaCm,
+      margenCm: margen?.alturaCm,
+      maxCm: ind.maxCm,
+      simulacion: eleccion != null && eleccion.alturaCm != _hoyCm,
+      dibujoIlegible: eleccion?.capaCm != null && capa == null,
+      contorno: _verContorno && _contorno.isNotEmpty ? _referencia?.nombre : null,
+    );
+    final quieto = MediaQuery.disableAnimationsOf(context);
     return Semantics(
       container: true,
       image: true,
@@ -635,41 +654,56 @@ class _PantallaMapaState extends State<PantallaMapa> {
           child: Stack(
             children: [
               ExcludeSemantics(
-                child: FlutterMap(
-                  mapController: _controlador,
-                  options: MapOptions(
-                    initialCenter: centro,
-                    initialZoom: 13.5,
-                    minZoom: 11,
-                    maxZoom: 18,
-                    backgroundColor: c.terreno,
-                    cameraConstraint: CameraConstraint.containCenter(bounds: limites),
-                    interactionOptions: const InteractionOptions(flags: InteractiveFlag.all & ~InteractiveFlag.rotate),
-                  ),
-                  // De abajo hacia arriba (docs/mapa/08-cartografia.md): cauce
-                  // y arroyos; calles (los puentes quedan sobre el río); el
-                  // margen y el agua, translúcidos sobre las calles para que
-                  // se lean primero y dejen ver por dónde pasan; el rayado; el
-                  // borde medido de una crecida y, arriba, los nombres con halo.
-                  children: [
-                    PolygonLayer(polygons: _cauce),
-                    PolylineLayer(polylines: _cursos),
-                    PolylineLayer(polylines: _calles),
-                    if (margen != null) PolygonLayer(polygons: _poligonosDe(margen, margen: true)),
-                    if (capa != null) PolygonLayer(polygons: _poligonosDe(capa, margen: false)),
-                    if (capa != null) CapaRayado(trazado: _rayadoDe(capa), color: c.rayado),
-                    if (_verContorno && _contorno.isNotEmpty) PolygonLayer(polygons: _contorno),
-                    CapaRotulos(
-                      candidatos: _candidatos,
-                      cache: _rotulos,
-                      colores: c,
-                      // Sin nombres debajo de los botones + / − ni de la atribución.
-                      tapadas: (s) => [
-                        Rect.fromLTWH(s.width - 64, 0, 64, 120),
-                        Rect.fromLTWH(0, s.height - 26, math.min(s.width, 300), 26),
-                      ],
+                // Con un dedo se mueve la página, no el mapa: así el mapa no
+                // atrapa el desplazamiento (ni el de dos dedos de TalkBack,
+                // que llega como un dedo). El mapa se mueve con dos dedos o
+                // con las flechas, y se acerca con + / −, pellizcando o con
+                // doble toque.
+                child: Listener(
+                  onPointerDown: (e) => _dedos[e.pointer] = e.position,
+                  onPointerMove: _alMoverDedo,
+                  onPointerUp: (e) => _soltarDedo(e.pointer),
+                  onPointerCancel: (e) => _soltarDedo(e.pointer),
+                  child: FlutterMap(
+                    mapController: _controlador,
+                    options: MapOptions(
+                      initialCenter: centro,
+                      initialZoom: 13.5,
+                      minZoom: 11,
+                      maxZoom: 18,
+                      backgroundColor: c.terreno,
+                      cameraConstraint: CameraConstraint.containCenter(bounds: limites),
+                      interactionOptions: InteractionOptions(
+                        flags: InteractiveFlag.pinchZoom | InteractiveFlag.pinchMove | InteractiveFlag.doubleTapZoom,
+                        // "Quitar animaciones" de Android: el doble toque acerca sin animar.
+                        doubleTapZoomDuration: quieto ? Duration.zero : const Duration(milliseconds: 200),
+                      ),
                     ),
-                  ],
+                    // De abajo hacia arriba (docs/mapa/08-cartografia.md): cauce
+                    // y arroyos; calles (los puentes quedan sobre el río); el
+                    // margen y el agua, translúcidos sobre las calles para que
+                    // se lean primero y dejen ver por dónde pasan; el rayado; el
+                    // borde medido de una crecida y, arriba, los nombres con halo.
+                    children: [
+                      PolygonLayer(polygons: _cauce),
+                      PolylineLayer(polylines: _cursos),
+                      PolylineLayer(polylines: _calles),
+                      if (margen != null) PolygonLayer(polygons: _poligonosDe(margen, margen: true)),
+                      if (capa != null) PolygonLayer(polygons: _poligonosDe(capa, margen: false)),
+                      if (capa != null) CapaRayado(trazado: _rayadoDe(capa), color: c.rayado),
+                      if (_verContorno && _contorno.isNotEmpty) PolygonLayer(polygons: _contorno),
+                      CapaRotulos(
+                        candidatos: _candidatos,
+                        cache: _rotulos,
+                        colores: c,
+                        // Sin nombres debajo de los botones + / − ni de la atribución.
+                        tapadas: (s) => [
+                          Rect.fromLTWH(s.width - 64, 0, 64, 120),
+                          Rect.fromLTWH(0, s.height - 26, math.min(s.width, 300), 26),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
               Positioned(
@@ -695,6 +729,26 @@ class _PantallaMapaState extends State<PantallaMapa> {
                   ],
                 ),
               ),
+              if (_avisoDosDedos)
+                Positioned(
+                  left: 8,
+                  right: 64,
+                  top: 8,
+                  // Solo a la vista: quien usa TalkBack no arrastra el mapa.
+                  child: ExcludeSemantics(
+                    child: IgnorePointer(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(color: Colores.tinta, borderRadius: BorderRadius.circular(12)),
+                        child: Text(
+                          textoDosDedos,
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(color: Colores.fondo, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
             ],
           ),
         ),
@@ -706,6 +760,38 @@ class _PantallaMapaState extends State<PantallaMapa> {
     final cam = _controlador.camera;
     _controlador.move(cam.center, cam.clampZoom(cam.zoom + cuanto));
   }
+
+  /// Mueve el mapa un tercio de lo que se ve (dx, dy en -1, 0, 1).
+  void _mover(int dx, int dy) {
+    final cam = _controlador.camera;
+    final paso = Offset(dx * cam.nonRotatedSize.width / 3, dy * cam.nonRotatedSize.height / 3);
+    _controlador.move(cam.unprojectAtZoom(cam.projectAtZoom(cam.center) + paso), cam.zoom);
+  }
+
+  /// Un dedo que arrastra de costado sobre el mapa: seguramente quiere
+  /// moverlo. Se le dice cómo, un momento.
+  void _alMoverDedo(PointerMoveEvent e) {
+    if (_dedos.length != 1 || !_dedos.containsKey(e.pointer)) {
+      _arrastre = Offset.zero;
+      return;
+    }
+    _arrastre += e.delta;
+    if (_arrastre.dx.abs() > 32 && _arrastre.dx.abs() > 2 * _arrastre.dy.abs() && !_avisoDosDedos) {
+      setState(() => _avisoDosDedos = true);
+      _relojAviso?.cancel();
+      _relojAviso = Timer(const Duration(seconds: 3), () {
+        if (mounted) setState(() => _avisoDosDedos = false);
+      });
+    }
+  }
+
+  void _soltarDedo(int puntero) {
+    _dedos.remove(puntero);
+    if (_dedos.isEmpty) _arrastre = Offset.zero;
+  }
+
+  /// Flechas para mover el mapa sin arrastrar (WCAG 2.5.7).
+  Widget _flechas() => FilaMoverMapa(alMover: _mover);
 
   Widget _control(IndiceMapa ind, int cm) {
     final (bajo, alto) = _rango;

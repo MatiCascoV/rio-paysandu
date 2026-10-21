@@ -11,6 +11,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../datos.dart';
+import '../mapa/logica_mapa.dart';
 import '../mapa/modelos_mapa.dart';
 import '../modelos.dart';
 import '../tema.dart';
@@ -47,6 +48,7 @@ const textoDatosMapa = 'Datos: OpenStreetMap, IDE Uruguay, Dinagua y CARU.';
 const pasosComoSeUsa = [
   'Mové la barra o tocá − y + para elegir una altura del río.',
   'El mapa pinta hasta dónde llegaría el agua con esa altura.',
+  'Para mover el mapa, tocá las flechas de abajo del mapa o usá dos dedos. Con + y − se acerca y se aleja.',
   'Es aproximado: el agua puede llegar más lejos. No reemplaza la alerta oficial.',
 ];
 
@@ -69,6 +71,10 @@ const textoFuentesDeslinde =
 /// Alto del mapa: 40 % de la pantalla, entre estos dos topes.
 const altoMapa = 320.0;
 const altoMapaMinimo = 240.0;
+
+/// Aviso que aparece un momento si alguien arrastra el mapa con un dedo: con
+/// un dedo se mueve la pantalla (para no quedar atrapado en el mapa).
+const textoDosDedos = 'Para mover el mapa usá dos dedos o las flechas de abajo.';
 
 /// Clave de SharedPreferences: la tarjeta "Cómo se usa" ya se vio.
 const claveComoSeUsa = 'mapa_como_se_usa_visto';
@@ -178,6 +184,63 @@ Aviso? avisoHoyMapa(HoyMapa hoy, DateTime ahora) {
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// El mapa en palabras (para TalkBack): el dibujo no se puede recorrer por voz.
+
+String _metros(int cm) => '${formatoAltura(cm / 100)} metros';
+
+/// Resumen textual equivalente al dibujo: qué altura se pinta, qué significan
+/// el rayado y los puntos, y que el agua puede llegar más lejos. No nombra
+/// calles ni barrios (09 §9, decisión 3): una lista incompleta se leería como
+/// "ahí no llega".
+String resumenMapa({
+  required SituacionAgua? situacion,
+  required int? alturaCm,
+  required int? dibujoCm,
+  required int? margenCm,
+  required int maxCm,
+  bool simulacion = false,
+  bool dibujoIlegible = false,
+  String? contorno,
+}) {
+  final partes = <String>['Mapa de la costa de Paysandú, con el río, las calles y los barrios.'];
+  if (simulacion) partes.add('Simulación: no es el río de hoy.');
+  final masDeAltura = margenCm == null || dibujoCm == null && alturaCm == null
+      ? null
+      : unidadesEnPalabras('${formatoDiferencia((margenCm - (dibujoCm ?? alturaCm!)) / 100)} más de altura');
+  switch (situacion) {
+    case null:
+      break;
+    case SituacionAgua.enCauce:
+      partes.add('Con ${_metros(alturaCm!)} el agua queda en su cauce.');
+      if (margenCm != null) partes.add('Los puntos muestran hasta dónde podría llegar con un poco más.');
+    case SituacionAgua.enRango || SituacionAgua.sobreMaximo:
+      if (dibujoIlegible || dibujoCm == null) {
+        partes.add('No se pudo leer el dibujo del agua para esta altura.');
+      } else {
+        partes.add('Agua dibujada con ${_metros(dibujoCm)}: el rayado muestra hasta dónde llegaría.');
+        if (masDeAltura != null) partes.add('Los puntos, hasta dónde puede llegar con $masDeAltura.');
+      }
+      if (situacion == SituacionAgua.sobreMaximo) {
+        partes.add(
+          'El mapa llega hasta ${_metros(maxCm)}. Con ${_metros(alturaCm!)} el agua llega más lejos de lo que se ve.',
+        );
+      }
+  }
+  if (contorno != null) partes.add('Línea de trazos: el borde medido en la crecida "$contorno".');
+  partes.add(
+    'Es aproximado: el agua puede llegar más lejos. Este resumen no dice qué calles o barrios alcanza el agua.',
+  );
+  return partes.join(' ');
+}
+
+/// Lo que se agrega al anuncio de la lectura cuando cambia la altura, para
+/// decir qué pasó con el agua. null si la lectura ya lo dice (cauce, sobre el
+/// máximo, dibujo ilegible).
+String? fraseAgua(SituacionAgua situacion, int? dibujoCm) => situacion == SituacionAgua.enRango && dibujoCm != null
+    ? 'El mapa ahora muestra el agua con ${_metros(dibujoCm)}. Puede llegar más lejos.'
+    : null;
+
 /// Colores del recuadro ámbar (los mismos de [Recuadro]).
 Color get _fondoAmbar => Colores.oscuro ? const Color(0xFF3A2E12) : const Color(0xFFFFF4D6);
 Color get _iconoAmbar => Colores.oscuro ? const Color(0xFFFFC857) : const Color(0xFF7A4A00);
@@ -262,12 +325,18 @@ class FranjaHoyMapa extends StatelessWidget {
                       children: [
                         Icon(estilo.icono, color: color, size: 24),
                         const SizedBox(width: 4),
-                        Flexible(child: Text(estilo.nombre, style: fuerte?.copyWith(color: color))),
+                        Flexible(
+                          child: Text(estilo.nombre, style: fuerte?.copyWith(color: color)),
+                        ),
                       ],
                     ),
                 ],
               ),
-              if (l != null) Text('${conMayuscula(formatoFecha(l.fecha, ahora))} · ${fuenteCorta(l.fuente)}', style: tema.bodyMedium),
+              if (l != null)
+                Text(
+                  '${conMayuscula(formatoFecha(l.fecha, ahora))} · ${fuenteCorta(l.fuente)}',
+                  style: tema.bodyMedium,
+                ),
             ],
           ),
         ),
@@ -329,32 +398,33 @@ class TarjetaComoSeUsa extends StatelessWidget {
   );
 }
 
-Future<void> _hoja(BuildContext context, List<Widget> Function(TextTheme tema) contenido) =>
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colores.superficie,
-      showDragHandle: true,
-      builder: (context) {
-        final tema = Theme.of(context).textTheme;
-        return ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.85),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ...contenido(tema),
-                const SizedBox(height: 16),
-                FilledButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cerrar')),
-              ],
-            ),
-          ),
-        );
-      },
+Future<void> _hoja(BuildContext context, List<Widget> Function(TextTheme tema) contenido) => showModalBottomSheet<void>(
+  context: context,
+  // "Quitar animaciones" de Android: la hoja aparece sin deslizarse.
+  sheetAnimationStyle: MediaQuery.disableAnimationsOf(context) ? AnimationStyle.noAnimation : null,
+  isScrollControlled: true,
+  useSafeArea: true,
+  backgroundColor: Colores.superficie,
+  showDragHandle: true,
+  builder: (context) {
+    final tema = Theme.of(context).textTheme;
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.85),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ...contenido(tema),
+            const SizedBox(height: 16),
+            FilledButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cerrar')),
+          ],
+        ),
+      ),
     );
+  },
+);
 
 Future<void> mostrarComoSeUsa(BuildContext context) => _hoja(context, (_) => const [ContenidoComoSeUsa()]);
 
@@ -368,7 +438,10 @@ Future<void> mostrarFuentes(BuildContext context, IndiceMapa indice) => _hoja(co
         child: Text.rich(
           TextSpan(
             children: [
-              TextSpan(text: '$titulo: ', style: const TextStyle(fontWeight: FontWeight.w800)),
+              TextSpan(
+                text: '$titulo: ',
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
               TextSpan(text: texto),
             ],
           ),
@@ -424,7 +497,8 @@ class DatosLectura {
   String get anuncio {
     final partes = <String>[
       ?titulo,
-      '$rotulo ${formatoAltura(metros)} m'
+      // "Altura de hoy en el mapa: 4,20 metros" / "Simulación con 4,30 metros".
+      '$rotulo${simulacion ? '' : ':'} ${formatoAltura(metros)} m'
           '${nivel == null ? '' : ', nivel ${estiloNivel(nivel!).nombre}${deReferencia ? ' (de referencia)' : ''}'}',
       for (final l in lineas) l.texto,
     ];
@@ -462,7 +536,11 @@ class LecturaMapa extends StatelessWidget {
         ),
       ),
     );
-    final contenido = Column(
+    // Para TalkBack, un solo nodo con el texto en palabras ("metros", "nivel
+    // Alerta"); el botón "Volver a hoy" queda aparte. Sin liveRegion: el
+    // cambio se anuncia una vez al soltar o tocar (mapa.dart), no en cada
+    // paso del arrastre.
+    final textos = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (d.titulo case final titulo?)
@@ -471,7 +549,10 @@ class LecturaMapa extends StatelessWidget {
               Icon(Icons.science_outlined, color: tinta, size: 24),
               const SizedBox(width: 8),
               Expanded(
-                child: Text(titulo, style: tema.titleMedium?.copyWith(color: tinta, fontWeight: FontWeight.w800)),
+                child: Text(
+                  titulo,
+                  style: tema.titleMedium?.copyWith(color: tinta, fontWeight: FontWeight.w800),
+                ),
               ),
             ],
           ),
@@ -483,7 +564,8 @@ class LecturaMapa extends StatelessWidget {
           children: [
             numero,
             if (d.nivel case final n?) PastillaNivel(nivel: n),
-            if (d.nivel != null && d.deReferencia) Text('(de referencia)', style: tema.bodyMedium?.copyWith(color: tinta)),
+            if (d.nivel != null && d.deReferencia)
+              Text('(de referencia)', style: tema.bodyMedium?.copyWith(color: tinta)),
           ],
         ),
         for (final l in d.lineas)
@@ -492,10 +574,7 @@ class LecturaMapa extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (l.aviso) ...[
-                  Icon(Icons.warning_amber, color: tinta, size: 24),
-                  const SizedBox(width: 8),
-                ],
+                if (l.aviso) ...[Icon(Icons.warning_amber, color: tinta, size: 24), const SizedBox(width: 8)],
                 Expanded(
                   child: Text(
                     l.texto,
@@ -508,6 +587,12 @@ class LecturaMapa extends StatelessWidget {
               ],
             ),
           ),
+      ],
+    );
+    final contenido = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Semantics(container: true, label: d.anuncio, excludeSemantics: true, child: textos),
         if (alVolver != null && d.textoVolver != null) ...[
           const SizedBox(height: 12),
           OutlinedButton.icon(
@@ -523,17 +608,13 @@ class LecturaMapa extends StatelessWidget {
         ],
       ],
     );
-    return Semantics(
-      container: true,
-      liveRegion: true,
-      child: d.simulacion
-          ? Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(color: ColoresSimulacion.fondo, borderRadius: radioSuperficie),
-              child: contenido,
-            )
-          : contenido,
-    );
+    return d.simulacion
+        ? Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(color: ColoresSimulacion.fondo, borderRadius: radioSuperficie),
+            child: contenido,
+          )
+        : contenido;
   }
 }
 
@@ -546,8 +627,10 @@ class PastillaNivel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final e = estiloNivel(nivel);
+    // Crece con la letra del teléfono (hasta 200 %, WCAG 1.4.4); si no entra,
+    // la palabra baja de renglón dentro de la pastilla en vez de cortarse.
     return MediaQuery.withClampedTextScaling(
-      maxScaleFactor: 1.3,
+      maxScaleFactor: 2.0,
       child: Container(
         constraints: const BoxConstraints(minHeight: 32),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -557,9 +640,11 @@ class PastillaNivel extends StatelessWidget {
           children: [
             Icon(e.icono, color: e.texto, size: 18),
             const SizedBox(width: 6),
-            Text(
-              e.nombre.toUpperCase(),
-              style: TextStyle(color: e.texto, fontSize: 15, fontWeight: FontWeight.w800, letterSpacing: 0.3),
+            Flexible(
+              child: Text(
+                e.nombre.toUpperCase(),
+                style: TextStyle(color: e.texto, fontSize: 15, fontWeight: FontWeight.w800, letterSpacing: 0.3),
+              ),
             ),
           ],
         ),
@@ -575,7 +660,10 @@ class MarcoMapa extends StatelessWidget {
   final IndiceMapa indice;
   final Widget mapa;
 
-  const MarcoMapa({super.key, required this.indice, required this.mapa});
+  /// Botones para mover el mapa sin arrastrar (WCAG 2.5.7), debajo del dibujo.
+  final Widget? mover;
+
+  const MarcoMapa({super.key, required this.indice, required this.mapa, this.mover});
 
   @override
   Widget build(BuildContext context) {
@@ -600,15 +688,14 @@ class MarcoMapa extends StatelessWidget {
                     Expanded(
                       child: Text(
                         sello.texto,
-                        style: tema.bodyMedium?.copyWith(
-                          fontWeight: sello.fuerte ? FontWeight.w800 : FontWeight.w600,
-                        ),
+                        style: tema.bodyMedium?.copyWith(fontWeight: sello.fuerte ? FontWeight.w800 : FontWeight.w600),
                       ),
                     ),
                   ],
                 ),
               ),
             mapa,
+            ?mover,
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               child: Row(
@@ -625,6 +712,49 @@ class MarcoMapa extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Flechas de 48 dp para mover el mapa sin arrastrar: para quien no puede
+/// hacer el gesto (temblor, un solo dedo, TalkBack) y porque con un dedo sobre
+/// el mapa se mueve la página. (dx, dy) en -1, 0, 1; y crece hacia el sur.
+class FilaMoverMapa extends StatelessWidget {
+  final void Function(int dx, int dy) alMover;
+
+  const FilaMoverMapa({super.key, required this.alMover});
+
+  static const flechas = [
+    (Icons.arrow_back, 'Ver más al oeste, hacia el río', -1, 0),
+    (Icons.arrow_upward, 'Ver más al norte', 0, -1),
+    (Icons.arrow_downward, 'Ver más al sur', 0, 1),
+    (Icons.arrow_forward, 'Ver más al este', 1, 0),
+  ];
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+    child: Wrap(
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 12,
+      runSpacing: 4,
+      children: [
+        Text('Mover el mapa', style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final (i, (icono, texto, dx, dy)) in flechas.indexed) ...[
+              if (i > 0) const SizedBox(width: 8),
+              IconButton.filledTonal(
+                tooltip: texto,
+                onPressed: () => alMover(dx, dy),
+                constraints: const BoxConstraints.tightFor(width: 48, height: 48),
+                icon: Icon(icono),
+              ),
+            ],
+          ],
+        ),
+      ],
+    ),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -691,32 +821,37 @@ class ControlAltura extends StatelessWidget {
               alTocar: cm - paso >= bajo ? () => alTocarPaso(cm - paso) : null,
             ),
             Expanded(
-              // Un solo nodo para TalkBack, del ancho de toda la barra.
+              // Un solo nodo para TalkBack, del ancho de toda la barra, con
+              // nombre ("Altura del río para el mapa") además del valor.
               child: MergeSemantics(
-                child: SliderTheme(
-                  data: SliderTheme.of(context).copyWith(
-                    trackHeight: 8,
-                    activeTrackColor: Colores.primario,
-                    inactiveTrackColor: Colores.primarioSuave,
-                    thumbColor: Colores.primario,
-                    overlayColor: Colores.primario.withValues(alpha: 0.12),
-                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 14),
-                    tickMarkShape: SliderTickMarkShape.noTickMark,
-                    showValueIndicator: ShowValueIndicator.never,
-                    trackShape: PistaConMarcas(fracciones: fracciones, color: Colores.tinta),
-                  ),
-                  child: Slider(
-                    value: cm.toDouble(),
-                    min: bajo.toDouble(),
-                    max: alto.toDouble(),
-                    divisions: math.max(1, (alto - bajo) ~/ paso),
-                    semanticFormatterCallback: (v) => valorParaLector(v.round()),
-                    onChangeStart: (_) => alEmpezar(),
-                    onChanged: (v) {
-                      final nuevo = bajo + ((v.round() - bajo) / paso).round() * paso;
-                      if (nuevo != cm) alCambiar(nuevo);
-                    },
-                    onChangeEnd: (_) => alSoltar(),
+                child: Semantics(
+                  label: textoDeslizador,
+                  child: SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      trackHeight: 8,
+                      activeTrackColor: Colores.primario,
+                      // 3:1 o más contra el fondo y contra la parte llena (1.4.11).
+                      inactiveTrackColor: ColoresDeslizador.pistaVacia,
+                      thumbColor: Colores.primario,
+                      overlayColor: Colores.primario.withValues(alpha: 0.12),
+                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 14),
+                      tickMarkShape: SliderTickMarkShape.noTickMark,
+                      showValueIndicator: ShowValueIndicator.never,
+                      trackShape: PistaConMarcas(fracciones: fracciones, color: Colores.tinta),
+                    ),
+                    child: Slider(
+                      value: cm.toDouble(),
+                      min: bajo.toDouble(),
+                      max: alto.toDouble(),
+                      divisions: math.max(1, (alto - bajo) ~/ paso),
+                      semanticFormatterCallback: (v) => valorParaLector(v.round()),
+                      onChangeStart: (_) => alEmpezar(),
+                      onChanged: (v) {
+                        final nuevo = bajo + ((v.round() - bajo) / paso).round() * paso;
+                        if (nuevo != cm) alCambiar(nuevo);
+                      },
+                      onChangeEnd: (_) => alSoltar(),
+                    ),
                   ),
                 ),
               ),
@@ -740,9 +875,15 @@ class ControlAltura extends StatelessWidget {
                     Icon(estiloNivel(m.nivel).icono, size: 18, color: ColoresNivel.familia(m.nivel)),
                     const SizedBox(width: 4),
                     Flexible(
-                      child: Text(
-                        '${estiloNivel(m.nivel).nombre}: ${formatoAltura(m.metros)} m$ref',
-                        style: tema.bodyMedium,
+                      child: Semantics(
+                        label: unidadesEnPalabras(
+                          'Marca de ${estiloNivel(m.nivel).nombre.toLowerCase()}: ${formatoAltura(m.metros)} m$ref',
+                        ),
+                        excludeSemantics: true,
+                        child: Text(
+                          '${estiloNivel(m.nivel).nombre}: ${formatoAltura(m.metros)} m$ref',
+                          style: tema.bodyMedium,
+                        ),
                       ),
                     ),
                   ],
@@ -752,6 +893,16 @@ class ControlAltura extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Nombre del deslizador para TalkBack.
+const textoDeslizador = 'Altura del río para el mapa';
+
+/// Pista vacía del deslizador (antes primarioSuave: 1,15 / 1,49, no llegaba).
+/// 3:1 o más contra el fondo de la app (claro 3,73 · oscuro 3,56); contra la
+/// parte llena 2,8 (la separa además el pulgar). Ver docs/mapa/10-accesibilidad.md.
+abstract final class ColoresDeslizador {
+  static Color get pistaVacia => Colores.oscuro ? const Color(0xFF4A7590) : const Color(0xFF5E8199);
 }
 
 /// Pista redondeada con palitos en las alturas de los umbrales, debajo de la
@@ -834,6 +985,9 @@ class AlturaComparar {
   final ReferenciaMapa? referencia;
   final bool elegido;
 
+  /// El detalle tal como lo dice TalkBack, si difiere del escrito.
+  final String? detalleVoz;
+
   const AlturaComparar({
     required this.tipo,
     required this.titulo,
@@ -841,7 +995,11 @@ class AlturaComparar {
     required this.metros,
     this.referencia,
     this.elegido = false,
+    this.detalleVoz,
   });
+
+  /// "Nivel de alerta, 4,39 metros (de referencia)".
+  String get paraLector => '$titulo, ${unidadesEnPalabras(detalleVoz ?? detalle)}';
 }
 
 /// Dos columnas si entran (ancho / letra ≥ 300 dp), si no una.
@@ -910,7 +1068,9 @@ class BotonAltura extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (a.elegido) ...[Icon(Icons.check, size: 20, color: color), const SizedBox(width: 6)],
-              Flexible(child: Text(a.titulo, style: tema.titleMedium?.copyWith(color: color))),
+              Flexible(
+                child: Text(a.titulo, style: tema.titleMedium?.copyWith(color: color)),
+              ),
             ],
           ),
           Text(a.detalle, style: tema.bodyLarge?.copyWith(color: color, fontSize: 17)),
@@ -921,11 +1081,17 @@ class BotonAltura extends StatelessWidget {
       minimumSize: const WidgetStatePropertyAll(Size(double.infinity, 64)),
       padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
     );
-    return Semantics(
-      selected: a.elegido,
-      child: a.elegido
-          ? FilledButton(onPressed: alTocar, style: estilo, child: hijo)
-          : OutlinedButton(onPressed: alTocar, style: estilo, child: hijo),
+    // Un solo nodo para TalkBack: "Nivel de alerta, 4,39 metros, botón,
+    // seleccionado". Sin MergeSemantics el "seleccionado" quedaba en un nodo
+    // vacío aparte y TalkBack no lo decía.
+    final conVoz = Semantics(label: a.paraLector, excludeSemantics: true, child: hijo);
+    return MergeSemantics(
+      child: Semantics(
+        selected: a.elegido,
+        child: a.elegido
+            ? FilledButton(onPressed: alTocar, style: estilo, child: conVoz)
+            : OutlinedButton(onPressed: alTocar, style: estilo, child: conVoz),
+      ),
     );
   }
 }
