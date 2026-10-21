@@ -8,10 +8,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'datos.dart';
 import 'ejemplo.dart';
 import 'enlaces.dart';
+import 'mapa/fuente_mapa.dart';
+import 'mapa/repositorio_mapa.dart';
 import 'notificaciones.dart';
 import 'pantallas/ajustes.dart';
 import 'pantallas/grafico.dart';
 import 'pantallas/inicio.dart';
+import 'pantallas/mapa.dart';
 import 'pantallas/que_hacer.dart';
 import 'tema.dart';
 
@@ -34,8 +37,14 @@ Future<void> main() async {
   final repositorio = ejemplo == null
       ? Repositorio(config.urlBase)
       : Repositorio(config.urlBase, cliente: clienteDeEjemplo(ejemplo), soloLectura: true);
-  runApp(RioPaysanduApp(config: config, prefs: prefs, repositorio: repositorio));
+  // El mapa viene dentro de la app; los archivos grandes se leen en otro hilo.
+  final repositorioMapa = RepositorioMapa(const FuenteAssets(), enSegundoPlano: true);
+  runApp(RioPaysanduApp(config: config, prefs: prefs, repositorio: repositorio, repositorioMapa: repositorioMapa));
 }
+
+/// Pestañas de abajo, en orden. Los saltos entre pestañas usan esto y no
+/// números sueltos, para que agregar una no haga apuntar a la equivocada.
+enum Pestana { inicio, grafico, mapa, queHacer, avisos }
 
 /// Preferencia guardada del modo: 'claro', 'oscuro' o nada (seguir al teléfono).
 const claveTema = 'tema';
@@ -45,7 +54,11 @@ class RioPaysanduApp extends StatefulWidget {
   final SharedPreferences prefs;
   final Repositorio repositorio;
 
-  const RioPaysanduApp({super.key, required this.config, required this.prefs, required this.repositorio});
+  /// Datos del mapa. Si no se pasa, se leen de assets/mapa/ en el mismo hilo.
+  final RepositorioMapa? repositorioMapa;
+
+  const RioPaysanduApp(
+      {super.key, required this.config, required this.prefs, required this.repositorio, this.repositorioMapa});
 
   @override
   State<RioPaysanduApp> createState() => _RioPaysanduAppState();
@@ -55,6 +68,10 @@ class _RioPaysanduAppState extends State<RioPaysanduApp> with WidgetsBindingObse
   Config get config => widget.config;
   SharedPreferences get prefs => widget.prefs;
   Repositorio get repositorio => widget.repositorio;
+
+  /// Vive acá y no en la página: al cambiar claro/oscuro la página se rehace,
+  /// pero el mapa ya leído queda en memoria.
+  late final RepositorioMapa _repositorioMapa = widget.repositorioMapa ?? RepositorioMapa(const FuenteAssets());
 
   @override
   void initState() {
@@ -97,7 +114,12 @@ class _RioPaysanduAppState extends State<RioPaysanduApp> with WidgetsBindingObse
       home: KeyedSubtree(
         key: ValueKey(_oscuro),
         child: PaginaPrincipal(
-            config: config, prefs: prefs, repositorio: repositorio, oscuro: _oscuro, alCambiarTema: _cambiarTema),
+            config: config,
+            prefs: prefs,
+            repositorio: repositorio,
+            repositorioMapa: _repositorioMapa,
+            oscuro: _oscuro,
+            alCambiarTema: _cambiarTema),
       ),
     );
   }
@@ -107,6 +129,7 @@ class PaginaPrincipal extends StatefulWidget {
   final Config config;
   final SharedPreferences prefs;
   final Repositorio repositorio;
+  final RepositorioMapa? repositorioMapa;
   final bool oscuro;
   final VoidCallback? alCambiarTema;
 
@@ -115,6 +138,7 @@ class PaginaPrincipal extends StatefulWidget {
     required this.config,
     required this.prefs,
     required this.repositorio,
+    this.repositorioMapa,
     this.oscuro = false,
     this.alCambiarTema,
   });
@@ -126,7 +150,12 @@ class PaginaPrincipal extends StatefulWidget {
 class _PaginaPrincipalState extends State<PaginaPrincipal> with WidgetsBindingObserver {
   Datos? _datos; // null mientras carga por primera vez
   bool _actualizando = false;
-  int _pestana = 0;
+  Pestana _pestana = Pestana.inicio;
+
+  /// Pestañas ya abiertas. El mapa se arma recién la primera vez que se
+  /// visita, para no leer polígonos al arrancar la app.
+  final _visitadas = <Pestana>{Pestana.inicio};
+  late final RepositorioMapa _repositorioMapa = widget.repositorioMapa ?? RepositorioMapa(const FuenteAssets());
   Timer? _reloj;
   final _scrollQueHacer = ScrollController();
 
@@ -187,8 +216,13 @@ class _PaginaPrincipalState extends State<PaginaPrincipal> with WidgetsBindingOb
 
   Future<void> _actualizarAPedido() => _cargar(aPedido: true);
 
+  void _ir(Pestana p) => setState(() {
+        _pestana = p;
+        _visitadas.add(p);
+      });
+
   void _irAQueHacer() {
-    setState(() => _pestana = 2);
+    _ir(Pestana.queHacer);
     // La pestaña conserva su posición: se vuelve arriba, donde están los teléfonos.
     if (_scrollQueHacer.hasClients) _scrollQueHacer.jumpTo(0);
   }
@@ -196,28 +230,31 @@ class _PaginaPrincipalState extends State<PaginaPrincipal> with WidgetsBindingOb
   @override
   Widget build(BuildContext context) {
     final datos = _datos;
-    final paginas = [
-      PantallaInicio(
+    final paginas = <Pestana, Widget>{
+      Pestana.inicio: PantallaInicio(
         datos: datos,
         config: widget.config,
         alActualizar: _actualizarAPedido,
         avisosActivos: widget.prefs.getBool(claveActivos) ?? false,
-        alPedirAvisos: () => setState(() => _pestana = 3),
+        alPedirAvisos: () => _ir(Pestana.avisos),
         alVerQueHacer: _irAQueHacer,
-        alVerGrafico: () => setState(() => _pestana = 1),
+        alVerGrafico: () => _ir(Pestana.grafico),
       ),
-      PantallaGrafico(datos: datos),
-      PantallaQueHacer(config: widget.config, controlador: _scrollQueHacer),
-      PantallaAjustes(
+      Pestana.grafico: PantallaGrafico(datos: datos),
+      Pestana.mapa: _visitadas.contains(Pestana.mapa)
+          ? PantallaMapa(datos: datos, config: widget.config, repositorio: _repositorioMapa)
+          : const SizedBox.shrink(),
+      Pestana.queHacer: PantallaQueHacer(config: widget.config, controlador: _scrollQueHacer),
+      Pestana.avisos: PantallaAjustes(
         prefs: widget.prefs,
         datos: datos,
         config: widget.config,
         // Al prender los avisos se revisa el nivel en el momento.
         alCambiar: () => _cargar(),
       ),
-    ];
+    };
     // En Inicio la pantalla se tiñe con el color del nivel, barra de arriba incluida.
-    final enInicio = _pestana == 0;
+    final enInicio = _pestana == Pestana.inicio;
     final tinte = enInicio ? tinteInicio(datos, widget.config, DateTime.now()) : null;
     return Scaffold(
       appBar: AppBar(
@@ -253,10 +290,10 @@ class _PaginaPrincipalState extends State<PaginaPrincipal> with WidgetsBindingOb
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 600),
               child: IndexedStack(
-                index: _pestana,
+                index: _pestana.index,
                 children: [
                   // Lo que se mueve (las olas de Inicio) se detiene en las pestañas que no están a la vista.
-                  for (final (i, pagina) in paginas.indexed) TickerMode(enabled: i == _pestana, child: pagina),
+                  for (final p in Pestana.values) TickerMode(enabled: p == _pestana, child: paginas[p]!),
                 ],
               ),
             ),
@@ -265,21 +302,41 @@ class _PaginaPrincipalState extends State<PaginaPrincipal> with WidgetsBindingOb
       ),
       bottomNavigationBar: DecoratedBox(
         decoration: BoxDecoration(border: Border(top: BorderSide(color: Colores.bordeSuave))),
-        // Tope al agrandado de letra: con más, las cuatro etiquetas no entran.
+        // Tope al agrandado de letra: con más, las cinco etiquetas no entran
+        // en 320 dp (lo mide la prueba de desborde).
         child: MediaQuery.withClampedTextScaling(
-          maxScaleFactor: 1.3,
+          maxScaleFactor: topeLetraPestanas,
           child: NavigationBar(
-            selectedIndex: _pestana,
-            onDestinationSelected: (i) => setState(() => _pestana = i),
-            destinations: const [
-              NavigationDestination(icon: Icon(Icons.water), label: 'Inicio'),
-              NavigationDestination(icon: Icon(Icons.show_chart), label: 'Gráfico'),
-              NavigationDestination(icon: Icon(Icons.health_and_safety), label: 'Qué hacer'),
-              NavigationDestination(icon: Icon(Icons.notifications), label: 'Avisos'),
+            selectedIndex: _pestana.index,
+            onDestinationSelected: (i) => _ir(Pestana.values[i]),
+            destinations: [
+              for (final p in Pestana.values)
+                NavigationDestination(icon: Icon(p.icono), label: p.etiqueta),
             ],
           ),
         ),
       ),
     );
   }
+}
+
+/// Tope al agrandado de letra en la barra de pestañas.
+const topeLetraPestanas = 1.3;
+
+extension DatosPestana on Pestana {
+  String get etiqueta => switch (this) {
+        Pestana.inicio => 'Inicio',
+        Pestana.grafico => 'Gráfico',
+        Pestana.mapa => 'Mapa',
+        Pestana.queHacer => 'Qué hacer',
+        Pestana.avisos => 'Avisos',
+      };
+
+  IconData get icono => switch (this) {
+        Pestana.inicio => Icons.water,
+        Pestana.grafico => Icons.show_chart,
+        Pestana.mapa => Icons.map,
+        Pestana.queHacer => Icons.health_and_safety,
+        Pestana.avisos => Icons.notifications,
+      };
 }

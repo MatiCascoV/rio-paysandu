@@ -1,0 +1,163 @@
+{
+ "version": 1,
+ "generado": "2026-10-19T18:00:00-03:00",
+ "cero": "Local",
+ "validado": false,
+ "modelo": {
+  "metodo": "PROVISORIO: agua inventada (río de OSM agrandado según la altura). Reemplazar por los datos reales.",
+  "delta_m": null,
+  "iou_validacion": null,
+  "margen_m": 0.5
+ },
+ "limites": [
+  [
+   -32.365,
+   -58.15
+  ],
+  [
+   -32.24,
+   -58.03
+  ]
+ ],
+ "paso_m": 0.1,
+ "min_m": 5.0,
+ "max_m": 7.0,
+ "base": {
+  "archivo": "base.json",
+  "bytes": 268774,
+  "sha256": "f25d1ade7d343b12d0a98de5669501807da4bd2829165a8898eb9c2348b21c9f"
+ },
+ "capas": [
+  {
+   "altura_m": 5.0,
+   "archivo": "agua/0500.json",
+   "bytes": 142,
+   "sha256": "f881784ed6adf32310fd9a92e88f65d3db726ebcd6779182c1b642034abbd414"
+  },
+  {
+   "altura_m": 5.1,
+   "archivo": "agua/0510.json",
+   "bytes": 55394,
+   "sha256": "30b134aaf3e51938dc6fcda482c45db59378a2d1228a2cf732701028f89ae678"
+  },
+  {
+   "altura_m": 5.2,
+   "archivo": "agua/0520.json",
+   "bytes": 55246,
+   "sha256": "f4beb84f8e786bfc27174e5a0992f66dd827d237cf0e497afa3a7c80d37b000a"
+  },
+  {
+   "altura_m": 5.3,
+   "archivo": "agua/0530.json",
+   "bytes": 54988,
+   "sha256": "7b595770bc88e84f1f71a11f415386665369607edd261e6e43a318865c0f10d9"
+  },
+  {
+   "altura_m": 5.4,
+   "archivo": "agua/0540.json",
+   "bytes": 54483,
+   "sha256": "836246f02d821b046b79a1c58acb1bee896bf2fbf6cf6c6fd0fd4f9a83e5c424"
+  },
+  {
+   "altura_m": 5.5,
+   "archivo": "agua/0550.json",
+   "bytes": 54000,
+   "sha256": "82b925e3d582e17f4df3cfc132370556456988e2eb441e7e71e82fee5197e7dc"
+  },
+  {
+   "altura_m": 5.6,
+   "archivo": "agua/0560.json",
+   "bytes": 53259,
+   "sha256": "bdbf099966a1f785547359d5c31d1eb3863a957e0415531cad09d41ff47e4b2f"
+  },
+  {
+   "altura_m": 5.7,
+   "archivo": "agua/0570.json",
+   "bytes": 53280,
+   "sha256": "5f867a6bf79b6fb8dcc03caf9a61d92ae2b2fc36e7114b7916100629edd335aa"
+  },
+  {
+   "altura_m": 5.8,
+   "archivo": "agua/0580.json",
+   "bytes": 52825,
+   "sha256": "877933c409327e9e6ef0e9d760dbc6e5d50cb477b4d1cb44e03ae68310557f33"
+  },
+  {
+   "altura_m": 5.9,
+   "archivo": "agua/0590.json",
+   "bytes": 51599,
+   "sha256": "b7838b7618d18925c7f7d8728cf9c254acaa169645b4169dd87dd18f26bc9585"
+  },
+  {
+   "altura_m": 6.0,
+   "archivo": "agua/0600.json",
+   "bytes": 51336,
+   "sha256": "9799f231b643001fb85c8005f7aa56ad38fbab88a55017f0405052d60a40b377"
+  },
+  {
+   "altura_m": 6.1,
+   "archivo": "agua/0610.json",
+   "bytes": 50366,
+   "sha256": "df0ac477007a2652a373d3db822dae969b3f06b821176f6c335c266a97ef1175"
+  },
+  {
+   "altura_m": 6.2,
+   "archivo": "agua/0620.json",
+   "bytes": 49453,
+   "sha256": "59d0632f0cf4c4433a0cda717f2a02fe95bf0f3e890359bf4e4aa4bfae0180d1"
+  },
+  {
+   "altura_m": 6.3,
+   "archivo": "agua/0630.json",
+   "bytes": 49141,
+   "sha256": "a5b500b7a6eefbc176d1f0c8594b60a7ccbba93549550633df08ffd1b2e0c0ef"
+  },
+  {
+   "altura_m": 6.4,
+   "archivo": "agua/0640.json",
+   "bytes": 49223,
+   "sha256": "97bad4ce79dc12e4b3e0f12a2b745dc938aae1cab94a605fad46d135b65d8184"
+  },
+  {
+   "altura_m": 6.5,
+   "archivo": "agua/0650.json",
+   "bytes": 48714,
+   "sha256": "40c5d0786764dfb22ee875976331c1c7813865a8109edbcbd4347455cb9151bd"
+  },
+  {
+   "altura_m": 6.6,
+   "archivo": "agua/0660.json",
+   "bytes": 48393,
+   "sha256": "50d64be0545a876403f9429ed949738957d299bbb13d8f9fac207654582164a4"
+  },
+  {
+   "altura_m": 6.7,
+   "archivo": "agua/0670.json",
+   "bytes": 48016,
+   "sha256": "385d4af29a8576ec3d4a65b97e0fd9b3962bc083cac45e488f4dfe5e13619d76"
+  },
+  {
+   "altura_m": 6.8,
+   "archivo": "agua/0680.json",
+   "bytes": 47598,
+   "sha256": "9638ed3d7a3b49706d4ce6945b1b48de635815090cd24965fb15b4d2a8a677ac"
+  },
+  {
+   "altura_m": 6.9,
+   "archivo": "agua/0690.json",
+   "bytes": 47205,
+   "sha256": "378d0dfc758423454008e33b85e9715141bf97a47c06d987ded6987434ce50cb"
+  },
+  {
+   "altura_m": 7.0,
+   "archivo": "agua/0700.json",
+   "bytes": 46784,
+   "sha256": "8df7447eb25df044e694ba23ccb1ce7ef8710d9acf0b06f222a72cb1a3547899"
+  }
+ ],
+ "referencias": [],
+ "fuentes": [
+  "© colaboradores de OpenStreetMap, ODbL",
+  "PROVISORIO: el agua de este mapa es inventada, solo para probar la pantalla"
+ ]
+}

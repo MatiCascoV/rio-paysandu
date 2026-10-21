@@ -1,0 +1,89 @@
+{
+  "version_config": 1,
+  "cero": "Local",
+  "limites": [[-32.365, -58.150], [-32.240, -58.030]],
+  "crs_trabajo": "EPSG:5382",
+  "resolucion_m": 2.0,
+  "remuestreo": "average",
+  "min_m": 4.00,
+  "max_m": 10.50,
+  "paso_m": 0.10,
+  "margen_m": 0.5,
+  "cache_dir": null,
+
+  "mdt_urbano": {
+    "indice_url": "https://visualizador.ide.uy/descargas/datos/CU_Remesa_09/01_MDT_MDS/08_Ciudad_PSD/04_MDT_GeoTIFF_Resolucion_100cm/",
+    "patron": "{hoja}_MDT_Remesa_09_PSD.tif",
+    "grilla_url": "https://visualizador.ide.uy/descargas/datos/Grillas/Urbana/Articulacion_Ortoimagenes_Urbana",
+    "grilla_encoding": "latin-1",
+    "fecha_vuelo": "2017-10",
+    "nodata_min": -1000
+  },
+
+  "mdt_nacional": {
+    "usar": true,
+    "indice_url": "https://visualizador.ide.uy/descargas/datos/CN_Remesa_04/01_MDT/02_MDT_GeoTIFF_Resolucion_250cm/",
+    "patron": "{hoja}_MDT_Remesa_04.tif",
+    "grilla_url": "https://visualizador.ide.uy/descargas/datos/Grillas/Nacional/Articulacion_Ortoimagenes_Nacional",
+    "grilla_encoding": "latin-1",
+    "max_sesgo_abs_m": 0.6,
+    "min_celdas_solape": 100000
+  },
+
+  "huecos": {
+    "rellenar_max_m2": 4000
+  },
+
+  "curvas": {
+    "wfs_url": "https://www.ambiente.gub.uy/dinagua-gs/dinagua/wfs",
+    "capas": ["dinagua:curvas_cri", "dinagua:curvas_tr"],
+    "filtro": "nombre LIKE 'PA-PSD%'",
+    "curso": "Río Uruguay",
+    "simplify_grados": 0.00002
+  },
+
+  "osm": {
+    "pbf_url": "https://download.geofabrik.de/south-america/uruguay-latest.osm.pbf"
+  },
+
+  "llegada": {
+    "cuantizacion_cm": 2,
+    "min_cm": 360,
+    "max_cm": 1200
+  },
+
+  "capas": {
+    "sieve_m2": 100,
+    "simplify_m": 1.5,
+    "decimales": 5,
+    "tolerancia_anidado": 0.01,
+    "tope_capa_bytes": 600000,
+    "tope_base_bytes": 600000,
+    "tope_total_bytes": 20000000
+  },
+
+  "calibracion": {
+    "delta_min": -0.20,
+    "delta_max": 1.20,
+    "delta_paso": 0.02,
+    "fija": "2025-07",
+    "validacion": ["2009-11", "2015-12", "2017-06", "2019-01"],
+    "chequeo": ["Tr10", "Tr100"],
+    "iou_min": 0.70,
+    "estabilidad_m": 0.10,
+    "solo_mdt_urbano": true,
+    "validado_requiere_revision_externa": true
+  },
+
+  "control_png": {
+    "capas": [5.70, 9.12],
+    "curva": "2015-12",
+    "archivo": "control.png"
+  },
+
+  "fuentes": [
+    "© colaboradores de OpenStreetMap, ODbL",
+    "Modelo digital del terreno: IDE Uruguay, Licencia de Datos Abiertos – Uruguay. Datos modificados.",
+    "Curvas de inundación: Dirección Nacional de Aguas (Dinagua), Ministerio de Ambiente"
+  ]
+}

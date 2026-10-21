@@ -1,0 +1,12 @@
+# Dependencias del pipeline del mapa (aparte del lector; no van en lector/requirements.txt).
+# Versiones con las que se corrió el 19/10/2026 en Windows, Python 3.12.
+numpy==2.5.4
+scipy==1.18.1
+rasterio==1.5.2
+shapely==2.2.0
+pyproj==3.8.0
+pyshp==3.1.6
+osmium==4.3.2
+requests==2.34.2
+matplotlib==3.11.2
+pytest==9.1.1
