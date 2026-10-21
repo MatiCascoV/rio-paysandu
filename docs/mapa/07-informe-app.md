@@ -125,3 +125,51 @@ Con los datos reales el APK crece lo que pesen los archivos: el pipeline topa 60
 5. **Color del contorno de crecida** (bordó en claro, rosa en oscuro): revisar contraste con el agua y con el modo oscuro, y si conviene una muestra de trazos en la leyenda en vez de una línea llena.
 6. Barra superior con el tinte del nivel, aviso de simulación como franja oscura, zonas en texto debajo del mapa, tarjeta "Cómo se usa" la primera vez, "Mi casa" (03 §7) y la hoja "Ver fuentes".
 7. Las crecidas de los botones salen del índice (nombre y altura del pipeline). Confirmar con Dinagua los nombres y picos antes de publicar (03 §12.1).
+
+## v1.1 (contrato 05, "Agregados v1.1")
+
+21/10/2026 · Mobile App Builder. Paso 1 del traspaso (12), parte app. Alcance: `app/lib/mapa/modelos_mapa.dart`, `repositorio_mapa.dart`, `logica_mapa.dart`, `app/lib/pantallas/mapa_partes.dart`, los tests del mapa y este documento. **No** se tocó `estilo_mapa.dart`, `pantallas/mapa.dart` ni `08-cartografia.md` (son del cartógrafo, que trabajó en paralelo), ni `lector/`, `data/`, `.github/` o `app/assets/mapa/`. Sin commits.
+
+### Resultado
+
+| Control | Resultado |
+|---|---|
+| `flutter analyze` | **0 problemas** |
+| `flutter test` | **273 OK, 0 fallas** (antes: 263 OK y 1 falla) |
+
+### La falla y su arreglo
+
+`mapa_v11_test.dart` › "zona sin validar (v1.1 §1) con el archivo: fila en la leyenda y mención en el resumen". El test pedía lo que dice el contrato (05 v1.1 §1: "la nombra en la leyenda y en el resumen textual") y el 09 §3.9 (fila "Zona sin validar…" si el índice trae `sin_validar` y el archivo valida). El resumen ya la nombraba; **la leyenda no tenía la fila**: el bug era del código, no del test. La leyenda se arma en `pantallas/mapa.dart` (`_leyenda`), archivo del cartógrafo, que en paralelo sumó las filas de zona baja, línea de hoy, loma aislada y zona sin validar con sus muestras. Con eso el test pasa sin cambios en lo que pide.
+
+### Qué está y dónde se prueba
+
+| Contrato v1.1 | Qué hace la app | Prueba (`test/mapa_v11_test.dart` salvo aclaración) |
+|---|---|---|
+| §1 `sin_validar` en el índice | Opcional y tolerante: si falta o viene mal (nombre con `..`, dentro de `agua/` o `curvas/`, `bytes: 0`, huella mal escrita, más de 2 MB) se ignora y el mapa sigue. Sus bytes cuentan para el tope total. | grupo "índice: sin_validar opcional" |
+| §1 `sin_validar.json` | Se lee una sola vez, con tamaño y sha256 como las capas; una zona rota se saltea; sin nombre se llama "Zona sin validar"; tope de puntos. Si no valida, null y el mapa sigue. | grupo "repositorio: sin_validar.json" |
+| §1 dibujo, leyenda y resumen | Borde de trazo y punto encima del agua (cartógrafo), fila en la leyenda y mención en el resumen para TalkBack. **Nuevo:** `resumenMapa(nombresSinValidar: …)` nombra las zonas con lo que trae el archivo (`textoSinValidarDe`); sin nombres usa el texto fijo del valle del arroyo San Francisco. | "zona sin validar (v1.1 §1)", "zona sin validar: su borde se dibuja solo si el archivo validó", "la zona sin validar se nombra con lo que trae el archivo" |
+| §2 `aisladas` | Opcional por capa: punto dentro del mapa, `ha` y `calles_m` opcionales; lo raro se saltea; una lista que no es lista no rompe la capa; tope de 200 marcas por capa. Se avisan las de la capa pintada (o, por debajo del mínimo, las de la zona baja): "Hay una loma marcada en el mapa. Quedaría rodeada de agua: aunque no se inunde, puede quedar aislada." (y el plural). Cada marca abre una hoja con el texto del contrato. | grupo "capa: aisladas opcional", "lomas aisladas (v1.1 §2)", "lomas: una marca por punto, solo en la altura que las trae" |
+| §3 zona baja | `elegirAgua` siempre trae `zonaBajaCm` (= `min_m`) y la pantalla siempre lee esa capa y la dibuja con su estilo. Con altura ≤ `min_m` la lectura dice el texto del 09 §3.4, **igual con 3,90 que con 4,00**; nunca "en su cauce" (solo queda en la leyenda del río: "Río y arroyos, en su cauce"). Sin pastilla de nivel por debajo del mínimo. | "zona baja de la costa (v1.1 §3)", "la zona baja se dibuja con su estilo con 3,20 / 4,00 / 7,00 / 11,20 m", "leyenda v1.1" |
+| §4 margen siempre | `elegirAgua` siempre da `margenCm`: altura + margen redondeado hacia arriba al paso, recortado a las capas que existen (nunca debajo de la zona baja ni encima del máximo). La pantalla lee y dibuja esa capa siempre; cuando coincide con una capa que va encima (zona baja, agua en el máximo, línea de hoy), el cartógrafo repite los puntos encima para que no quede tapado. | **BLOQUEANTE**, abajo |
+| Textos | Ningún texto nuevo dice "a salvo", "seguro", "zona segura", "no se inunda", "sin peligro" ni "en su cauce". El pie sigue con "Aproximado. No reemplaza la alerta oficial." | "ningún texto nuevo promete que no llega el agua", "el texto fijo los tiene todos" |
+| Datos de hoy (sin campos nuevos) | `app/assets/mapa/` actual valida igual: sin `sin_validar`, sin `aisladas`, zona baja y margen presentes. | "datos reales de app/assets/mapa (sin los campos nuevos)" |
+
+### Test bloqueante del margen (condición para publicar, 11 §8)
+
+En `test/mapa_v11_test.dart`, grupo **"margen siempre (v1.1 §4, condición bloqueante para publicar)"**, con el rango real (4,00–10,50 m, margen 50 cm):
+
+- **"BLOQUEANTE: la elección trae margen en las cinco alturas (3,50 · 4,00 · 7,00 · 10,50 · 11,20)"**: para cada una, la situación (debajo del mínimo / en rango / sobre el máximo), la capa del margen (400, 450, 750, 1050, 1050), que esa capa exista y que nunca quede por debajo del agua pintada.
+- **"BLOQUEANTE: con 3,50 / 4,00 / 7,00 / 10,50 / 11,20 m se dibuja la franja de margen (capa …)"** (cinco widget tests): el mapa abre en esa altura, lee la capa del margen, pinta **todos** sus polígonos con el estilo del margen, y cuando el margen coincide con una capa que va encima (3,50: zona baja; 10,50 y 11,20: capa máxima) sus puntos aparecen también arriba. La leyenda lo explica.
+- Además: "elegirAgua siempre da un margen dentro de las capas" (0, 3,50 … 11,20 m) y "también al simular cada altura con el deslizador en todo el rango" (de a 50 cm).
+
+### Cambios de esta tanda
+
+- `app/lib/pantallas/mapa_partes.dart`: `textoSinValidarDe(nombres)` y el parámetro opcional `nombresSinValidar` de `resumenMapa` (sin él, el texto de antes).
+- `app/test/mapa_v11_test.dart`: test bloqueante del margen reforzado (las cinco alturas en lógica y en pantalla, lectura, todos los polígonos, puntos encima cuando queda tapado); grupos "leyenda v1.1" y "dibujo v1.1 en el mapa"; la mención de la zona sin validar se busca por lugar, para que siga valiendo cuando la pantalla pase los nombres del archivo.
+- `modelos_mapa.dart`, `repositorio_mapa.dart` y `logica_mapa.dart`: revisados contra el contrato; quedan como en el WIP (no hizo falta cambiarlos).
+
+### Pendientes
+
+1. **Cartógrafo (`pantallas/mapa.dart`):** pasar los nombres al resumen: `nombresSinValidar: [for (final z in _sinValidar?.zonas ?? const <ZonaSinValidar>[]) z.nombre]` en la llamada a `resumenMapa`. Mientras no esté, TalkBack dice el texto fijo del valle del arroyo San Francisco (correcto para los datos v1, que traen una sola zona).
+2. **Datos v1.1 reales** (paso 2 del 12): cuando el pipeline publique `sin_validar.json` y `aisladas`, correr `flutter test test/mapa_logica_test.dart test/mapa_v11_test.dart` sobre los assets nuevos y `flutter build apk --release`.
+3. **Redmi:** ver con el sol y TalkBack la zona baja, el borde de la zona sin validar, las marcas de loma (48 dp) y los puntos del margen encima en 3,50 y 10,50 m.
