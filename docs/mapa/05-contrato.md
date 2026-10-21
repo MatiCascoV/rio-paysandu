@@ -84,3 +84,49 @@ Además, en la raíz: `"lugares": [{ "n": "Barrio Paysandú Sur", "c": [lon, lat
 - `h < min_m`: no se pinta agua sobre tierra; la pantalla dice que el agua está en su cauce.
 - `h > max_m`: se pinta la capa de `max_m` y se avisa que el río supera lo que cubre el mapa.
 - Margen: la franja entre la capa de `h` y la de `h + margen_m` se dibuja aparte, como "puede llegar un poco más".
+
+## Agregados v1.1 (21/10/2026, tras el control de calidad 11)
+
+Todos son **compatibles hacia atrás**: `version` sigue en 1 y si un campo falta, la app hace lo de antes.
+
+### 1. Zonas sin validar: `sin_validar.json` (nuevo, opcional)
+
+En `indice.json`:
+
+```json
+"sin_validar": { "archivo": "sin_validar.json", "bytes": 0, "sha256": "…" }
+```
+
+`sin_validar.json` es una `FeatureCollection` con un `Feature` `Polygon`/`MultiPolygon` por zona, EPSG:4326, `[lon, lat]`, 5 decimales.
+- `properties`: `{ "nombre": "Valle del arroyo San Francisco", "motivo": "No hay crecidas medidas por Dinagua para comparar el modelo." }`.
+- Para la v1 hay una sola zona: el valle del arroyo San Francisco Grande, todo lo que el modelo moja allí hasta 10,50 m, agrandado unos 100 m.
+- La app la dibuja encima del agua con su propio estilo y la nombra en la leyenda y en el resumen textual.
+
+### 2. Lomas aisladas: propiedad `aisladas` en cada capa (nueva, opcional)
+
+En `agua/NNNN.json`, `properties` suma:
+
+```json
+"aisladas": [ { "c": [-58.08712, -32.31234], "ha": 1.4, "calles_m": 320 } ]
+```
+
+- Son las tierras secas totalmente rodeadas por el agua de esa capa, es decir, huecos interiores del MultiPolygon que no tocan el borde de `limites`.
+- Solo se incluyen las que tienen al menos 50 m de calle de `base.json` adentro (`calles_m`), porque así se considera que pueden estar habitadas.
+- `c` es un punto interior, `ha` el área en hectáreas.
+- Lista vacía o ausente: no hay ninguna.
+- La app marca cada punto y avisa: "Quedaría rodeada de agua: aunque no se inunde, puede quedar aislada."
+
+### 3. Zona baja de la costa (sin archivo nuevo)
+
+La capa de `min_m` (4,00 m) ya incluye unas 450 ha de islas, bañados y planicies que se mojan con el río normal. Regla de la app:
+- Esa capa se dibuja **siempre**, a cualquier altura, con un estilo propio: "Zona baja de la costa: se moja con el río normal".
+- Nunca se esconde agua.
+- Con `h < min_m`, la app ya no dice "el agua está en su cauce". Dice que el agua no pasa de la zona baja de la costa (texto exacto en 09).
+
+### 4. Margen siempre visible
+
+La franja de margen (entre la capa de `h` y la de `h + margen_m`) se dibuja **siempre** que haya capas, incluso con `h < min_m` o `h > max_m` (en ese caso, hasta la capa máxima). Es condición para publicar (11 §Condiciones).
+
+### 5. Pipeline
+
+- Se agranda el agua **5 m** antes de simplificar con tolerancia de 4 m (antes 4 m), para que ninguna celda mojada quede afuera después del redondeo a 5 decimales (11 §5).
