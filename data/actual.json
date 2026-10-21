@@ -1,5 +1,5 @@
 {
-  "generado": "2026-10-21T14:21:41-03:00",
+  "generado": "2026-10-21T15:02:15-03:00",
   "cero": "Local",
   "altura_actual": {
     "valor_m": 5.54,
@@ -20,11 +20,11 @@
   },
   "pronostico": {
     "vigente": true,
-    "informe_fecha": "2026-10-20",
-    "altura_esperada_m": 5.6,
+    "informe_fecha": "2026-10-21",
+    "altura_esperada_m": 5.57,
     "texto": "Debido al caudal de erogación pronosticado, se espera que continúe el descenso leve y lento de los niveles, con posibles variaciones hacia aguas abajo producto de las oscilaciones del Río de la Plata.",
-    "caudal_salto_grande_m3s": 16000,
-    "url_informe": "https://caru.org.uy/nuevositio/wp-content/uploads/2026/10/20261020-Crecida.pdf"
+    "caudal_salto_grande_m3s": 15800,
+    "url_informe": "https://caru.org.uy/nuevositio/wp-content/uploads/2026/10/20261021-Crecida.pdf"
   },
   "nivel": "alerta",
   "avisos": []
