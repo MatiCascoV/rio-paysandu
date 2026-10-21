@@ -281,3 +281,24 @@ def test_historial_con_fixtures_reales():
     assert len({(e["fecha"], e["fuente"]) for e in h}) == len(h)
     assert [e["fecha"] for e in h] == sorted(e["fecha"] for e in h)
     assert json.loads(lector.historial_a_texto(h)) == h
+
+
+def test_carpeta_de_datos_por_variable(tmp_path):
+    # En GitHub Actions LECTOR_DATOS apunta al data/ de la rama datos; sin ella, data/ del repositorio.
+    # En un proceso aparte: DATA se fija al importar el módulo.
+    import os
+    import subprocess
+    import sys
+
+    def data_con(valor):
+        entorno = {k: v for k, v in os.environ.items() if k != "LECTOR_DATOS"}
+        if valor is not None:
+            entorno["LECTOR_DATOS"] = valor
+        salida = subprocess.run([sys.executable, "-c", "import lector; print(lector.DATA)"],
+                                cwd=Path(lector.__file__).parent, env=entorno,
+                                capture_output=True, text=True, check=True)
+        return Path(salida.stdout.strip())
+
+    assert data_con(str(tmp_path / "data")) == tmp_path / "data"
+    assert data_con(None) == Path(lector.__file__).resolve().parent.parent / "data"
+    assert data_con("") == Path(lector.__file__).resolve().parent.parent / "data"

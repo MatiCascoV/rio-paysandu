@@ -10,7 +10,8 @@ Ante cualquier duda hay que comunicarse con los canales oficiales (Cecoed Paysan
 ## Cómo está armado
 
 - `lector/` — programa en Python que lee los datos de CARU, los valida y genera los JSON.
-- `data/` — JSON generados por el lector (se publican con GitHub Pages).
+- `data/` — JSON generados por el lector. Desde el 21/10/2026 viven en la rama **`datos`**, que es la que
+  publica GitHub Pages; en `main` no se actualizan más.
 - `.github/workflows/` — automatización que corre el lector cada unos 10 minutos (bucle que se relanza solo)
   y los tests del lector y de la app.
 - `app/` — app Flutter que lee los JSON publicados.
@@ -44,7 +45,9 @@ Después, cada vez:
 ```
 
 La configuración (direcciones de CARU, cero, límites de antigüedad) está en `lector/config.json`.
-Los umbrales de nivel están en `data/umbrales.json` y son **provisorios** hasta que el Cecoed los valide.
+Los umbrales de nivel están en `data/umbrales.json` **de la rama `datos`** (ahí se editan a mano) y son
+**provisorios** hasta que el Cecoed los valide. Para correr el lector local contra otra carpeta de datos:
+`$env:LECTOR_DATOS = 'ruta\data'` (sin la variable usa `data/` del repositorio).
 
 ### Avisos que puede traer `actual.json`
 
@@ -96,7 +99,9 @@ dato anterior; `estado_lector.json` se empieza de cero.
 ## Datos publicados
 
 GitHub Actions corre el lector **cada unos 10 minutos**, en un bucle que se relanza solo (workflow
-"Lector CARU", ver abajo), y GitHub Pages publica el resultado:
+"Lector CARU", ver abajo). El código sale de `main`; los datos se guardan en la rama **`datos`**
+(solo `data/` y `.nojekyll`, con la historia de `data/actual.json` que usa `lector/avisos.py`), y GitHub
+Pages publica esa rama. Así el trabajo que procesa contenido de CARU nunca sube nada a `main`:
 
 - https://maticascov.github.io/rio-paysandu/data/actual.json
 - https://maticascov.github.io/rio-paysandu/data/historial.json
@@ -123,7 +128,7 @@ antes de terminar, lanza la corrida siguiente. El horario programado queda solo 
 - **Permisos:** cada trabajo tiene solo el permiso que usa (`leer`: escribir contenido; `avisar`:
   issues; `relanzar`: lanzar workflows). En `leer`, el token no queda en `.git/config` ni en el entorno
   que hereda el lector: el repositorio se trae sin token (es público) y el token se pasa solo al
-  `git push`, que además se niega a subir un commit que toque algo fuera de `data/`. Es una **reducción**
+  `git push` a `datos`, que además se niega a subir un commit que toque algo fuera de `data/`. Es una **reducción**
   de exposición, no aislamiento: el lector corre con el mismo usuario (que puede leer el entorno inicial
   del proceso del bucle y tiene sudo en el runner). Correrlo con un usuario sin privilegios queda pendiente.
 - **Arranque a mano con otros tiempos:** `minutos_entre_lecturas` tiene que ser al menos 5 y

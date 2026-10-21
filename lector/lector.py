@@ -19,7 +19,9 @@ from fuentes.caru_registro import TZ_UY
 from nivel import NIVELES_CON_DATO, UMBRALES_PROVISORIOS, nivel_con_margen, umbrales_validos
 
 RAIZ = Path(__file__).resolve().parent.parent
-DATA = RAIZ / "data"
+# En GitHub Actions los datos viven en otra rama (datos), traída en otra carpeta:
+# LECTOR_DATOS apunta a su data/. Sin la variable, data/ del repositorio.
+DATA = Path(os.environ["LECTOR_DATOS"]) if os.environ.get("LECTOR_DATOS") else RAIZ / "data"
 
 FUENTE_ESTACION = "CARU – estación automática Paysandú"
 FUENTE_PREFECTURA = "CARU – registro de puertos (Prefectura), Paysandú"
