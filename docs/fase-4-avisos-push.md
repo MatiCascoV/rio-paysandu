@@ -5,6 +5,10 @@ de entrega en el Redmi) hecho: los push de solo datos llegan, así que el diseñ
 en la rama `fase-4-app-avisos`, sin merge y sin probar todavía en el teléfono (21/10/2026; detalle y cómo
 probarlo en `docs/fase-4-informe-app.md`). El resto, sin empezar.
 
+`app/android/app/google-services.json` **no está en el repositorio** (`.gitignore`): para compilar hace falta
+la copia local, y la CI de la app lo escribe desde el secreto `GOOGLE_SERVICES_JSON` (Actions y Dependabot,
+ver `.github/workflows/app.yml`).
+
 Objetivo: que los avisos importantes lleguen al teléfono **con la app cerrada**, en minutos, sin depender de
 que Android deje correr la revisión periódica (los Xiaomi la cortan seguido).
 
@@ -93,7 +97,7 @@ Hoy el trabajo que procesa contenido de CARU sube commits a `main`, aunque se ni
 
 | # | Paso | Quién | Tamaño |
 |---|---|---|---|
-| 1 | Crear el proyecto de Firebase "Mi Río UY" con la cuenta de Google del dueño y registrar la app `uy.miriouy.app`. Bajar `google-services.json` (no es secreto, va en el repo). Sin Analytics. | Dueño (con guía) | S |
+| 1 | Crear el proyecto de Firebase "Mi Río UY" con la cuenta de Google del dueño y registrar la app `uy.miriouy.app`. Bajar `google-services.json`. Sin Analytics. **Hecho.** El archivo queda fuera de git (`.gitignore`): cada uno lo tiene en su copia local, y la CI lo escribe desde el secreto `GOOGLE_SERVICES_JSON` (en los secretos de Actions y de Dependabot; ver `.github/workflows/app.yml`). | Dueño (con guía) | S |
 | 2 | Margen al bajar en el lector (`margen_bajada_m`) y tests. **Hecho.** | Desarrollo | S |
 | 3 | **Prueba de entrega en el Redmi:** app con `firebase_messaging`, suscrita a un tema de prueba; envío manual desde la consola de Firebase con la app cerrada; medir cuánto tarda y si llega con la batería en modo normal y en ahorro, **con prioridad alta y con prioridad normal**. Decide la fila "Riesgo a probar". | Desarrollo + dueño | M |
 | 4 | App: pestaña **Avisos** nueva (ver arriba). Suscribir y desuscribir los temas según las preferencias. Manejador en segundo plano que baja `actual.json` y arma la notificación. La revisión local `revisarNivel` tiene que respetar **las mismas preferencias y reglas** (urgente solo al subir a alerta o evacuación, resumen como máximo uno por día y nada con río normal), con marcas compartidas con el push para el urgente y para el resumen del día. El texto de cada notificación lo arma la app desde `actual.json`, por ejemplo: título "Río hoy: 5,85 m · Alerta", texto "Bajó 13 cm en 24 h. Abrí la app para ver el dato en tiempo real." Pantalla corta con los ajustes de Xiaomi u otros fabricantes si los avisos no llegan. Tests. **Hecho** en `fase-4-app-avisos` (falta probarlo en el Redmi; ver `docs/fase-4-informe-app.md`). | Desarrollo | M |

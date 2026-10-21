@@ -11,7 +11,7 @@ probarlo.
 
 | Archivo | Qué tiene |
 |---|---|
-| `app/lib/avisos.dart` (nuevo) | Las reglas, sin plugins: `subidaUrgente` y `resumenListo` (las de `lector/avisos.py`), `decidirAvisos` (la decisión compartida, con las marcas), los textos de las notificaciones, la validación del mensaje push (`validarMensajePush`), `avisosDePush` (qué mostrar al recibir un push), los temas de FCM y la migración de preferencias. |
+| `app/lib/avisos.dart` (nuevo) | Las reglas, sin plugins: `subidaUrgente` y `resumenListo` (las de `lector/avisos.py`), `decidirAvisos` (la decisión compartida, con las marcas), los textos de las notificaciones, la validación del mensaje push (`validarMensajePush`), `atenderMensajePush` (qué mostrar al recibir un push, y cuándo), los temas de FCM y la migración de preferencias. |
 | `app/lib/push.dart` (nuevo) | Firebase Messaging: arranque, manejador en primer plano (`onMessage`) y en segundo plano o con la app cerrada (`manejarPushEnSegundoPlano`, con `@pragma('vm:entry-point')` y `Firebase.initializeApp()` en su isolate), y la sincronización de temas (`sincronizarTemas`). |
 | `app/lib/notificaciones.dart` | Muestra los avisos (canal urgente de importancia alta y canal "Resumen del día" de importancia normal), la revisión de respaldo con workmanager (programada si hay algún aviso prendido) y el permiso de notificaciones. |
 | `app/lib/pantallas/ajustes.dart` | Pestaña Avisos nueva, en dos secciones (ver abajo). |
@@ -65,15 +65,19 @@ reintenta en la próxima.
 
 ## Decisiones tomadas
 
-1. **Si no se puede bajar el dato**: para el urgente se muestra un aviso genérico, "Río Uruguay: hay
-   novedades / No se pudo bajar el dato del río. Abrí la app para ver el nivel. La alerta oficial la dan el
-   Sinae y el Cecoed.", sin nivel ni altura. Callar en una crecida es peor que un aviso sin dato, y no se
-   inventa nada. No cuenta como visto: cuando la app o el respaldo consiguen el dato, sale el aviso de verdad,
-   que reemplaza al genérico (misma notificación). Para el resumen, nada. La copia guardada en el teléfono no
-   se usa para avisar (es vieja).
-2. **Si `actual.json` todavía no muestra la subida** (el push puede salir antes de que GitHub Pages publique
-   el archivo nuevo): se vuelve a bajar a los 20 s y a los 45 s más. Si sigue igual, el genérico. Para saber
-   si el dato es anterior al envío se usa la hora de envío que pone FCM (`sentTime`, metadato del mensaje, no
+1. **Urgente sin el dato nuevo**: si la descarga falla, o el dato bajado todavía no muestra la subida, se
+   muestra **enseguida** un aviso genérico, "Río Uruguay: hay novedades / Todavía no se pudo ver el dato
+   nuevo. Abrí la app para ver el nivel. La alerta oficial la dan el Sinae y el Cecoed.", sin nivel ni altura
+   (vale en los dos casos). Callar en una crecida es peor que un aviso sin dato, y no se inventa nada. No
+   cuenta como visto: cuando el reintento, la app o el respaldo consiguen el dato, sale el aviso de verdad,
+   que reemplaza al genérico (misma notificación). Para el resumen, sin genérico. La copia guardada en el
+   teléfono no se usa para avisar (es vieja).
+2. **Tiempo del manejador**: con la app cerrada, Android le da al manejador de FCM unos 20 s y después puede
+   matar el proceso. Por eso todo entra en **15 s en el peor caso**: una descarga de hasta 6 s
+   (`tiempoDescargaPush`); si falló o viene atrasada (el push puede salir antes de que GitHub Pages publique
+   el archivo nuevo), el genérico sale ya, una espera de 3 s (`esperaPush`) y **un solo reintento** de hasta
+   6 s. El resumen hace lo mismo pero sin genérico. Lo que no entre lo cubre el respaldo local. Para saber si
+   el dato es anterior al envío se usa la hora de envío que pone FCM (`sentTime`, metadato del mensaje, no
    texto): un dato armado después del envío se toma como bueno aunque sea más bajo (por ejemplo, un push
    viejo que llega al prender el teléfono días después, con el río ya bajo: no avisa nada).
 3. **Push urgente que el teléfono ya vio**: si la app o el respaldo ya avisaron esa subida, el push no la
@@ -111,12 +115,10 @@ reintenta en la próxima.
 ## Qué quedó pendiente
 
 - **Probarlo en el Redmi** (abajo), con la app cerrada, en ahorro de batería y en reposo.
-- El script para mandar `{"tipo": ...}` a los temas `prueba-*` (propuesta abajo; no se tocó
-  `fase-4-prueba-entrega`).
 - Pasos 5, 6, 8 y 9 del diseño (rama `datos`, identidad federada, prueba completa con `avisos.yml`, README).
-- `docs/fase-4-avisos-push.md` dice que `google-services.json` "va en el repo", pero está en `.gitignore`; la
-  CI ahora lo escribe desde el secreto `GOOGLE_SERVICES_JSON` (commit f6bb40e). Conviene corregir esa frase
-  cuando se decida.
+- Si el reintento consigue el dato pero ya no corresponde avisar (por ejemplo, otra puerta ya avisó la
+  subida en ese momento), el genérico queda en la barra hasta que se toque o se borre. No se cancela para no
+  borrar un aviso de verdad que use la misma notificación.
 
 ## Cómo probar en el celular
 
@@ -152,49 +154,23 @@ ensucia el historial que usa `avisos.py`, ver paso 8 del diseño):
 
 ### 3. Mandar el push de prueba
 
-`herramientas/enviar_push_prueba.ps1` (en `fase-4-prueba-entrega`) manda al tema `prueba-entrega` un mensaje
-con otros datos, que esta app ignora. Propuesta de un script nuevo, `herramientas/enviar_aviso_prueba.ps1`,
-que manda exactamente lo que va a mandar `avisos.yml` con la entrada `prueba`:
+`herramientas/enviar_aviso_prueba.ps1` (en esta rama) manda exactamente lo que va a mandar `avisos.yml`
+con la entrada `prueba`, **solo a los temas `prueba-*`** (los nombres están fijos en el script y se comprueba
+el prefijo antes de enviar: no puede mandar a los temas reales):
 
 ```powershell
-# Fase 4, paso 4: manda un aviso push de prueba, igual al de avisos.yml con prueba=true.
-# Usa la sesión de gcloud del dueño (gcloud auth login); no guarda ninguna clave.
-# Uso: .\herramientas\enviar_aviso_prueba.ps1 -Tipo urgente -Nivel alerta
-#      .\herramientas\enviar_aviso_prueba.ps1 -Tipo resumen -Fuente prefectura
-param(
-    [ValidateSet('urgente', 'resumen')][string]$Tipo = 'urgente',
-    [ValidateSet('alerta', 'evacuacion')][string]$Nivel = 'alerta',
-    [ValidateSet('prefectura', 'estacion')][string]$Fuente = 'prefectura'
-)
-$ErrorActionPreference = 'Stop'
-$proyecto = 'mi-rio-uy-8ca81'
-$gcloud = Join-Path $env:LOCALAPPDATA 'google-cloud-sdk-zip\google-cloud-sdk\bin\gcloud.cmd'
-$token = (& $gcloud auth print-access-token).Trim()
-if ($Tipo -eq 'urgente') {
-    $data = @{ tipo = 'urgente'; nivel = $Nivel; ciudad = 'paysandu' }
-    # Igual que avisos.yml: el de evacuación va a quien esté en cualquiera de los dos temas urgentes.
-    if ($Nivel -eq 'alerta') { $destino = @{ topic = 'prueba-alerta-paysandu' } }
-    else { $destino = @{ condition = "'prueba-alerta-paysandu' in topics || 'prueba-evacuacion-paysandu' in topics" } }
-    $prioridad = 'HIGH'
-} else {
-    $data = @{ tipo = 'resumen'; fuente = $Fuente; ciudad = 'paysandu' }
-    $destino = @{ topic = 'prueba-resumen-paysandu' }
-    $prioridad = 'NORMAL'
-}
-# Solo datos, sin notification: la app arma el texto con actual.json.
-$mensaje = $destino + @{ data = $data; android = @{ priority = $prioridad } }
-$cuerpo = @{ message = $mensaje } | ConvertTo-Json -Depth 5
-$respuesta = Invoke-RestMethod -Method Post `
-    -Uri "https://fcm.googleapis.com/v1/projects/$proyecto/messages:send" `
-    -Headers @{ Authorization = "Bearer $token"; 'x-goog-user-project' = $proyecto } `
-    -ContentType 'application/json; charset=utf-8' -Body $cuerpo
-"Enviado $Tipo ($($data.nivel)$($data.fuente), $prioridad) a las $(Get-Date -Format HH:mm:ss): $($respuesta.name)"
+.\herramientas\enviar_aviso_prueba.ps1 -Tipo urgente -Nivel alerta      # tema prueba-alerta-paysandu, HIGH
+.\herramientas\enviar_aviso_prueba.ps1 -Tipo urgente -Nivel evacuacion  # condición de los dos temas urgentes de prueba, HIGH
+.\herramientas\enviar_aviso_prueba.ps1 -Tipo resumen -Fuente prefectura # tema prueba-resumen-paysandu, NORMAL
 ```
 
-Cambios respecto del script de la prueba de entrega: el destino es uno de los temas `prueba-*` (o la
-condición del urgente de evacuación), los datos son los de la app (`tipo`, `nivel` o `fuente`, `ciudad`) y
-la prioridad sale del tipo (HIGH el urgente, NORMAL el resumen) como en `avisos.yml`. Sin `-ConTexto`: un
-mensaje con texto lo mostraría Android solo y no probaría nada de la app.
+Usa la sesión de gcloud del dueño (`$env:LOCALAPPDATA\google-cloud-sdk-zip\google-cloud-sdk\bin\gcloud.cmd`,
+`gcloud auth login`), el proyecto `mi-rio-uy-8ca81` y el encabezado `x-goog-user-project`, como el de la prueba
+de entrega. Diferencias con `herramientas/enviar_push_prueba.ps1` (en `fase-4-prueba-entrega`, que no se tocó):
+el destino es uno de los temas `prueba-*` o, para el urgente de evacuación, la misma condición que `avisos.yml`
+(`'prueba-alerta-paysandu' in topics || 'prueba-evacuacion-paysandu' in topics`); los datos son los de la app
+(`tipo`, `nivel` o `fuente`, `ciudad`); la prioridad sale del tipo, y no hay `-ConTexto`: un mensaje con texto
+lo mostraría Android solo y no probaría nada de la app.
 
 ### 4. Casos a probar (con la app cerrada, en ahorro de batería y en reposo)
 
@@ -204,7 +180,7 @@ mensaje con texto lo mostraría Android solo y no probaría nada de la app.
 | 2 | Seguido del 1. | urgente alerta otra vez | Nada (ya avisado). |
 | 3 | Seguido del 1. Gist a `evacuacion`. | urgente evacuacion | "…subió a EVACUACIÓN". |
 | 4 | "Solo evacuación". Gist de `atencion` a `alerta`. | urgente alerta | Nada (no está en ese tema; si llegara, la app igual lo ignora). |
-| 5 | Compilación aparte con `URL_BASE` a una dirección que no existe (así falla la descarga), urgente prendido. | urgente alerta | "Río Uruguay: hay novedades", después de ~1 minuto de reintentos. |
+| 5 | Compilación aparte con `URL_BASE` a una dirección que no existe (así falla la descarga), urgente prendido. | urgente alerta | "Río Uruguay: hay novedades" en menos de 10 s; nada más después del reintento. |
 | 6 | Resumen prendido, gist en `alerta` con `generado` de hoy y `lectura_prefectura` de hoy a las 06:00. **No abrir la app** después de editar (con la app a la vista el resumen se da por visto). | resumen prefectura | "Río hoy: X m · Alerta" / "Bajó N cm en 24 h…". |
 | 7 | Seguido del 6. | resumen otra vez | Nada (uno por día). |
 | 8 | Gist en `normal`. | resumen | Nada. |
@@ -218,7 +194,8 @@ resolver.
 
 - **No probado en el teléfono.** En particular: que el manejador en segundo plano pueda usar
   SharedPreferences y bajar el dato con la app cerrada (se llama a `DartPluginRegistrant.ensureInitialized()`
-  por las dudas), y cuánto deja Android correr los reintentos de ~1 minuto en reposo.
+  por las dudas), y que el manejo entre en el tiempo que da Android (está pensado para 15 s en el peor
+  caso; si el Redmi corta antes, conviene bajar `tiempoDescargaPush`).
 - **Dos isolates a la vez** (push y respaldo en el mismo segundo): queda una ventana de milisegundos entre
   releer y escribir la marca. En el peor caso la segunda notificación reemplaza a la primera (mismo número),
   con un sonido de más.
