@@ -10,7 +10,6 @@ import 'package:rio_paysandu/datos.dart';
 import 'package:rio_paysandu/enlaces.dart';
 import 'package:rio_paysandu/main.dart';
 import 'package:rio_paysandu/modelos.dart';
-import 'package:rio_paysandu/pantallas/ajustes.dart';
 import 'package:rio_paysandu/pantallas/grafico.dart';
 import 'package:rio_paysandu/pantallas/inicio.dart';
 import 'package:rio_paysandu/pantallas/que_hacer.dart';
@@ -139,7 +138,7 @@ void main() {
     expect(find.text('5,95 m'), findsWidgets);
     await t.tap(find.text('Avisos'));
     await t.pumpAndSettle();
-    expect(find.text('Recibir avisos'), findsOneWidget);
+    expect(find.text('Recibir el aviso urgente'), findsOneWidget);
     expect(t.takeException(), isNull);
     await t.pumpWidget(const SizedBox()); // cierra la app de prueba (detiene el reloj)
   });
@@ -251,18 +250,6 @@ void main() {
     expect(find.text('911'), findsOneWidget);
     expect(find.text('Llamar'), findsNWidgets(3));
     expect(find.textContaining('No tiene vínculo con ningún organismo ni canal oficial'), findsOneWidget);
-  });
-
-  testWidgets('ajustes: elegir desde qué nivel avisar', (t) async {
-    SharedPreferences.setMockInitialValues({'avisos_activos': true});
-    final prefs = await SharedPreferences.getInstance();
-    await t.pumpWidget(enApp(PantallaAjustes(prefs: prefs, datos: Datos(umbrales: umbrales))));
-    expect(find.text('Recibir avisos'), findsOneWidget);
-    expect(find.text('Atención'), findsNothing); // sin valor definido, no se ofrece
-    expect(find.text('4,39 m o más'), findsOneWidget);
-    await t.tap(find.text('Evacuación'));
-    await t.pump();
-    expect(prefs.getString('avisar_desde'), 'evacuacion');
   });
 
   testWidgets('los umbrales van en la frase del nivel, sin escalera aparte', (t) async {

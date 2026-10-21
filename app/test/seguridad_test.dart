@@ -12,7 +12,7 @@ import 'package:http/testing.dart';
 import 'package:rio_paysandu/datos.dart';
 import 'package:rio_paysandu/enlaces.dart';
 import 'package:rio_paysandu/modelos.dart';
-import 'package:rio_paysandu/notificaciones.dart';
+import 'package:rio_paysandu/avisos.dart';
 import 'package:rio_paysandu/pantallas/inicio.dart';
 import 'package:rio_paysandu/textos.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -152,31 +152,31 @@ void main() {
     final ahora = DateTime.parse('2026-10-09T13:00:00-03:00');
 
     test('un dato a verificar igual avisa, lo aclara y se recuerda', () async {
-      SharedPreferences.setMockInitialValues({'ultimo_nivel': 'normal', claveActivos: true});
+      SharedPreferences.setMockInitialValues({'ultimo_nivel': 'normal', claveUrgente: true});
       final prefs = await SharedPreferences.getInstance();
       final dudoso = Actual.desdeJson(actualCon((j) => j['avisos'] = ['dato_a_verificar']))!;
-      final aviso = await avisoPendiente(dudoso, prefs, ahora);
-      expect(aviso, isNotNull);
-      expect(aviso!.$1, 'Río Uruguay: nivel de ALERTA');
-      expect(aviso.$2, contains('Dato a verificar por CARU.'));
+      final avisos = await decidirAvisos(dudoso, prefs, ahora);
+      final urgente = avisos.singleWhere((a) => a.tipo == TipoAviso.urgente);
+      expect(urgente.titulo, 'Río Uruguay: subió a ALERTA');
+      expect(urgente.texto, contains('Dato a verificar por CARU.'));
       expect(prefs.getString('ultimo_nivel'), 'alerta');
       // Mismo nivel en la pasada siguiente: no se repite.
-      expect(await avisoPendiente(dudoso, prefs, ahora), isNull);
+      expect(await decidirAvisos(dudoso, prefs, ahora), isEmpty);
     });
 
     test('sin el aviso del lector el texto no habla de verificar', () async {
-      SharedPreferences.setMockInitialValues({'ultimo_nivel': 'normal', claveActivos: true});
+      SharedPreferences.setMockInitialValues({'ultimo_nivel': 'normal', claveUrgente: true});
       final prefs = await SharedPreferences.getInstance();
-      final aviso = await avisoPendiente(Actual.desdeJson(jsonDecode(actualReal))!, prefs, ahora);
-      expect(aviso!.$2, isNot(contains('verificar')));
+      final avisos = await decidirAvisos(Actual.desdeJson(jsonDecode(actualReal))!, prefs, ahora);
+      expect(avisos.first.texto, isNot(contains('verificar')));
     });
 
     test('con el reloj del teléfono 3 h atrasado igual avisa', () async {
-      SharedPreferences.setMockInitialValues({'ultimo_nivel': 'normal', claveActivos: true});
+      SharedPreferences.setMockInitialValues({'ultimo_nivel': 'normal', claveUrgente: true});
       final prefs = await SharedPreferences.getInstance();
       final atrasado = DateTime.parse('2026-10-09T09:00:00-03:00'); // la lectura es de las 12:00
-      final aviso = await avisoPendiente(Actual.desdeJson(jsonDecode(actualReal))!, prefs, atrasado);
-      expect(aviso, isNotNull);
+      final avisos = await decidirAvisos(Actual.desdeJson(jsonDecode(actualReal))!, prefs, atrasado);
+      expect(avisos.where((a) => a.tipo == TipoAviso.urgente), hasLength(1));
       expect(prefs.getString('ultimo_nivel'), 'alerta');
     });
   });

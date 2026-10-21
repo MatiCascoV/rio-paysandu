@@ -5,6 +5,7 @@ import 'package:flutter/semantics.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'avisos.dart';
 import 'datos.dart';
 import 'ejemplo.dart';
 import 'enlaces.dart';
@@ -13,6 +14,7 @@ import 'pantallas/ajustes.dart';
 import 'pantallas/grafico.dart';
 import 'pantallas/inicio.dart';
 import 'pantallas/que_hacer.dart';
+import 'push.dart';
 import 'tema.dart';
 
 Future<void> main() async {
@@ -30,11 +32,21 @@ Future<void> main() async {
       // Si los avisos no se pueden preparar en este teléfono, la app igual
       // tiene que abrir y mostrar el nivel del río.
     }
+    // Aparte: sin Firebase (por ejemplo, sin servicios de Google) queda la revisión local.
+    try {
+      await Push.iniciar(prefs);
+    } catch (_) {}
   }
   final repositorio = ejemplo == null
       ? Repositorio(config.urlBase)
       : Repositorio(config.urlBase, cliente: clienteDeEjemplo(ejemplo), soloLectura: true);
   runApp(RioPaysanduApp(config: config, prefs: prefs, repositorio: repositorio));
+  // El permiso se pide con la app ya a la vista, una sola vez (ver pedirPermisoInicial).
+  if (ejemplo == null) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(Notificaciones.pedirPermisoInicial(prefs).catchError((_) {}));
+    });
+  }
 }
 
 /// Preferencia guardada del modo: 'claro', 'oscuro' o nada (seguir al teléfono).
@@ -175,8 +187,14 @@ class _PaginaPrincipalState extends State<PaginaPrincipal> with WidgetsBindingOb
           ..hideCurrentSnackBar()
           ..showSnackBar(SnackBar(content: Text(mensaje), duration: const Duration(seconds: 3)));
       }
-      // Con datos de ejemplo nunca se avisa: serían avisos inventados.
-      if (!datos.sinConexion && !widget.repositorio.soloLectura) await revisarNivel(datos.actual, widget.prefs);
+      // Con datos de ejemplo nunca se avisa: serían avisos inventados. Con la app a
+      // la vista el resumen del día no se notifica (el dato ya se está viendo); el
+      // reloj de 5 minutos también corre con la app de fondo, y ahí sí.
+      final estado = WidgetsBinding.instance.lifecycleState;
+      final aLaVista = estado == null || estado == AppLifecycleState.resumed;
+      if (!datos.sinConexion && !widget.repositorio.soloLectura) {
+        await revisarNivel(datos.actual, widget.prefs, origen: aLaVista ? Origen.app : Origen.respaldo);
+      }
     } catch (_) {
       // Pase lo que pase, la pantalla no puede quedar en "Cargando…".
       if (mounted && _datos == null) setState(() => _datos = const Datos(sinConexion: true));
@@ -201,7 +219,7 @@ class _PaginaPrincipalState extends State<PaginaPrincipal> with WidgetsBindingOb
         datos: datos,
         config: widget.config,
         alActualizar: _actualizarAPedido,
-        avisosActivos: widget.prefs.getBool(claveActivos) ?? false,
+        avisosActivos: PreferenciasAvisos.leer(widget.prefs).urgente,
         alPedirAvisos: () => setState(() => _pestana = 3),
         alVerQueHacer: _irAQueHacer,
         alVerGrafico: () => setState(() => _pestana = 1),
@@ -212,7 +230,7 @@ class _PaginaPrincipalState extends State<PaginaPrincipal> with WidgetsBindingOb
         prefs: widget.prefs,
         datos: datos,
         config: widget.config,
-        // Al prender los avisos se revisa el nivel en el momento.
+        // Al cambiar los avisos se revisa el nivel en el momento.
         alCambiar: () => _cargar(),
       ),
     ];

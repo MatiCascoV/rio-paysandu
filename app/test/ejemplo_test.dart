@@ -27,10 +27,13 @@ void main() {
   tearDown(() =>
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(canalAvisos, null));
 
-  /// Abre la app con [repositorio], con los avisos prendidos desde alerta, y
-  /// devuelve las claves guardadas al final.
+  /// Preferencias de la versión anterior (avisos prendidos desde alerta), con el
+  /// río en normal la última vez: si se revisa el nivel, sale un aviso urgente.
+  const iniciales = {'avisos_activos': true, 'avisar_desde': 'alerta', 'ultimo_nivel': 'normal', 'tema': 'claro'};
+
+  /// Abre la app con [repositorio] y devuelve las claves guardadas al final.
   Future<Map<String, Object>> abrirApp(WidgetTester t, Repositorio repositorio) async {
-    SharedPreferences.setMockInitialValues({'avisos_activos': true, 'avisar_desde': 'alerta', 'tema': 'claro'});
+    SharedPreferences.setMockInitialValues(iniciales);
     final prefs = await SharedPreferences.getInstance();
     await t.pumpWidget(RioPaysanduApp(config: config, prefs: prefs, repositorio: repositorio));
     await t.pumpAndSettle();
@@ -44,8 +47,9 @@ void main() {
   testWidgets('con datos de ejemplo no se guarda nada ni se avisa', (t) async {
     final claves = await abrirApp(
         t, Repositorio(config.urlBase, cliente: clienteDeEjemplo('alerta'), soloLectura: true));
-    expect(claves, {'avisos_activos': true, 'avisar_desde': 'alerta', 'tema': 'claro'});
-    expect(llamadas, isEmpty);
+    expect(claves, iniciales);
+    // La pestaña Avisos solo pregunta si las notificaciones están permitidas.
+    expect(llamadas.where((m) => m != 'areNotificationsEnabled'), isEmpty);
   });
 
   testWidgets('control: con un repositorio normal los mismos datos sí se guardan y se avisa', (t) async {

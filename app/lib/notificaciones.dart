@@ -1,8 +1,10 @@
-/// Avisos en el teléfono cuando cambia el nivel del río.
+/// Muestra los avisos en el teléfono y programa la revisión local de respaldo.
 ///
-/// En esta fase son notificaciones locales: la app consulta los datos al abrirse
-/// y, si Android lo permite, cada tanto en segundo plano. Android puede demorar
-/// esas consultas; los avisos inmediatos llegan con las notificaciones push (Fase 4).
+/// Los avisos llegan por push (push.dart): el teléfono recibe un mensaje sin
+/// texto, baja actual.json y arma la notificación. Por si el push no llega (sin
+/// servicios de Google, restricciones del fabricante), la app también revisa el
+/// nivel al abrirse y, si Android lo permite, cada 30 minutos en segundo plano,
+/// con las mismas reglas y las mismas marcas (ver avisos.dart).
 library;
 
 import 'package:flutter/foundation.dart';
@@ -11,96 +13,67 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:workmanager/workmanager.dart';
 
+import 'avisos.dart';
 import 'datos.dart';
 import 'modelos.dart';
-import 'textos.dart';
 
 const _tarea = 'chequeo_nivel';
-const claveActivos = 'avisos_activos';
-const claveDesde = 'avisar_desde';
-const _claveUltimo = 'ultimo_nivel';
-const _claveUrl = 'url_base';
-const _claveHorasSinDato = 'horas_sin_dato';
 
-int _orden(Nivel n) => switch (n) {
-      Nivel.normal => 0,
-      Nivel.atencion => 1,
-      Nivel.alerta => 2,
-      Nivel.evacuacion => 3,
-      Nivel.sinDato => -1,
-    };
-
-/// ¿Hay que avisar al pasar de [anterior] a [nuevo]? Se avisa cuando el nivel
-/// cambia y el nuevo (o el que se deja atrás) llega al mínimo elegido en Ajustes.
-/// Nunca se avisa por "sin dato".
-bool debeAvisar(Nivel? anterior, Nivel nuevo, Nivel minimo) {
-  if (nuevo == Nivel.sinDato || anterior == nuevo) return false;
-  if (anterior == null || anterior == Nivel.sinDato) return _orden(nuevo) >= _orden(minimo);
-  return _orden(nuevo) >= _orden(minimo) || _orden(anterior) >= _orden(minimo);
-}
-
-/// Título y texto de la notificación.
-(String, String) mensajeDeCambio(Nivel? anterior, Actual actual, Nivel nuevo, DateTime ahora) {
-  final nombre = estiloNivel(nuevo).nombre.toUpperCase();
-  final subio = anterior == null || _orden(nuevo) > _orden(anterior);
-  final titulo = subio ? 'Río Uruguay: nivel de $nombre' : 'Río Uruguay: bajó a nivel $nombre';
-  final a = actual.altura!;
-  // Fecha completa: la notificación puede leerse al día siguiente y "hoy" sería falso.
-  final f = enHoraUruguay(a.fecha);
-  final cuando = '${f.day}/${f.month} a las ${f.hour.toString().padLeft(2, '0')}:${f.minute.toString().padLeft(2, '0')}';
-  final aVerificar = actual.avisos.contains('dato_a_verificar') ? 'Dato a verificar por CARU. ' : '';
-  return (
-    titulo,
-    'Altura en Paysandú: ${formatoAltura(a.valorM)} m (el $cuando). $aVerificar'
-        'Fuente: CARU. La alerta oficial la dan el Sinae y el Cecoed.',
-  );
-}
+/// Versión del pedido de permiso al abrir: se pide una vez por instalación o
+/// actualización que lo necesite (se sube el número si hace falta volver a pedirlo).
+const clavePermisoPedido = 'permiso_avisos_pedido';
+const _versionPermiso = 1;
 
 final _plugin = FlutterLocalNotificationsPlugin();
 
-Future<void> _iniciarPlugin() => _plugin.initialize(
+Future<void> iniciarPlugin() => _plugin.initialize(
       settings: const InitializationSettings(android: AndroidInitializationSettings('@drawable/ic_notificacion')),
     );
 
-/// Compara el nivel con el último conocido, lo recuerda y devuelve el aviso a
-/// mostrar (título, texto), o null si no corresponde avisar.
-/// El nivel que publica el lector manda, aunque el dato esté a verificar:
-/// callar durante una crecida es tan grave como avisar mal (el texto lo aclara).
-@visibleForTesting
-Future<(String, String)?> avisoPendiente(Actual actual, SharedPreferences prefs, DateTime ahora) async {
-  await prefs.reload(); // la app y la tarea en segundo plano comparten estos datos
-  final nuevo = actual.nivelVigente(ahora, prefs.getInt(_claveHorasSinDato) ?? 48);
-  if (nuevo == Nivel.sinDato) return null;
-  final guardado = prefs.getString(_claveUltimo);
-  final anterior = guardado == null ? null : nivelDesdeTexto(guardado);
-  await prefs.setString(_claveUltimo, nivelATexto(nuevo));
-  if (prefs.getBool(claveActivos) != true) return null;
-  final minimo = nivelDesdeTexto(prefs.getString(claveDesde) ?? 'alerta');
-  if (!debeAvisar(anterior, nuevo, minimo)) return null;
-  return mensajeDeCambio(anterior, actual, nuevo, ahora);
-}
+AndroidFlutterLocalNotificationsPlugin? get _android =>
+    _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
 
-/// Compara el nivel con el último conocido y, si corresponde, muestra el aviso.
-Future<void> revisarNivel(Actual? actual, SharedPreferences prefs, {DateTime? ahora}) async {
-  if (kIsWeb || actual == null) return;
-  final mensaje = await avisoPendiente(actual, prefs, ahora ?? DateTime.now());
-  if (mensaje == null) return;
-  final (titulo, cuerpo) = mensaje;
-  await _plugin.show(
-    id: 1,
-    title: titulo,
-    body: cuerpo,
+/// Muestra un aviso. Cada tipo usa siempre la misma notificación: un aviso
+/// nuevo reemplaza al anterior del mismo tipo (y el urgente de verdad, al
+/// genérico "hay novedades").
+Future<void> mostrarAviso(Aviso aviso) {
+  final urgente = aviso.tipo == TipoAviso.urgente;
+  final estilo = BigTextStyleInformation(aviso.texto);
+  return _plugin.show(
+    id: urgente ? 1 : 2,
+    title: aviso.titulo,
+    body: aviso.texto,
     notificationDetails: NotificationDetails(
-      android: AndroidNotificationDetails(
-        'nivel_rio',
-        'Nivel del río',
-        channelDescription: 'Avisos cuando cambia el nivel del río Uruguay en Paysandú',
-        importance: Importance.high,
-        priority: Priority.high,
-        styleInformation: BigTextStyleInformation(cuerpo),
-      ),
+      android: urgente
+          // El canal es el de la versión anterior: Android no deja bajarle la importancia a uno existente.
+          ? AndroidNotificationDetails(
+              'nivel_rio',
+              'Aviso urgente',
+              channelDescription: 'Cuando el río Uruguay en Paysandú sube a alerta o a evacuación',
+              importance: Importance.high,
+              priority: Priority.high,
+              styleInformation: estilo,
+            )
+          : AndroidNotificationDetails(
+              'resumen_dia',
+              'Resumen del día',
+              channelDescription: 'Una vez por día, solo con el río en atención o más',
+              importance: Importance.defaultImportance,
+              priority: Priority.defaultPriority,
+              styleInformation: estilo,
+            ),
     ),
   );
+}
+
+/// Revisa el nivel con las reglas compartidas y muestra lo que corresponda.
+/// [origen]: [Origen.app] si la app está a la vista (el resumen no se notifica).
+Future<void> revisarNivel(Actual? actual, SharedPreferences prefs,
+    {DateTime? ahora, Origen origen = Origen.respaldo}) async {
+  if (kIsWeb || actual == null) return;
+  for (final aviso in await decidirAvisos(actual, prefs, ahora ?? DateTime.now(), origen: origen)) {
+    await mostrarAviso(aviso);
+  }
 }
 
 /// Punto de entrada de la tarea en segundo plano (la llama Android, no la app).
@@ -110,9 +83,9 @@ void tareaEnSegundoPlano() {
     try {
       WidgetsFlutterBinding.ensureInitialized();
       final prefs = await SharedPreferences.getInstance();
-      final url = prefs.getString(_claveUrl);
+      final url = prefs.getString(claveUrl);
       if (url == null) return true;
-      await _iniciarPlugin();
+      await iniciarPlugin();
       final datos = await Repositorio(url).cargar(soloActual: true);
       if (!datos.sinConexion) await revisarNivel(datos.actual, prefs);
     } catch (_) {
@@ -126,11 +99,12 @@ class Notificaciones {
   /// Se llama una vez al abrir la app.
   static Future<void> iniciar(Config config, SharedPreferences prefs) async {
     if (kIsWeb) return;
-    await prefs.setString(_claveUrl, config.urlBase);
-    await prefs.setInt(_claveHorasSinDato, config.horasSinDato);
-    await _iniciarPlugin();
+    await prefs.setString(claveUrl, config.urlBase);
+    await prefs.setInt(claveHorasSinDato, config.horasSinDato);
+    await migrarPreferencias(prefs);
+    await iniciarPlugin();
     await Workmanager().initialize(tareaEnSegundoPlano);
-    if (prefs.getBool(claveActivos) == true) await _programar();
+    await aplicar(prefs);
   }
 
   static Future<void> _programar() => Workmanager().registerPeriodicTask(
@@ -141,24 +115,36 @@ class Notificaciones {
         existingWorkPolicy: ExistingPeriodicWorkPolicy.keep,
       );
 
-  /// Activa o desactiva los avisos. Devuelve false si el usuario no dio permiso.
-  /// Si la revisión periódica no se puede programar, lanza la excepción y los
-  /// avisos quedan apagados: no se muestran prendidos si no van a llegar.
-  static Future<bool> activar(bool activar, SharedPreferences prefs) async {
-    if (kIsWeb) return false;
-    if (!activar) {
-      await prefs.setBool(claveActivos, false);
+  /// Programa la revisión de respaldo si hay algún aviso prendido (urgente o
+  /// resumen) y la cancela si no. Si no se puede programar, lanza la excepción.
+  static Future<void> aplicar(SharedPreferences prefs) async {
+    if (kIsWeb) return;
+    if (PreferenciasAvisos.leer(prefs).algunoPrendido) {
+      await _programar();
+    } else {
       await Workmanager().cancelByUniqueName(_tarea);
-      return true;
     }
-    final android = _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
-    final permitido = await android?.requestNotificationsPermission() ?? true;
-    if (!permitido) return false;
-    await _programar();
-    // Se olvida el último nivel para que la próxima revisión avise el nivel de
-    // ahora: sirve de confirmación a quien activa los avisos en plena crecida.
-    await prefs.remove(_claveUltimo);
-    await prefs.setBool(claveActivos, true);
-    return true;
+  }
+
+  /// ¿Puede la app mostrar notificaciones? null si no se sabe.
+  static Future<bool?> permitidas() async {
+    if (kIsWeb) return false;
+    return _android?.areNotificationsEnabled();
+  }
+
+  /// Pide el permiso de notificaciones (Android 13 o superior lo pregunta; en
+  /// los anteriores ya está dado). Devuelve false si no se dio.
+  static Future<bool> pedirPermiso() async {
+    if (kIsWeb) return false;
+    return await _android?.requestNotificationsPermission() ?? true;
+  }
+
+  /// Al abrir la app por primera vez después de instalar o actualizar: como el
+  /// resumen viene prendido, se pide el permiso una sola vez. Si se niega, la
+  /// pestaña Avisos lo muestra y explica cómo arreglarlo; no se vuelve a pedir solo.
+  static Future<void> pedirPermisoInicial(SharedPreferences prefs) async {
+    if (kIsWeb || (prefs.getInt(clavePermisoPedido) ?? 0) >= _versionPermiso) return;
+    await prefs.setInt(clavePermisoPedido, _versionPermiso);
+    if (PreferenciasAvisos.leer(prefs).algunoPrendido && await permitidas() != true) await pedirPermiso();
   }
 }
