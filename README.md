@@ -17,6 +17,7 @@ Ante cualquier duda hay que comunicarse con los canales oficiales (Cecoed Paysan
 - `app/` — app Flutter que lee los JSON publicados.
 
 El detalle del proyecto y sus fases está en [PROMPT_MAESTRO.md](PROMPT_MAESTRO.md).
+Qué se hizo últimamente y qué sigue: [docs/estado-actual.md](docs/estado-actual.md).
 
 ## Cómo correr el lector
 
