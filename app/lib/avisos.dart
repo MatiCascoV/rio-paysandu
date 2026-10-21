@@ -40,6 +40,9 @@ const claveHorasSinDato = 'horas_sin_dato';
 const claveUltimoNivel = 'ultimo_nivel';
 const claveUltimoResumen = 'ultimo_resumen_dia';
 
+/// `generado` de la última publicación con dato que vio este teléfono.
+const claveUltimoGenerado = 'ultimo_nivel_generado';
+
 /// Lo que eligió la persona en la pestaña Avisos.
 class PreferenciasAvisos {
   /// Aviso urgente: apagado en una instalación nueva.
@@ -226,14 +229,18 @@ enum Origen { app, respaldo, push }
 ///
 /// - Urgente: [subidaUrgente] contra el último nivel con dato que vio el
 ///   teléfono, por cualquiera de las tres puertas. Un push urgente
-///   ([subidaInformada]) dice que el servidor vio la subida: si este teléfono
-///   todavía no tiene nivel anterior, se le cree.
+///   ([subidaInformada], enviado a la hora [enviado]) dice que el servidor vio
+///   la subida: si este teléfono todavía no tiene nivel anterior, se le cree; y
+///   si lo último que vio es de bastante antes del envío ([margenEnvio]) y ya
+///   estaba en ese nivel o más, hubo una bajada en el medio que el teléfono no
+///   vio (estaba sin revisar): también se le cree. Si el teléfono ya vio la
+///   publicación de la subida, no se repite.
 /// - Resumen: uno por día de Uruguay, con [resumenListo]. Con la app a la vista
 ///   el dato ya se está viendo: se marca el día sin notificar. Si en la misma
 ///   pasada sale un urgente, se marca el día y queda solo el urgente (ya trae
 ///   la altura; dos notificaciones juntas sobran).
 Future<List<Aviso>> decidirAvisos(Actual actual, SharedPreferences prefs, DateTime ahora,
-    {Origen origen = Origen.respaldo, Nivel? subidaInformada}) async {
+    {Origen origen = Origen.respaldo, Nivel? subidaInformada, DateTime? enviado}) async {
   // Dentro de un mismo isolate (la app abierta y un push en primer plano) las
   // decisiones van de a una: si no, las dos leerían la marca vieja y avisarían
   // las dos. Entre isolates distintos queda una ventana de milisegundos; en el
@@ -245,7 +252,7 @@ Future<List<Aviso>> decidirAvisos(Actual actual, SharedPreferences prefs, DateTi
   }
   _decidiendo = true;
   try {
-    return await _decidir(actual, prefs, ahora, origen, subidaInformada);
+    return await _decidir(actual, prefs, ahora, origen, subidaInformada, enviado);
   } finally {
     _decidiendo = false;
     if (_enEspera.isNotEmpty) _enEspera.removeAt(0).complete();
@@ -263,8 +270,12 @@ void reiniciarTurnoDeAvisos() {
   _enEspera.clear();
 }
 
-Future<List<Aviso>> _decidir(
-    Actual actual, SharedPreferences prefs, DateTime ahora, Origen origen, Nivel? subidaInformada) async {
+/// Tiempo máximo entre que el lector arma una publicación y avisos.yml manda el
+/// push (en la práctica, unos pocos minutos).
+const margenEnvio = Duration(minutes: 20);
+
+Future<List<Aviso>> _decidir(Actual actual, SharedPreferences prefs, DateTime ahora, Origen origen,
+    Nivel? subidaInformada, DateTime? enviado) async {
   await prefs.reload();
   await migrarPreferencias(prefs);
   final p = PreferenciasAvisos.leer(prefs);
@@ -274,8 +285,20 @@ Future<List<Aviso>> _decidir(
   final guardado = prefs.getString(claveUltimoNivel);
   var anterior = guardado == null ? null : nivelDesdeTexto(guardado);
   if (anterior == Nivel.sinDato) anterior = null;
-  if (anterior == null && subidaInformada != null) anterior = Nivel.normal;
+  if (subidaInformada != null) {
+    final visto = DateTime.tryParse(prefs.getString(claveUltimoGenerado) ?? '');
+    if (anterior == null) {
+      anterior = Nivel.normal;
+    } else if (ordenNivel(anterior) >= ordenNivel(subidaInformada) &&
+        enviado != null &&
+        visto != null &&
+        visto.isBefore(enviado.subtract(margenEnvio))) {
+      anterior = subidaInformada == Nivel.evacuacion ? Nivel.alerta : Nivel.atencion;
+    }
+  }
   await prefs.setString(claveUltimoNivel, nivelATexto(nivel));
+  final generado = actual.generado;
+  if (generado != null) await prefs.setString(claveUltimoGenerado, generado.toUtc().toIso8601String());
 
   final avisos = <Aviso>[];
   if (p.urgente && subidaUrgente(anterior, nivel, p.desde)) avisos.add(avisoUrgente(actual, nivel));
@@ -332,18 +355,23 @@ typedef BajarDatos = Future<Datos> Function(String urlBase);
 /// archivo nuevo. En total, poco más de un minuto.
 const esperasPush = [Duration(seconds: 20), Duration(seconds: 45)];
 
-/// ¿El dato bajado todavía no muestra lo que anunció el push?
-bool _atrasado(MensajePush m, Actual a) => m.tipo == TipoAviso.urgente
-    ? ordenNivel(a.nivel) < ordenNivel(m.nivel!)
-    : resumenListo(a, a.nivel) == null;
+/// ¿El dato bajado todavía no muestra lo que anunció el push? Si se armó
+/// después del envío ([enviado], la hora de FCM), no: el río cambió después
+/// (por ejemplo, un push viejo que llega al prender el teléfono).
+bool _atrasado(MensajePush m, Actual a, DateTime? enviado) {
+  final generado = a.generado;
+  if (enviado != null && generado != null && generado.isAfter(enviado)) return false;
+  return m.tipo == TipoAviso.urgente ? ordenNivel(a.nivel) < ordenNivel(m.nivel!) : resumenListo(a, a.nivel) == null;
+}
 
 /// Qué mostrar al recibir un push (en primer plano, en segundo plano o con la
 /// app cerrada). Valida el mensaje, mira las preferencias de este teléfono,
 /// baja actual.json y decide con [decidirAvisos], igual que el respaldo.
 /// Si no se consigue el dato: para el urgente, [avisoUrgenteSinDato]; para el
-/// resumen, nada.
+/// resumen, nada. [enviado] es la hora de envío que pone FCM (no es texto del
+/// mensaje); sin ella se decide igual, solo con el nivel.
 Future<List<Aviso>> avisosDePush(Map<String, Object?> datos, SharedPreferences prefs, BajarDatos bajar,
-    {DateTime Function() reloj = DateTime.now, List<Duration> esperas = esperasPush}) async {
+    {DateTime? enviado, DateTime Function() reloj = DateTime.now, List<Duration> esperas = esperasPush}) async {
   final mensaje = validarMensajePush(datos);
   if (mensaje == null) return const [];
   await prefs.reload();
@@ -364,14 +392,14 @@ Future<List<Aviso>> avisosDePush(Map<String, Object?> datos, SharedPreferences p
         if (!d.sinConexion) actual = d.actual; // la copia guardada es vieja: no sirve para avisar
       } catch (_) {}
     }
-    if ((actual != null && !_atrasado(mensaje, actual)) || intento >= esperas.length) break;
+    if ((actual != null && !_atrasado(mensaje, actual, enviado)) || intento >= esperas.length) break;
     await Future<void>.delayed(esperas[intento]);
   }
   if (actual == null) return urgente ? const [avisoUrgenteSinDato] : const [];
 
   final avisos = await decidirAvisos(actual, prefs, reloj(),
-      origen: Origen.push, subidaInformada: urgente ? mensaje.nivel : null);
-  if (urgente && _atrasado(mensaje, actual) && !avisos.any((a) => a.tipo == TipoAviso.urgente)) {
+      origen: Origen.push, subidaInformada: urgente ? mensaje.nivel : null, enviado: enviado);
+  if (urgente && _atrasado(mensaje, actual, enviado) && !avisos.any((a) => a.tipo == TipoAviso.urgente)) {
     return [avisoUrgenteSinDato, ...avisos];
   }
   return avisos;

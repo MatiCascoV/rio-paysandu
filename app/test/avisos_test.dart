@@ -361,6 +361,58 @@ void main() {
       expect(tipos(await decidirAvisos(alerta, prefs, ahora)), [TipoAviso.urgente]);
     });
 
+    group('con la hora de envío de FCM', () {
+      final enviado = hora('2026-10-09T08:03'); // la publicación de la subida es de las 08:00
+
+      test('si el teléfono ya vio la publicación de la subida, el push no la repite', () async {
+        final prefs = await prefsCon({...todoPrendido, claveUltimoNivel: 'atencion'});
+        expect(tipos(await decidirAvisos(alerta, prefs, ahora)), [TipoAviso.urgente]); // la vio el respaldo
+        expect(
+            await avisosDePush(urgente, prefs, (_) async => Datos(actual: alerta),
+                enviado: enviado, reloj: () => ahora, esperas: const []),
+            isEmpty);
+      });
+
+      test('una bajada que el teléfono no vio no hace perder la subida siguiente', () async {
+        // Lo último que vio fue alerta a las 03:00; el río bajó y volvió a subir sin que revisara.
+        final prefs = await prefsCon(
+            {...todoPrendido, claveUltimoNivel: 'alerta', claveUltimoGenerado: '2026-10-09T06:00:00.000Z'});
+        final avisos = await avisosDePush(urgente, prefs, (_) async => Datos(actual: alerta),
+            enviado: enviado, reloj: () => ahora, esperas: const []);
+        expect(avisos.single.titulo, 'Río Uruguay: subió a ALERTA');
+        // Sin la hora de envío no se puede saber: no se arriesga a repetir.
+        final otro = await prefsCon(
+            {...todoPrendido, claveUltimoNivel: 'alerta', claveUltimoGenerado: '2026-10-09T06:00:00.000Z'});
+        expect(
+            await avisosDePush(urgente, otro, (_) async => Datos(actual: alerta), reloj: () => ahora, esperas: const []),
+            isEmpty);
+      });
+
+      test('un push viejo (teléfono apagado) con el río ya bajo no avisa nada', () async {
+        final prefs = await prefsCon({...todoPrendido, claveUltimoNivel: 'atencion'});
+        final hoy = actualEn('2026-10-16T08:00', nivel: 'normal', prefectura: '2026-10-16T06:00');
+        var bajadas = 0;
+        final avisos = await avisosDePush(urgente, prefs, (_) async {
+          bajadas++;
+          return Datos(actual: hoy);
+        }, enviado: enviado, reloj: () => hora('2026-10-16T08:05'), esperas: const [Duration.zero]);
+        expect(avisos, isEmpty);
+        expect(bajadas, 1); // el dato es posterior al envío: no hay que esperar
+      });
+
+      test('el dato anterior al envío y más bajo se vuelve a bajar y, si sigue, avisa sin dato', () async {
+        final prefs = await prefsCon({...todoPrendido, claveUltimoNivel: 'atencion'});
+        final viejo = actualEn('2026-10-09T07:30', nivel: 'atencion', prefectura: '2026-10-08T06:00');
+        var bajadas = 0;
+        final avisos = await avisosDePush(urgente, prefs, (_) async {
+          bajadas++;
+          return Datos(actual: viejo);
+        }, enviado: enviado, reloj: () => ahora, esperas: const [Duration.zero]);
+        expect(bajadas, 2);
+        expect(avisos, [avisoUrgenteSinDato]);
+      });
+    });
+
     test('un teléfono sin nivel anterior le cree al push urgente; el respaldo no', () async {
       final prefs = await prefsCon(todoPrendido);
       expect(await decidirAvisos(alerta, prefs, ahora), isEmpty);

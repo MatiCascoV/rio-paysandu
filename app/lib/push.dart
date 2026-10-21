@@ -29,16 +29,18 @@ Future<void> manejarPushEnSegundoPlano(RemoteMessage mensaje) async {
   try {
     DartPluginRegistrant.ensureInitialized();
     await Firebase.initializeApp();
-    await atenderPush(mensaje.data);
+    await atenderPush(mensaje);
   } catch (_) {
     // Si falla, el aviso llega con la revisión local de respaldo.
   }
 }
 
-/// Valida el mensaje, baja el dato y muestra lo que corresponda.
-Future<void> atenderPush(Map<String, Object?> datos) async {
+/// Valida el mensaje, baja el dato y muestra lo que corresponda. Del mensaje
+/// solo se usan sus datos validados y la hora de envío que pone FCM.
+Future<void> atenderPush(RemoteMessage mensaje) async {
   final prefs = await SharedPreferences.getInstance();
-  final avisos = await avisosDePush(datos, prefs, (url) => Repositorio(url).cargar(soloActual: true));
+  final avisos = await avisosDePush(mensaje.data, prefs, (url) => Repositorio(url).cargar(soloActual: true),
+      enviado: mensaje.sentTime);
   if (avisos.isEmpty) return;
   await iniciarPlugin();
   for (final aviso in avisos) {
@@ -109,7 +111,7 @@ class Push {
     await Firebase.initializeApp();
     FirebaseMessaging.onBackgroundMessage(manejarPushEnSegundoPlano);
     // Con la app abierta, el push llega acá (y se muestra igual: puede no estar a la vista).
-    FirebaseMessaging.onMessage.listen((m) => unawaited(atenderPush(m.data).catchError((_) {})));
+    FirebaseMessaging.onMessage.listen((m) => unawaited(atenderPush(m).catchError((_) {})));
     disponible = true;
     unawaited(sincronizar(prefs));
   }
