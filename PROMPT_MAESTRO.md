@@ -3,6 +3,9 @@
 > Guardá este archivo en la raíz del repositorio. Al empezar cada sesión con el asistente de código, pedile:
 > "Leé PROMPT_MAESTRO.md y trabajemos en la Fase N". Avanzá **una fase por vez** y no pases a la siguiente
 > hasta cumplir sus criterios de aceptación.
+>
+> **Estado y próximas tareas:** leé primero [docs/estado-actual.md](docs/estado-actual.md) (qué se hizo,
+> qué falta y en qué orden) y actualizalo al terminar cada tarea.
 
 ---
 
