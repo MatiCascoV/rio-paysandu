@@ -402,5 +402,6 @@
 {"fecha": "2026-10-21T22:00:00-03:00", "valor_m": 5.51, "fuente": "estacion"},
 {"fecha": "2026-10-21T22:30:00-03:00", "valor_m": 5.51, "fuente": "estacion"},
 {"fecha": "2026-10-21T23:00:00-03:00", "valor_m": 5.5, "fuente": "estacion"},
+{"fecha": "2026-10-21T23:30:00-03:00", "valor_m": 5.51, "fuente": "estacion"},
 {"fecha": "2026-10-22T00:00:00-03:00", "valor_m": 5.5, "fuente": "estacion"}
 ]
