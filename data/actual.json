@@ -1,9 +1,9 @@
 {
-  "generado": "2026-10-24T12:09:19-03:00",
+  "generado": "2026-10-24T12:21:05-03:00",
   "cero": "Local",
   "altura_actual": {
     "valor_m": 5.32,
-    "fecha": "2026-10-24T11:00:00-03:00",
+    "fecha": "2026-10-24T12:00:00-03:00",
     "variacion_m": -0.01,
     "periodo": "30 min",
     "estado": "baja",
@@ -27,7 +27,5 @@
     "url_informe": "https://caru.org.uy/nuevositio/wp-content/uploads/2026/10/20261022-Crecida.pdf"
   },
   "nivel": "alerta",
-  "avisos": [
-    "pronostico_no_disponible"
-  ]
+  "avisos": []
 }
