@@ -1,5 +1,5 @@
 {
-  "generado": "2026-10-24T23:19:04-03:00",
+  "generado": "2026-10-25T00:00:01-03:00",
   "cero": "Local",
   "altura_actual": {
     "valor_m": 5.22,
@@ -19,7 +19,7 @@
     "url": "http://190.0.152.194:8080/alturas/web/user/altura/24"
   },
   "pronostico": {
-    "vigente": true,
+    "vigente": false,
     "informe_fecha": "2026-10-22",
     "altura_esperada_m": 5.48,
     "texto": "Debido al caudal de erogación pronosticado, se espera que continúe el descenso leve y lento de los niveles, con posibles variaciones hacia aguas abajo producto de las oscilaciones del Río de la Plata.",
