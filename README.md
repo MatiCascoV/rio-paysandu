@@ -16,6 +16,9 @@ Ante cualquier duda hay que comunicarse con los canales oficiales (Cecoed Paysan
   y los tests del lector y de la app.
 - `app/` — app Flutter que lee los JSON publicados.
 
+**`main` no acepta push directo** (desde el 26/10/2026): todo entra por pull request. Lo exige el ruleset
+`proteger-main` (Settings → Rules → Rulesets), sin aprobaciones obligatorias y sin excepciones.
+
 El detalle del proyecto y sus fases está en [PROMPT_MAESTRO.md](PROMPT_MAESTRO.md).
 Qué se hizo últimamente y qué sigue: [docs/estado-actual.md](docs/estado-actual.md).
 
@@ -236,9 +239,10 @@ firmado con la clave de depuración). Igual conviene correr `flutter test` y `fl
     evidencia). `avisos.yml` mandó un resumen al tema de prueba `prueba-resumen-paysandu` (corrida
     40333610759) y la re-corrida de esa misma corrida terminó en rojo sin enviar. Detalle en
     [docs/fase-4-paso-6-guia.md](docs/fase-4-paso-6-guia.md).
+  - 26/10/2026: el ruleset `proteger-main` exige pull request para entrar a `main` (0 aprobaciones, sin
+    bypass): `main` ya no acepta push directo.
   - Pendiente del paso 6: activar los registros de auditoría de los canjes de token (7b), la prueba de que
-    Google rechaza otra rama (10b), que la regla `proteger-main` exija PR, y verificar que el mensaje llegó
-    al Redmi.
+    Google rechaza otra rama (10b), y verificar que el mensaje llegó al Redmi.
   - Falta: que el lector lance `avisos.yml` (hoy solo se lanza a mano), el urgente de evacuación en dos
     mensajes, la prueba completa (paso 8) y una semana en los temas reales.
   - 17/10/2026: arreglados los avisos locales en el APK de release (la reducción de recursos borraba el ícono

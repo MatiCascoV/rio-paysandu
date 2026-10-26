@@ -11,8 +11,11 @@ Escrita el 21/10/2026 para retomar al día siguiente. Diseño completo en
 > (`projects/mi-rio-uy-8ca81/messages/8578147430559888155`); paso 10, el intento 2 terminó en rojo con "No se
 > envía: es una re-corrida".
 >
-> **Quedan pendientes:** el 7b (registros de auditoría, no activados), el 10b (`probar-wif`, sin hacer), que la
-> regla `proteger-main` exija PR, y verificar que el mensaje llegó al Redmi.
+> También el 26/10/2026, el ruleset `proteger-main` pasó a exigir pull request para entrar a `main` (0
+> aprobaciones, sin bypass): `main` ya no acepta push directo.
+>
+> **Quedan pendientes:** el 7b (registros de auditoría, no activados), el 10b (`probar-wif`, sin hacer) y
+> verificar que el mensaje llegó al Redmi.
 >
 > Lo de abajo queda como estaba al escribir la guía, salvo las notas del paso 4 y del paso 7.
 
