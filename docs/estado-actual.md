@@ -65,7 +65,7 @@ Detalle completo en `docs/fase-4-avisos-push.md`.
 | 6 | Identidad federada en Google Cloud | Hecho (26/10/2026; ver `docs/fase-4-paso-6-guia.md`) |
 | 7 | `lector/avisos.py` y `avisos.yml` | Hecho; mandó un resumen real a `prueba-resumen-paysandu` (26/10/2026). El urgente sigue sin probar contra FCM |
 | 8 | Prueba completa | Pendiente (tareas D y E) |
-| 9 | README: ver, cortar y arreglar envíos | Sección "Avisos push" del README escrita (rama `fase-4-docs-paso-6`) |
+| 9 | README: ver, cortar y arreglar envíos | Sección "Avisos push" del README escrita (26/10/2026) |
 
 ## Tareas pendientes, en orden
 
