@@ -323,6 +323,7 @@
 {"fecha": "2026-10-24T05:00:00-03:00", "valor_m": 5.37, "fuente": "estacion"},
 {"fecha": "2026-10-24T05:30:00-03:00", "valor_m": 5.37, "fuente": "estacion"},
 {"fecha": "2026-10-24T06:00:00-03:00", "valor_m": 5.37, "fuente": "estacion"},
+{"fecha": "2026-10-24T06:00:00-03:00", "valor_m": 5.4, "fuente": "prefectura"},
 {"fecha": "2026-10-24T06:30:00-03:00", "valor_m": 5.37, "fuente": "estacion"},
 {"fecha": "2026-10-24T07:00:00-03:00", "valor_m": 5.36, "fuente": "estacion"},
 {"fecha": "2026-10-24T07:30:00-03:00", "valor_m": 5.37, "fuente": "estacion"},
@@ -371,6 +372,7 @@
 {"fecha": "2026-10-25T05:00:00-03:00", "valor_m": 5.15, "fuente": "estacion"},
 {"fecha": "2026-10-25T05:30:00-03:00", "valor_m": 5.15, "fuente": "estacion"},
 {"fecha": "2026-10-25T06:00:00-03:00", "valor_m": 5.14, "fuente": "estacion"},
+{"fecha": "2026-10-25T06:00:00-03:00", "valor_m": 5.2, "fuente": "prefectura"},
 {"fecha": "2026-10-25T06:30:00-03:00", "valor_m": 5.13, "fuente": "estacion"},
 {"fecha": "2026-10-25T07:00:00-03:00", "valor_m": 5.13, "fuente": "estacion"},
 {"fecha": "2026-10-25T07:30:00-03:00", "valor_m": 5.12, "fuente": "estacion"},
@@ -419,6 +421,7 @@
 {"fecha": "2026-10-26T05:00:00-03:00", "valor_m": 4.95, "fuente": "estacion"},
 {"fecha": "2026-10-26T05:30:00-03:00", "valor_m": 4.94, "fuente": "estacion"},
 {"fecha": "2026-10-26T06:00:00-03:00", "valor_m": 4.94, "fuente": "estacion"},
+{"fecha": "2026-10-26T06:00:00-03:00", "valor_m": 5.0, "fuente": "prefectura"},
 {"fecha": "2026-10-26T06:30:00-03:00", "valor_m": 4.94, "fuente": "estacion"},
 {"fecha": "2026-10-26T07:00:00-03:00", "valor_m": 4.93, "fuente": "estacion"}
 ]
