@@ -184,7 +184,8 @@ jobs:
     needs: decidir
     if: needs.decidir.outputs.avisar == 'true'
     runs-on: ubuntu-latest
-    # Revisar + autenticar + hasta dos envíos: con 5 minutos sobra.
+    # Revisar + autenticar + hasta tres envíos (15 s como máximo cada uno): con 5
+    # minutos sobra.
     timeout-minutes: 5
     permissions:
       id-token: write # pedir el token OIDC que Google cambia por un token de FCM; sin contents
@@ -339,51 +340,58 @@ jobs:
           # protege contra un robo del token, que puede mandar un mensaje con texto a
           # cualquier tema; lo que acota un robo es que el token dura 300 s y solo existe
           # en este trabajo. jq arma el JSON (comillas y escapes incluidos); los valores
-          # de data son textos, como pide FCM.
-          # - Urgente alerta: al tema de alerta. Urgente evacuación: a quien esté en el
-          #   tema de alerta O en el de evacuación; cada teléfono está en uno solo y la
-          #   condición entrega una sola vez por teléfono. Prioridad alta para que
-          #   Android despierte la app.
+          # de data son textos, como pide FCM. Todos van a un tema directo, nunca a una
+          # condición de FCM.
+          # - Urgente alerta: un mensaje al tema de alerta.
+          # - Urgente evacuación: DOS mensajes con los mismos datos, uno al tema de
+          #   evacuación y otro al de alerta. La app deja cada teléfono en un solo tema
+          #   urgente. Si quedara en los dos (sincronización a medias), le llegan dos
+          #   pushes, pero la app no repite el aviso (ultimo_nivel). Antes era una
+          #   condición ('alerta' in topics || 'evacuacion' in topics) y en la prueba
+          #   del 21/10 tardó 42 s, contra menos de 1 s de un tema directo.
+          # - Los urgentes, con prioridad alta para que Android despierte la app.
           # - Resumen: al tema de resumen, prioridad normal (no es urgente).
-          cuerpo_urgente=""
-          destino_urgente=""
-          if [ "$URGENTE" = alerta ]; then
-            destino_urgente="topic $tema_alerta"
-            cuerpo_urgente=$(jq -n --arg tema "$tema_alerta" \
+          cuerpo_evacuacion=""
+          cuerpo_alerta=""
+          cuerpo_resumen=""
+          if [ "$URGENTE" != ninguno ]; then
+            # El mismo nivel (alerta o evacuacion) en todos los mensajes urgentes.
+            cuerpo_alerta=$(jq -n --arg tema "$tema_alerta" --arg nivel "$URGENTE" \
               '{message: {topic: $tema,
-                          data: {tipo: "urgente", nivel: "alerta", ciudad: "paysandu"},
+                          data: {tipo: "urgente", nivel: $nivel, ciudad: "paysandu"},
                           android: {priority: "HIGH"}}}')
-          elif [ "$URGENTE" = evacuacion ]; then
-            condicion="'$tema_alerta' in topics || '$tema_evacuacion' in topics"
-            destino_urgente="condition $condicion"
-            cuerpo_urgente=$(jq -n --arg condicion "$condicion" \
-              '{message: {condition: $condicion,
+          fi
+          if [ "$URGENTE" = evacuacion ]; then
+            cuerpo_evacuacion=$(jq -n --arg tema "$tema_evacuacion" \
+              '{message: {topic: $tema,
                           data: {tipo: "urgente", nivel: "evacuacion", ciudad: "paysandu"},
                           android: {priority: "HIGH"}}}')
           fi
-          cuerpo_resumen=""
-          destino_resumen=""
           if [ "$RESUMEN" = true ]; then
-            destino_resumen="topic $tema_resumen"
             cuerpo_resumen=$(jq -n --arg tema "$tema_resumen" --arg fuente "$FUENTE" \
               '{message: {topic: $tema,
                           data: {tipo: "resumen", fuente: $fuente, ciudad: "paysandu"},
                           android: {priority: "NORMAL"}}}')
           fi
 
-          # Un envío: $1 = urgente|resumen (nombre de las salidas), $2 = destino (para
-          # el registro), $3 = cuerpo. Devuelve 0 si FCM lo aceptó.
+          # Un envío: $1 = evacuacion|alerta|resumen (nombre de las salidas), $2 = tema
+          # (para el registro y el resumen), $3 = cuerpo. Devuelve 0 si FCM lo aceptó.
+          # destino_<clave> se escribe antes de mandar: si el paso se corta en el medio,
+          # el resumen sabe que este mensaje se empezó a mandar.
           # El encabezado con el token entra por un descriptor (printf es interno de
           # bash), así no aparece en la línea de comandos de curl que ve cualquier proceso,
           # ni queda en ningún archivo. La respuesta de FCM (sin el token) va a RUNNER_TEMP,
           # fuera del workspace.
           # Sin reintentos: si se cortó después de que FCM lo aceptó, reintentar
           # duplicaría el aviso; la revisión local queda de respaldo.
+          # Tiempos: 10 s para conectar y 15 s en total por mensaje (FCM contesta en
+          # menos de 1 s); con tres mensajes son 45 s como máximo.
           enviar_uno() {
-            local clave="$1" destino="$2" cuerpo="$3"
+            local clave="$1" tema="$2" cuerpo="$3"
             local respuesta codigo=0 http nombre error
+            echo "destino_$clave=topic $tema" >> "$GITHUB_OUTPUT"
             respuesta=$(mktemp -p "$RUNNER_TEMP")
-            http=$(curl -sS --fail-with-body --max-time 30 \
+            http=$(curl -sS --fail-with-body --connect-timeout 10 --max-time 15 \
               -X POST "https://fcm.googleapis.com/v1/projects/$PROYECTO/messages:send" \
               -H @<(printf 'Authorization: Bearer %s\n' "$token") \
               -H "Content-Type: application/json; charset=UTF-8" \
@@ -394,33 +402,52 @@ jobs:
             # De la respuesta solo se guardan caracteres inofensivos y una línea: va a
             # GITHUB_OUTPUT y al resumen.
             if [ "$codigo" -eq 0 ]; then
+              # || true: una respuesta que no es JSON no corta el paso (ni con pipefail).
               nombre=$(jq -r '.name // empty' "$respuesta" 2>/dev/null \
-                | head -c 300 | tr -cd 'A-Za-z0-9/:._-')
+                | head -c 300 | tr -cd 'A-Za-z0-9/:._-') || true
               rm -f "$respuesta"
               echo "resultado_$clave=enviado (${nombre:-sin name en la respuesta})" >> "$GITHUB_OUTPUT"
-              echo "Enviado el $clave a $destino: ${nombre:-sin name en la respuesta}"
+              echo "Enviado el mensaje al tema $tema: ${nombre:-sin name en la respuesta}"
               return 0
+            fi
+            # Sin respuesta HTTP no se sabe si FCM lo recibió: tiempo agotado (28),
+            # respuesta vacía (52), error al mandar (55) o al recibir (56), o cualquier
+            # otro corte sin código HTTP (000). Salvo que no se haya podido ni
+            # resolver el nombre (6) ni conectar (7): ahí seguro que no salió. Cuenta
+            # como falla (la corrida queda en rojo) y no se reintenta.
+            if { [[ "$codigo" =~ ^(28|52|55|56)$ ]] || [ "$http" = 000 ]; } \
+              && ! [[ "$codigo" =~ ^(6|7)$ ]]; then
+              rm -f "$respuesta"
+              echo "resultado_$clave=no se sabe si salió (curl $codigo, sin respuesta HTTP)" >> "$GITHUB_OUTPUT"
+              echo "::error::No se sabe si el mensaje al tema $tema salió (curl $codigo, sin respuesta HTTP); no se reintenta para no duplicarlo"
+              return 1
             fi
             # Solo el código HTTP y el error que devuelve FCM, recortado a una línea;
             # nunca encabezados ni el token.
             error=$(jq -r '.error | "\(.status // "") \(.message // "")"' "$respuesta" 2>/dev/null \
-              | head -c 300 | tr -cd 'A-Za-z0-9 .,:;_()/-')
+              | head -c 300 | tr -cd 'A-Za-z0-9 .,:;_()/-') || true
             rm -f "$respuesta"
             echo "resultado_$clave=falló (curl $codigo, HTTP $http: ${error:-sin detalle})" >> "$GITHUB_OUTPUT"
-            echo "::error::El envío del $clave a FCM falló (curl $codigo, HTTP $http): ${error:-sin detalle}"
+            echo "::error::El envío al tema $tema falló (curl $codigo, HTTP $http): ${error:-sin detalle}"
             return 1
           }
 
-          # Primero el urgente, después el resumen, cada uno una sola vez. Si uno falla
-          # igual se intenta el otro (son temas distintos) y al final el paso falla.
+          # Primero los urgentes, después el resumen, cada mensaje una sola vez. Con
+          # evacuación, primero el tema de evacuación: quien eligió "Solo evacuación" no
+          # recibió ningún aviso antes, y quien está en alerta ya tuvo el de alerta.
+          # Si un mensaje falla igual se intentan los demás (son temas distintos; si un
+          # teléfono quedara en los dos temas urgentes, la app no repite el aviso) y al
+          # final el paso falla: la corrida queda en rojo y el resumen dice cuál salió,
+          # cuál no y de cuál no se sabe.
           fallos=0
-          if [ -n "$cuerpo_urgente" ]; then
-            echo "destino_urgente=$destino_urgente" >> "$GITHUB_OUTPUT"
-            enviar_uno urgente "$destino_urgente" "$cuerpo_urgente" || fallos=$((fallos + 1))
+          if [ -n "$cuerpo_evacuacion" ]; then
+            enviar_uno evacuacion "$tema_evacuacion" "$cuerpo_evacuacion" || fallos=$((fallos + 1))
+          fi
+          if [ -n "$cuerpo_alerta" ]; then
+            enviar_uno alerta "$tema_alerta" "$cuerpo_alerta" || fallos=$((fallos + 1))
           fi
           if [ -n "$cuerpo_resumen" ]; then
-            echo "destino_resumen=$destino_resumen" >> "$GITHUB_OUTPUT"
-            enviar_uno resumen "$destino_resumen" "$cuerpo_resumen" || fallos=$((fallos + 1))
+            enviar_uno resumen "$tema_resumen" "$cuerpo_resumen" || fallos=$((fallos + 1))
           fi
           unset token
           if [ "$fallos" -gt 0 ]; then
@@ -437,20 +464,31 @@ jobs:
           MOTIVO_CONFIG: ${{ steps.config.outputs.motivo }}
           RESULTADO_AUTH: ${{ steps.auth.outcome }}
           RESULTADO_ENVIAR: ${{ steps.enviar.outcome }}
+          PRUEBA: ${{ inputs.prueba }}
           URGENTE: ${{ needs.decidir.outputs.urgente }}
           RESUMEN: ${{ needs.decidir.outputs.resumen }}
-          DESTINO_URGENTE: ${{ steps.enviar.outputs.destino_urgente }}
-          RESULTADO_URGENTE: ${{ steps.enviar.outputs.resultado_urgente }}
+          DESTINO_EVACUACION: ${{ steps.enviar.outputs.destino_evacuacion }}
+          RESULTADO_EVACUACION: ${{ steps.enviar.outputs.resultado_evacuacion }}
+          DESTINO_ALERTA: ${{ steps.enviar.outputs.destino_alerta }}
+          RESULTADO_ALERTA: ${{ steps.enviar.outputs.resultado_alerta }}
           DESTINO_RESUMEN: ${{ steps.enviar.outputs.destino_resumen }}
           RESULTADO_RESUMEN: ${{ steps.enviar.outputs.resultado_resumen }}
         run: |
-          # Lo que no tiene el formato esperado no se copia al resumen. Los destinos
-          # posibles son pocos y fijos; los resultados los arma el paso de envío solo
+          # Los temas, con la misma regla que el paso de envío: solo un "false"
+          # explícito va a los temas reales.
+          if [ "$PRUEBA" = "false" ]; then prefijo=""; else prefijo="prueba-"; fi
+          tema_evacuacion="${prefijo}evacuacion-paysandu"
+          tema_alerta="${prefijo}alerta-paysandu"
+          tema_resumen="${prefijo}resumen-paysandu"
+
+          # Lo que no tiene el formato esperado no se copia al resumen. Cada destino
+          # tiene un único valor posible; los resultados los arma el paso de envío solo
           # con caracteres inofensivos.
           [[ "$URGENTE" =~ ^(alerta|evacuacion|ninguno)$ ]] || URGENTE="inválido"
           [[ "$RESUMEN" =~ ^(true|false)$ ]] || RESUMEN="inválido"
-          [[ "$DESTINO_URGENTE" =~ ^(topic\ (prueba-)?alerta-paysandu|condition\ \'(prueba-)?alerta-paysandu\'\ in\ topics\ \|\|\ \'(prueba-)?evacuacion-paysandu\'\ in\ topics)$ ]] || DESTINO_URGENTE=""
-          [[ "$DESTINO_RESUMEN" =~ ^topic\ (prueba-)?resumen-paysandu$ ]] || DESTINO_RESUMEN=""
+          [ "$DESTINO_EVACUACION" = "topic $tema_evacuacion" ] || DESTINO_EVACUACION=""
+          [ "$DESTINO_ALERTA" = "topic $tema_alerta" ] || DESTINO_ALERTA=""
+          [ "$DESTINO_RESUMEN" = "topic $tema_resumen" ] || DESTINO_RESUMEN=""
 
           # Lo que pasó con un mensaje: $1 = destino, $2 = resultado del envío.
           contar() {
@@ -471,19 +509,34 @@ jobs:
             fi
           }
 
+          # Una línea por mensaje: $1 = tema, $2 = destino, $3 = resultado del envío.
+          mensaje() {
+            echo "  - Tema \`$1\`: $(contar "$2" "$3")"
+          }
+
           {
             echo "### Envío"
             echo
-            if [ "$URGENTE" = ninguno ]; then
-              echo "- Urgente: no corresponde"
-            else
-              echo "- Urgente ($URGENTE): $(contar "$DESTINO_URGENTE" "$RESULTADO_URGENTE")"
-              if [ -n "$DESTINO_URGENTE" ]; then echo "  - Destino: \`$DESTINO_URGENTE\`"; fi
-            fi
-            if [ "$RESUMEN" = false ]; then
-              echo "- Resumen del día: no corresponde"
-            else
-              echo "- Resumen del día: $(contar "$DESTINO_RESUMEN" "$RESULTADO_RESUMEN")"
-              if [ -n "$DESTINO_RESUMEN" ]; then echo "  - Destino: \`$DESTINO_RESUMEN\`"; fi
-            fi
+            case "$URGENTE" in
+              ninguno)
+                echo "- Urgente: no corresponde" ;;
+              alerta)
+                echo "- Urgente (alerta), un mensaje:"
+                mensaje "$tema_alerta" "$DESTINO_ALERTA" "$RESULTADO_ALERTA" ;;
+              evacuacion)
+                echo "- Urgente (evacuacion), dos mensajes con los mismos datos, uno por tema urgente:"
+                mensaje "$tema_evacuacion" "$DESTINO_EVACUACION" "$RESULTADO_EVACUACION"
+                mensaje "$tema_alerta" "$DESTINO_ALERTA" "$RESULTADO_ALERTA" ;;
+              *)
+                echo "- Urgente: no: la decisión que llegó de decidir es inválida" ;;
+            esac
+            case "$RESUMEN" in
+              false)
+                echo "- Resumen del día: no corresponde" ;;
+              true)
+                echo "- Resumen del día, un mensaje:"
+                mensaje "$tema_resumen" "$DESTINO_RESUMEN" "$RESULTADO_RESUMEN" ;;
+              *)
+                echo "- Resumen del día: no: la decisión que llegó de decidir es inválida" ;;
+            esac
           } >> "$GITHUB_STEP_SUMMARY"

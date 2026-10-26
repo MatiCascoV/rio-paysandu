@@ -160,15 +160,16 @@ el prefijo antes de enviar: no puede mandar a los temas reales):
 
 ```powershell
 .\herramientas\enviar_aviso_prueba.ps1 -Tipo urgente -Nivel alerta      # tema prueba-alerta-paysandu, HIGH
-.\herramientas\enviar_aviso_prueba.ps1 -Tipo urgente -Nivel evacuacion  # condición de los dos temas urgentes de prueba, HIGH
+.\herramientas\enviar_aviso_prueba.ps1 -Tipo urgente -Nivel evacuacion  # dos mensajes: prueba-evacuacion-paysandu y prueba-alerta-paysandu, HIGH
 .\herramientas\enviar_aviso_prueba.ps1 -Tipo resumen -Fuente prefectura # tema prueba-resumen-paysandu, NORMAL
 ```
 
 Usa la sesión de gcloud del dueño (`$env:LOCALAPPDATA\google-cloud-sdk-zip\google-cloud-sdk\bin\gcloud.cmd`,
 `gcloud auth login`), el proyecto `mi-rio-uy-8ca81` y el encabezado `x-goog-user-project`, como el de la prueba
 de entrega. Diferencias con `herramientas/enviar_push_prueba.ps1` (en `fase-4-prueba-entrega`, que no se tocó):
-el destino es uno de los temas `prueba-*` o, para el urgente de evacuación, la misma condición que `avisos.yml`
-(`'prueba-alerta-paysandu' in topics || 'prueba-evacuacion-paysandu' in topics`); los datos son los de la app
+el destino es siempre un tema `prueba-*` directo y, para el urgente de evacuación, son dos mensajes iguales,
+como en `avisos.yml` (primero a `prueba-evacuacion-paysandu` y después a `prueba-alerta-paysandu`; antes era una
+condición de FCM, que en la prueba del 21/10 tardó 42 s); los datos son los de la app
 (`tipo`, `nivel` o `fuente`, `ciudad`); la prioridad sale del tipo, y no hay `-ConTexto`: un mensaje con texto
 lo mostraría Android solo y no probaría nada de la app.
 

@@ -296,6 +296,10 @@ Future<List<Aviso>> _decidir(Actual actual, SharedPreferences prefs, DateTime ah
       anterior = subidaInformada == Nivel.evacuacion ? Nivel.alerta : Nivel.atencion;
     }
   }
+  // Esta marca es la que deduplica: un segundo push del mismo urgente ve el nivel ya
+  // guardado y no avisa. Es requisito del envío en dos mensajes de avisos.yml (un
+  // teléfono que quedó en los dos temas urgentes recibe los dos). Lo prueba "el mismo
+  // urgente por dos temas (dos pushes iguales) avisa una sola vez" en avisos_test.dart.
   await prefs.setString(claveUltimoNivel, nivelATexto(nivel));
   final generado = actual.generado;
   if (generado != null) await prefs.setString(claveUltimoGenerado, generado.toUtc().toIso8601String());
@@ -428,8 +432,10 @@ const temasDePrueba = bool.fromEnvironment('TEMAS_PRUEBA');
 String _tema(String tipo, bool prueba) => '${prueba ? 'prueba-' : ''}$tipo-$ciudad';
 
 /// "Desde alerta" → alerta-paysandu; "Solo evacuación" → evacuacion-paysandu;
-/// resumen → resumen-paysandu. Un solo tema urgente por teléfono: así la
-/// condición del urgente de evacuación le llega una sola vez.
+/// resumen → resumen-paysandu. Un solo tema urgente por teléfono: avisos.yml
+/// manda el urgente de evacuación en dos mensajes (uno a cada tema urgente) y
+/// así le llega uno solo. Si quedara en los dos (sincronización a medias), le
+/// llegan dos pushes, pero la app no repite el aviso (claveUltimoNivel, en _decidir).
 Set<String> temasDeseados(PreferenciasAvisos p, {bool prueba = temasDePrueba}) => {
       if (p.urgente) _tema(p.desde == Nivel.evacuacion ? 'evacuacion' : 'alerta', prueba),
       if (p.resumen) _tema('resumen', prueba),
