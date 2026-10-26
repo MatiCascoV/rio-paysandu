@@ -4,6 +4,25 @@ Escrita el 21/10/2026 para retomar al día siguiente. Diseño completo en
 [fase-4-avisos-push.md](fase-4-avisos-push.md); condición y permisos acordados en
 [fase-4-informe-agente.md](fase-4-informe-agente.md) (sección "Paso 6").
 
+> **Hecho el 26/10/2026** y aprobado por el Reality Checker. Pasos 1 a 7 en Google Cloud (rol
+> `enviarAvisosFcm` con solo `cloudmessaging.messages.create`, pool `avisos-github`, proveedor `github`,
+> cuenta `avisos-fcm@mi-rio-uy-8ca81.iam.gserviceaccount.com` sin claves); paso 8, las tres variables; paso 9,
+> la corrida 40333610759 (intento 1) mandó un resumen a `prueba-resumen-paysandu`
+> (`projects/mi-rio-uy-8ca81/messages/8578147430559888155`); paso 10, el intento 2 terminó en rojo con "No se
+> envía: es una re-corrida".
+>
+> También el 26/10/2026, el ruleset `proteger-main` pasó a exigir pull request para entrar a `main` (0
+> aprobaciones, sin bypass): `main` ya no acepta push directo.
+>
+> Paso 10b, también el 26/10/2026: desde la rama descartable `probar-wif`, la corrida 40334850975 (evento
+> push) falló en el paso `auth` con `unauthorized_client`: "The given credential is rejected by the attribute
+> condition." Google rechaza un carnet que no cumple la condición.
+>
+> **Quedan pendientes:** el 7b (registros de auditoría, no activados), borrar la rama `probar-wif`
+> (`git push origin --delete probar-wif`, lo hace el dueño) y verificar que el mensaje llegó al Redmi.
+>
+> Lo de abajo queda como estaba al escribir la guía, salvo las notas del paso 4 y del paso 7.
+
 ## Dónde estamos
 
 - Pasos 1 a 5 hechos: proyecto de Firebase `mi-rio-uy-8ca81`, prueba de entrega en el Redmi, app con avisos
@@ -135,6 +154,12 @@ da más de lo necesario y hay que decidirla.
     --flags-file=herramientas\paso6\proveedor.yaml
 ```
 
+> **Visto el 26/10/2026:** con la condición escrita como bloque de varias líneas (`>-`) en
+> `proveedor.yaml`, gcloud en Windows la rechazó con "token recognition error" después de cada `&&`. Por eso
+> la condición va en **una sola línea** entre comillas dobles, como está ahora en
+> `herramientas/paso6/proveedor.yaml`. La causa probable es un `\r` de fin de línea de Windows (CRLF) pegado
+> después de cada `&&` (no se reprodujo); `.gitattributes` deja esos archivos con fin de línea LF.
+
 **5. Crear la cuenta de servicio, sin claves, y darle solo el rol propio:**
 
 ```powershell
@@ -170,8 +195,8 @@ Lo esperado:
   - `oidc.issuerUri: https://token.actions.githubusercontent.com`, **sin** `allowedAudiences`;
   - `attributeMapping` con 6 entradas (`google.subject`, `attribute.repository`, `attribute.repository_id`,
     `attribute.repository_owner_id`, `attribute.ref`, `attribute.workflow_ref`);
-  - `attributeCondition`: la condición completa, las 8 cláusulas unidas por `&&` (aparece en una sola línea),
-    incluida `assertion.run_attempt == '1'`.
+  - `attributeCondition`: la condición completa, las 8 cláusulas unidas por `&&` (gcloud puede mostrarla
+    cortada en varias líneas; es una sola cadena), incluida `assertion.run_attempt == '1'`.
 - La cuenta: un solo `roles/iam.workloadIdentityUser` para ese `principalSet`.
 - Ninguna clave de usuario.
 - En el proyecto, solo `projects/mi-rio-uy-8ca81/roles/enviarAvisosFcm`.

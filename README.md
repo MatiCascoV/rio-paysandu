@@ -16,6 +16,9 @@ Ante cualquier duda hay que comunicarse con los canales oficiales (Cecoed Paysan
   y los tests del lector y de la app.
 - `app/` — app Flutter que lee los JSON publicados.
 
+**`main` no acepta push directo** (desde el 26/10/2026): todo entra por pull request. Lo exige el ruleset
+`proteger-main` (Settings → Rules → Rulesets), sin aprobaciones obligatorias y sin excepciones.
+
 El detalle del proyecto y sus fases está en [PROMPT_MAESTRO.md](PROMPT_MAESTRO.md).
 Qué se hizo últimamente y qué sigue: [docs/estado-actual.md](docs/estado-actual.md).
 
@@ -144,6 +147,54 @@ Entre que CARU publica y que la app lo muestra pasan hasta unos 20 minutos (10 d
 copia que guarda GitHub Pages). La estación automática de CARU suele publicar con cerca de una hora
 de atraso respecto de la hora de la medición; eso no depende de este proyecto.
 
+## Avisos push
+
+El workflow **"Avisos push"** (`.github/workflows/avisos.yml`) decide con `lector/avisos.py` si corresponde
+un aviso urgente o el resumen del día y, si corresponde, manda un mensaje sin texto por Firebase Cloud
+Messaging (FCM). Usa la identidad federada de GitHub con Google Cloud: no hay ninguna clave guardada en
+GitHub. Hoy se lanza solo a mano, y por defecto va a los temas de prueba (`prueba-…`). Diseño completo en
+[docs/fase-4-avisos-push.md](docs/fase-4-avisos-push.md).
+
+**Ver los envíos.** Pestaña **Actions → Avisos push**, o `gh run list --workflow avisos.yml --limit 5`. En
+cada corrida, el resumen dice qué se decidió (urgente, resumen o nada), si fue a los temas de prueba y, en
+"Envío", el destino y el nombre del mensaje de FCM (`projects/mi-rio-uy-8ca81/messages/…`).
+
+**Cortarlos.** De más suave a más fuerte:
+
+- Borrar las tres variables del repositorio. `avisos.yml` sigue corriendo, pero termina sin enviar ("faltan
+  las variables del repositorio"):
+
+  ```powershell
+  gh variable delete GCP_WIF_PROVIDER --repo MatiCascoV/rio-paysandu
+  gh variable delete GCP_SA_EMAIL --repo MatiCascoV/rio-paysandu
+  gh variable delete FIREBASE_PROJECT_ID --repo MatiCascoV/rio-paysandu
+  ```
+
+- **Corte inmediato** en Google Cloud: desactivar la cuenta de servicio. Desde ese momento Google no da
+  ningún token para enviar. Se vuelve atrás con `enable`.
+- Para cortar del todo, desactivar además el proveedor `github` del pool `avisos-github`.
+
+Los comandos de Google Cloud (con `$G`, `$P` y `$SA` definidos como dice la guía):
+
+```powershell
+& $G iam service-accounts disable $SA --project $P
+& $G iam workload-identity-pools providers disable github --project $P --location=global --workload-identity-pool=avisos-github
+```
+
+Para volver a cargar las variables, ver el paso 8 de [docs/fase-4-paso-6-guia.md](docs/fase-4-paso-6-guia.md).
+
+**Si fallan.** Una re-corrida ("Re-run jobs") siempre termina en rojo sin enviar ("No se envía: es una
+re-corrida"): es a propósito, para no repetir avisos. Para reintentar, lanzar el workflow de nuevo. Para lo
+demás:
+
+| Síntoma | Causa probable |
+|---|---|
+| `enviar` dice "faltan las variables del repositorio" | Faltan las variables (paso 8 de la guía) |
+| `auth` falla con `unauthorized_client` / `attribute condition` | La corrida no cumple la condición del proveedor: tiene que ser en `main`, con `workflow_dispatch` y primer intento |
+| `auth` falla con `Permission 'iam.serviceAccounts.getAccessToken' denied` | Falta o está mal el permiso del pool sobre la cuenta (paso 6 de la guía) |
+| FCM responde 403 `PERMISSION_DENIED` | La cuenta no tiene el rol `enviarAvisosFcm` (paso 5 de la guía) |
+| FCM responde 404 | `FIREBASE_PROJECT_ID` mal escrito |
+
 ## App Android
 
 Proyecto Flutter en `app/`. La dirección de los datos y los teléfonos están en `app/assets/config.json`.
@@ -182,9 +233,21 @@ firmado con la clave de depuración). Igual conviene correr `flutter test` y `fl
     gráfico de 7 días en Inicio y paleta azulada en modo claro y oscuro.
 - Fase 4 (notificaciones push): en curso. Hechos el margen al bajar y el lector de avisos (`lector/avisos.py`
   y `avisos.yml`, sin probar contra FCM). El 19/10/2026 se creó el proyecto de Firebase y se registró la app.
-  El 21/10/2026 entraron la app con avisos push (probada en el Redmi) y la rama `datos`. Falta la identidad
-  federada, la prueba completa con `avisos.yml` y la documentación de los envíos. Ver
+  El 21/10/2026 entraron la app con avisos push (probada en el Redmi) y la rama `datos`. Ver
   [docs/fase-4-avisos-push.md](docs/fase-4-avisos-push.md).
+  - 26/10/2026: **paso 6 hecho** (identidad federada de GitHub con Google Cloud, sin claves; aprobado con
+    evidencia). `avisos.yml` mandó un resumen al tema de prueba `prueba-resumen-paysandu` (corrida
+    40333610759) y la re-corrida de esa misma corrida terminó en rojo sin enviar. Detalle en
+    [docs/fase-4-paso-6-guia.md](docs/fase-4-paso-6-guia.md).
+  - 26/10/2026: el ruleset `proteger-main` exige pull request para entrar a `main` (0 aprobaciones, sin
+    bypass): `main` ya no acepta push directo.
+  - 26/10/2026: prueba de que Google rechaza (10b). Desde la rama descartable `probar-wif` (corrida
+    40334850975, evento push), el paso `auth` falló con `unauthorized_client`: "The given credential is
+    rejected by the attribute condition".
+  - Pendiente del paso 6: activar los registros de auditoría de los canjes de token (7b), borrar la rama
+    `probar-wif` (`git push origin --delete probar-wif`, dueño), y verificar que el mensaje llegó al Redmi.
+  - Falta: que el lector lance `avisos.yml` (hoy solo se lanza a mano), el urgente de evacuación en dos
+    mensajes, la prueba completa (paso 8) y una semana en los temas reales.
   - 17/10/2026: arreglados los avisos locales en el APK de release (la reducción de recursos borraba el ícono
     de notificación).
   - 19/10/2026: CI de la app (`app.yml`) y dependencias al día (Gradle 9.8.1, AGP 9.4.1, Kotlin 2.4.21).

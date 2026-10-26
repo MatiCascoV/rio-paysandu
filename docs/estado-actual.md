@@ -61,24 +61,24 @@ Detalle completo en `docs/fase-4-avisos-push.md`.
 | 2 | Margen al bajar de nivel en el lector | Hecho |
 | 3 | Prueba de entrega en el Redmi | Hecho |
 | 4 | App: pestaña Avisos | Hecho y probado |
-| 5 | Rama `datos` y Pages | Hecho; **falta proteger `datos`** (tarea A) |
-| 6 | Identidad federada en Google Cloud | Pendiente (dueño, tarea C) |
-| 7 | `lector/avisos.py` y `avisos.yml` | Hecho, sin probar contra FCM |
+| 5 | Rama `datos` y Pages | Hecho; `datos` protegida con `proteger-datos` (tarea A) |
+| 6 | Identidad federada en Google Cloud | Hecho (26/10/2026; ver `docs/fase-4-paso-6-guia.md`) |
+| 7 | `lector/avisos.py` y `avisos.yml` | Hecho; mandó un resumen real a `prueba-resumen-paysandu` (26/10/2026). El urgente sigue sin probar contra FCM |
 | 8 | Prueba completa | Pendiente (tareas D y E) |
-| 9 | README: ver, cortar y arreglar envíos | Pendiente (tarea F) |
+| 9 | README: ver, cortar y arreglar envíos | Sección "Avisos push" del README escrita (26/10/2026) |
 
 ## Tareas pendientes, en orden
 
-### A. Proteger la rama `datos` — dueño, 1 min
+### A. Proteger la rama `datos` — hecha (de otra forma)
 
-Si alguien la borra o le hace force-push, la app se queda sin datos. Hoy el ruleset `proteger-main` (bloquea
-borrado y force-push) cubre solo la rama por defecto.
+Si alguien la borra o le hace force-push, la app se queda sin datos. **Hecho el 21/10/2026** con un ruleset
+propio, `proteger-datos` (id 25566040), que en `datos` bloquea solo el borrado y el force-push. El lector
+sigue pudiendo subir: siempre agrega commits encima (fast-forward). Se ve en
+`https://github.com/MatiCascoV/rio-paysandu/rules?ref=refs/heads/datos`.
 
-1. Settings → Rules → Rulesets → `proteger-main`.
-2. Target branches → Add target → Include by pattern → `datos` → Save changes.
-
-El lector sigue pudiendo subir: siempre agrega commits encima (fast-forward). Verificar en
-`https://github.com/MatiCascoV/rio-paysandu/rules?ref=refs/heads/datos` que aparezcan las dos reglas.
+> **No sumar `datos` a `proteger-main`.** Desde el 26/10/2026 `proteger-main` exige pull request para todo
+> cambio: aplicado a `datos`, el lector no podría subir y se cortaría la publicación de los datos que usa la
+> app.
 
 ### B. Urgente de evacuación como dos mensajes — desarrollo, S
 
