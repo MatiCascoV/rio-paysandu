@@ -88,7 +88,8 @@ terminar, sale con 2. Imprime una línea JSON
   repo; si faltan `vars.GCP_WIF_PROVIDER`, `vars.GCP_SA_EMAIL` o `vars.FIREBASE_PROJECT_ID` termina sin
   enviar y lo dice en el resumen; si están, se autentica con `google-github-actions/auth` (OIDC, scope
   `firebase.messaging`, 300 s, sin archivo de credenciales) y manda a FCM HTTP v1 mensajes solo de datos:
-  primero el urgente (si hay; prioridad `HIGH`, al tema `alerta-paysandu` o a la condición de evacuación) y
+  primero el urgente (si hay; prioridad `HIGH`, al tema `alerta-paysandu`; el de evacuación, en dos mensajes, a `evacuacion-paysandu` y a
+  `alerta-paysandu`, desde el paso 6; antes era una condición de FCM) y
   después el resumen (si hay; prioridad `NORMAL`, al tema `resumen-paysandu`). Con `prueba`, los temas
   llevan el prefijo `prueba-`. Cada uno se manda una vez sin reintentos; si uno falla, igual intenta el otro
   y el trabajo termina con error.

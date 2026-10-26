@@ -232,6 +232,23 @@ void main() {
       expect(await decidirAvisos(evacuacion, prefs, ahora), isEmpty);
     });
 
+    // avisos.yml manda el urgente de evacuación en dos mensajes (temas de alerta y de
+    // evacuación). Si el teléfono quedó en los dos temas (sincronización a medias),
+    // le llegan los dos pushes, y tiene que avisar una sola vez.
+    test('el mismo urgente por dos temas (dos pushes iguales) avisa una sola vez', () async {
+      final prefs = await prefsCon({...todoPrendido, claveUltimoNivel: 'alerta'});
+      final evacuacion = actualEn('2026-10-09T09:00', nivel: 'evacuacion', valor: 7.0, prefectura: '2026-10-08T06:00');
+      final ahora = hora('2026-10-09T09:02');
+      final enviado = hora('2026-10-09T09:01'); // los dos mensajes salen casi juntos
+      const mensaje = {'tipo': 'urgente', 'nivel': 'evacuacion', 'ciudad': 'paysandu'};
+      final primero = await avisosDePush(mensaje, prefs, (_) async => datos(evacuacion),
+          enviado: enviado, reloj: () => ahora);
+      expect(primero.single.titulo, 'Río Uruguay: subió a EVACUACIÓN');
+      final segundo = await avisosDePush(mensaje, prefs, (_) async => datos(evacuacion),
+          enviado: enviado, reloj: () => ahora);
+      expect(segundo, isEmpty);
+    });
+
     test('el resumen del día sale una sola vez entre el push y el respaldo', () async {
       final prefs = await prefsCon({...todoPrendido, claveUltimoNivel: 'alerta'});
       final a = actualEn('2026-10-09T08:30');

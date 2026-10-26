@@ -30,7 +30,8 @@ foreach ($tema in @($temaAlerta, $temaEvacuacion, $temaResumen)) {
 
 # Igual que avisos.yml: siempre a temas directos, nunca a una condición de FCM. El urgente de
 # evacuación son dos mensajes con los mismos datos, primero al tema de evacuación y después al de
-# alerta (cada teléfono está en un solo tema urgente, así le llega una sola vez).
+# alerta. La app deja cada teléfono en un solo tema urgente. Si quedara en los dos (sincronización a
+# medias), le llegan dos pushes, pero la app no repite el aviso (ultimo_nivel).
 if ($Tipo -eq 'urgente') {
     $data = @{ tipo = 'urgente'; nivel = $Nivel; ciudad = 'paysandu' }
     if ($Nivel -eq 'alerta') {
@@ -48,24 +49,36 @@ if ($Tipo -eq 'urgente') {
 $token = (& $gcloud auth print-access-token).Trim()
 $detalle = if ($Tipo -eq 'urgente') { $Nivel } else { $Fuente }
 $fallidos = @()
+$dudosos = @()
 foreach ($tema in $temas) {
     $mensaje = @{ topic = $tema; data = $data; android = @{ priority = $prioridad } }
     $cuerpo = @{ message = $mensaje } | ConvertTo-Json -Depth 5
     # Sin reintentos: si FCM lo aceptó y se cortó la respuesta, reintentar duplicaría el aviso.
+    # 15 s como máximo por mensaje, igual que avisos.yml (FCM contesta en menos de 1 s).
     try {
-        $respuesta = Invoke-RestMethod -Method Post `
+        $respuesta = Invoke-RestMethod -Method Post -TimeoutSec 15 `
             -Uri "https://fcm.googleapis.com/v1/projects/$proyecto/messages:send" `
             -Headers @{ Authorization = "Bearer $token"; 'x-goog-user-project' = $proyecto } `
             -ContentType 'application/json; charset=utf-8' -Body $cuerpo
         "Enviado $Tipo ($detalle, $prioridad) al tema $tema a las $(Get-Date -Format HH:mm:ss): $($respuesta.name)"
     } catch {
         # Solo el error y la respuesta de FCM (nunca los encabezados, que llevan el token).
-        Write-Warning "Falló el envío de $Tipo ($detalle) al tema ${tema}: $($_.Exception.Message) $($_.ErrorDetails.Message)"
-        $fallidos += $tema
+        # Sin respuesta HTTP (tiempo agotado, conexión cortada) no se sabe si FCM lo recibió, salvo
+        # que no se haya podido ni resolver el nombre ni conectar: ahí seguro que no salió.
+        $sinRespuesta = $null -eq $_.Exception.Response
+        $noConecto = "$($_.Exception.Status)" -in @('NameResolutionFailure', 'ConnectFailure')
+        if ($sinRespuesta -and -not $noConecto) {
+            Write-Warning "No se sabe si salió $Tipo ($detalle) al tema ${tema} (sin respuesta HTTP): $($_.Exception.Message)"
+            $dudosos += $tema
+        } else {
+            Write-Warning "Falló el envío de $Tipo ($detalle) al tema ${tema}: $($_.Exception.Message) $($_.ErrorDetails.Message)"
+            $fallidos += $tema
+        }
     }
 }
-if ($fallidos.Count -gt 0) {
-    $salieron = @($temas | Where-Object { $fallidos -notcontains $_ })
-    $textoSalieron = if ($salieron.Count -gt 0) { $salieron -join ', ' } else { 'ninguno' }
-    throw "No salieron todos los mensajes. Fallaron: $($fallidos -join ', '). Salieron: $textoSalieron."
+if ($fallidos.Count + $dudosos.Count -gt 0) {
+    $salieron = @($temas | Where-Object { $fallidos -notcontains $_ -and $dudosos -notcontains $_ })
+    $lista = { param($t) if ($t.Count -gt 0) { $t -join ', ' } else { 'ninguno' } }
+    throw ("No salieron todos los mensajes. Fallaron: $(& $lista $fallidos). " +
+        "No se sabe si salieron: $(& $lista $dudosos). Salieron: $(& $lista $salieron).")
 }

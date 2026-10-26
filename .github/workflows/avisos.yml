@@ -184,7 +184,7 @@ jobs:
     needs: decidir
     if: needs.decidir.outputs.avisar == 'true'
     runs-on: ubuntu-latest
-    # Revisar + autenticar + hasta tres envíos (30 s como máximo cada uno): con 5
+    # Revisar + autenticar + hasta tres envíos (15 s como máximo cada uno): con 5
     # minutos sobra.
     timeout-minutes: 5
     permissions:
@@ -344,8 +344,9 @@ jobs:
           # condición de FCM.
           # - Urgente alerta: un mensaje al tema de alerta.
           # - Urgente evacuación: DOS mensajes con los mismos datos, uno al tema de
-          #   evacuación y otro al de alerta. Cada teléfono está en un solo tema urgente
-          #   (lo asegura la app), así que a nadie le llega dos veces. Antes era una
+          #   evacuación y otro al de alerta. La app deja cada teléfono en un solo tema
+          #   urgente. Si quedara en los dos (sincronización a medias), le llegan dos
+          #   pushes, pero la app no repite el aviso (ultimo_nivel). Antes era una
           #   condición ('alerta' in topics || 'evacuacion' in topics) y en la prueba
           #   del 21/10 tardó 42 s, contra menos de 1 s de un tema directo.
           # - Los urgentes, con prioridad alta para que Android despierte la app.
@@ -383,12 +384,14 @@ jobs:
           # fuera del workspace.
           # Sin reintentos: si se cortó después de que FCM lo aceptó, reintentar
           # duplicaría el aviso; la revisión local queda de respaldo.
+          # Tiempos: 10 s para conectar y 15 s en total por mensaje (FCM contesta en
+          # menos de 1 s); con tres mensajes son 45 s como máximo.
           enviar_uno() {
             local clave="$1" tema="$2" cuerpo="$3"
             local respuesta codigo=0 http nombre error
             echo "destino_$clave=topic $tema" >> "$GITHUB_OUTPUT"
             respuesta=$(mktemp -p "$RUNNER_TEMP")
-            http=$(curl -sS --fail-with-body --max-time 30 \
+            http=$(curl -sS --fail-with-body --connect-timeout 10 --max-time 15 \
               -X POST "https://fcm.googleapis.com/v1/projects/$PROYECTO/messages:send" \
               -H @<(printf 'Authorization: Bearer %s\n' "$token") \
               -H "Content-Type: application/json; charset=UTF-8" \
@@ -399,17 +402,30 @@ jobs:
             # De la respuesta solo se guardan caracteres inofensivos y una línea: va a
             # GITHUB_OUTPUT y al resumen.
             if [ "$codigo" -eq 0 ]; then
+              # || true: una respuesta que no es JSON no corta el paso (ni con pipefail).
               nombre=$(jq -r '.name // empty' "$respuesta" 2>/dev/null \
-                | head -c 300 | tr -cd 'A-Za-z0-9/:._-')
+                | head -c 300 | tr -cd 'A-Za-z0-9/:._-') || true
               rm -f "$respuesta"
               echo "resultado_$clave=enviado (${nombre:-sin name en la respuesta})" >> "$GITHUB_OUTPUT"
               echo "Enviado el mensaje al tema $tema: ${nombre:-sin name en la respuesta}"
               return 0
             fi
+            # Sin respuesta HTTP no se sabe si FCM lo recibió: tiempo agotado (28),
+            # respuesta vacía (52), error al mandar (55) o al recibir (56), o cualquier
+            # otro corte sin código HTTP (000). Salvo que no se haya podido ni
+            # resolver el nombre (6) ni conectar (7): ahí seguro que no salió. Cuenta
+            # como falla (la corrida queda en rojo) y no se reintenta.
+            if { [[ "$codigo" =~ ^(28|52|55|56)$ ]] || [ "$http" = 000 ]; } \
+              && ! [[ "$codigo" =~ ^(6|7)$ ]]; then
+              rm -f "$respuesta"
+              echo "resultado_$clave=no se sabe si salió (curl $codigo, sin respuesta HTTP)" >> "$GITHUB_OUTPUT"
+              echo "::error::No se sabe si el mensaje al tema $tema salió (curl $codigo, sin respuesta HTTP); no se reintenta para no duplicarlo"
+              return 1
+            fi
             # Solo el código HTTP y el error que devuelve FCM, recortado a una línea;
             # nunca encabezados ni el token.
             error=$(jq -r '.error | "\(.status // "") \(.message // "")"' "$respuesta" 2>/dev/null \
-              | head -c 300 | tr -cd 'A-Za-z0-9 .,:;_()/-')
+              | head -c 300 | tr -cd 'A-Za-z0-9 .,:;_()/-') || true
             rm -f "$respuesta"
             echo "resultado_$clave=falló (curl $codigo, HTTP $http: ${error:-sin detalle})" >> "$GITHUB_OUTPUT"
             echo "::error::El envío al tema $tema falló (curl $codigo, HTTP $http): ${error:-sin detalle}"
@@ -419,9 +435,10 @@ jobs:
           # Primero los urgentes, después el resumen, cada mensaje una sola vez. Con
           # evacuación, primero el tema de evacuación: quien eligió "Solo evacuación" no
           # recibió ningún aviso antes, y quien está en alerta ya tuvo el de alerta.
-          # Si un mensaje falla igual se intentan los demás (son temas distintos, nadie
-          # está en dos temas urgentes) y al final el paso falla: la corrida queda en
-          # rojo y el resumen dice cuál salió y cuál no.
+          # Si un mensaje falla igual se intentan los demás (son temas distintos; si un
+          # teléfono quedara en los dos temas urgentes, la app no repite el aviso) y al
+          # final el paso falla: la corrida queda en rojo y el resumen dice cuál salió,
+          # cuál no y de cuál no se sabe.
           fallos=0
           if [ -n "$cuerpo_evacuacion" ]; then
             enviar_uno evacuacion "$tema_evacuacion" "$cuerpo_evacuacion" || fallos=$((fallos + 1))
