@@ -250,8 +250,14 @@ nodos, la diferencia es de segundos, y la app ya espera 3 s y reintenta una vez.
   lanzado de a uno.
 - **Pages caído mucho tiempo:** la app tampoco puede ver el dato. Cuando vuelve, se lanzan los commits de
   las últimas 3 h, hasta 12. Lo más viejo queda para la revisión local. Si hubo que recortar, la corrida
-  termina en error y se abre el issue.
-- **Falla `lanzar-avisos.yml`:** se abre un issue, y "Re-run failed jobs" recupera sin repetir.
+  termina en error y se abre el issue. **En ese caso no hay que re-correr:** "Re-run failed jobs" vuelve a
+  fallar siempre (la lista recortada queda fija) y no recupera los commits descartados. Los que quedaron afuera son
+  los commits de `datos` que cambiaron `data/actual.json` antes del primero de la lista del resumen de
+  `revisar` (`git log origin/datos -- data/actual.json`). Si alguno importa, hay que lanzar `avisos.yml` a
+  mano con ese commit.
+- **Falla `lanzar-avisos.yml` por otra cosa** (API, red, un lanzamiento que no salió): se abre un issue, y
+  "Re-run failed jobs" recupera sin repetir **si se re-corre dentro de las 3 h**. Después, el filtro de
+  antigüedad deja la lista vacía y la corrida termina en verde sin lanzar nada.
 - **El evento se demora:** GitHub a veces atrasa los `workflow_run` unos minutos. Con ~2 minutos de
   demora normal queda margen para los 15 de la aceptación.
 

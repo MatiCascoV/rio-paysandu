@@ -289,8 +289,10 @@ jobs:
           [ "$fallos" -eq 0 ]
 
   # Si algo falló, un issue (como "avisar" en lector.yml): puede haber un urgente sin
-  # lanzar. Para recuperarlo alcanza con "Re-run failed jobs": la revisión de nombres de
-  # corrida evita repetir los commits que ya salieron. Las fallas de avisos.yml mismo
+  # lanzar. Si fue una falla de API o red, "Re-run failed jobs" dentro de las 3 h lo
+  # recupera (la revisión de nombres de corrida evita repetir los que ya salieron). Si
+  # fue porque la lista se recortó, re-correr no sirve (vuelve a fallar igual): hay que
+  # lanzar a mano los commits que quedaron afuera. Las fallas de avisos.yml mismo
   # no pasan por acá (se ven en su propia corrida). La revisión local de la app sigue
   # de respaldo.
   avisar:
@@ -307,7 +309,7 @@ jobs:
           ETIQUETA: avisos-falla
         run: |
           corrida="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
-          cuerpo="La corrida $corrida de Lanzar avisos falló: puede haber un aviso que no salió. Revisá el registro y, si corresponde, usá Re-run failed jobs (no repite los commits que ya se lanzaron). La revisión local de la app sigue de respaldo."
+          cuerpo="La corrida $corrida de Lanzar avisos falló: puede haber un aviso que no salió. Revisá el registro. Si la lista se recortó a 12 (lo dice el resumen de revisar), NO re-corras: vuelve a fallar igual y no recupera nada; los que quedaron afuera son los commits de datos que cambiaron data/actual.json antes del primero de la lista de ese resumen; si alguno importa, lanzá avisos.yml a mano con ese commit. Si fue otra falla (API, red), usá Re-run failed jobs dentro de las 3 h (no repite los commits que ya se lanzaron; después ya no lanza nada). La revisión local de la app sigue de respaldo."
           gh label create "$ETIQUETA" --repo "$GITHUB_REPOSITORY" --color B60205 \
             --description "Falla al lanzar avisos push" 2>/dev/null || true
           numero=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --label "$ETIQUETA" \
