@@ -4,11 +4,11 @@ name: Lanzar avisos
 # (el workflow interno "pages-build-deployment"). Ver docs/fase-4-lanzar-avisos.md.
 #
 # Qué hace: lanza avisos.yml una vez por cada commit de datos que cambió
-# data/actual.json desde la publicación anterior de Pages que salió bien. Casi
-# siempre es uno solo; si Pages salteó o falló alguna, también lanza esos, porque
-# lector/avisos.py compara cada commit con el anterior y un commit sin lanzar
-# perdería su urgente. Antes confirma que la URL pública ya sirve el dato, para que
-# la app no muestre el genérico "hay novedades".
+# data/actual.json desde la publicación anterior de Pages. Casi siempre es uno solo;
+# si Pages salteó o falló alguna, también lanza esos, porque lector/avisos.py compara
+# cada commit con el anterior y un commit sin lanzar perdería su urgente. Antes
+# confirma que la URL pública ya sirve el dato, para que la app no muestre el
+# genérico "hay novedades".
 #
 # Por qué acá y no en lector.yml: así el trabajo que procesa lo que manda CARU sigue
 # sin poder lanzar workflows. "revisar" lee datos pero solo puede leer la API;
@@ -19,22 +19,25 @@ name: Lanzar avisos
 # Variables del repositorio (Settings → Secrets and variables → Actions → Variables):
 # - LANZAR_AVISOS=false corta todo (este workflow no hace nada). Sin la variable, anda.
 # - AVISOS_REALES=true manda a los temas reales. Sin ella, todo va a los temas prueba-.
-# - Mientras falten GCP_WIF_PROVIDER o GCP_SA_EMAIL (paso 6), no se lanza nada: solo
-#   queda en el resumen qué se habría lanzado ("solo mirar").
+# - Si faltan GCP_WIF_PROVIDER o GCP_SA_EMAIL, no se lanza nada (avisos.yml no podría
+#   enviar): queda en el resumen qué se habría lanzado.
 #
 # workflow_run siempre usa este archivo tal como está en main.
 
 on:
   workflow_run:
-    workflows: ["pages-build-deployment"]
+    # Los dos nombres con los que aparece el workflow de Pages (el del archivo y el que
+    # muestra la corrida): es uno solo, así que dispara una vez por publicación. Si
+    # alguna vez llegaran dos eventos, comparten grupo de concurrencia (van de a uno) y
+    # el segundo encuentra los commits ya lanzados por el nombre de la corrida.
+    workflows: ["pages-build-deployment", "pages build and deployment"]
     types: [completed]
 
 # Sin permisos por defecto: cada trabajo pide solo lo que usa.
 permissions: {}
 
 # Un grupo por commit (no uno solo): GitHub deja una sola corrida en espera por grupo
-# y cancela la que esperaba, y eso perdería commits. Las listas de dos corridas no se
-# pisan (cada una va desde la publicación anterior hasta la suya).
+# y cancela la que esperaba, y eso perdería commits.
 concurrency:
   group: lanzar-avisos-${{ github.event.workflow_run.head_sha }}
   cancel-in-progress: false
@@ -42,22 +45,28 @@ concurrency:
 jobs:
   revisar:
     # Solo publicaciones que salieron bien, de la rama datos de este mismo repositorio,
+    # en su primer intento (re-correr Pages sobre un commit viejo no relanza avisos),
     # y si el dueño no cortó el lanzador.
     if: >-
       vars.LANZAR_AVISOS != 'false' &&
       github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.run_attempt == 1 &&
       github.event.workflow_run.head_branch == 'datos' &&
       github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    # Lista (hasta 3 min) + espera de Pages (hasta 4 min) + preparación.
+    timeout-minutes: 10
     permissions:
       actions: read # listar las corridas de pages-build-deployment
     outputs:
       commits: ${{ steps.lista.outputs.commits }}
+      recortado: ${{ steps.lista.outputs.recortado }}
       pages: ${{ steps.pages.outputs.pages }}
     env:
       URL_ACTUAL: https://maticascov.github.io/rio-paysandu/data/actual.json # la misma que usa la app
       MAX_COMMITS: "12" # unas 2 horas de publicaciones
+      MAX_HORAS: "3" # un commit más viejo ya no se avisa (lo cubrió la revisión local)
+      ESPERA_PAGES_S: "180"
       ACTUAL: ${{ github.event.workflow_run.head_sha }}
     steps:
       - name: Armar la lista de commits a lanzar
@@ -68,18 +77,20 @@ jobs:
           REPO: ${{ github.repository }}
           ID_PAGES: ${{ github.event.workflow_run.workflow_id }}
           CREADA: ${{ github.event.workflow_run.created_at }}
-          TERMINADA: ${{ github.event.workflow_run.updated_at }}
           GIT_TERMINAL_PROMPT: "0"
         run: |
           # Lo que llega del evento se valida antes de usarlo.
           [[ "$ACTUAL" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::head_sha inválido"; exit 1; }
           [[ "$ID_PAGES" =~ ^[0-9]+$ ]] || { echo "::error::workflow_id inválido"; exit 1; }
-          formato_fecha='^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$'
-          [[ "$CREADA" =~ $formato_fecha ]] || { echo "::error::created_at inválido"; exit 1; }
-          [[ "$TERMINADA" =~ $formato_fecha ]] || TERMINADA=""
+          [[ "$CREADA" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] \
+            || { echo "::error::created_at inválido"; exit 1; }
           [[ "$REPO" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || { echo "::error::repositorio inválido"; exit 1; }
 
-          # Publicación anterior de Pages que salió bien (la más nueva antes de esta).
+          # Hasta dónde mira esta corrida: la publicación de Pages anterior que salió
+          # bien. Las que fallaron, se cancelaron o siguen en curso no cuentan: sus
+          # commits entran acá. Si una en curso termina bien, las dos listas se cruzan;
+          # los repetidos los frena el nombre de la corrida en "lanzar". Se prefiere eso
+          # a perder un commit si la que estaba en curso termina fallando.
           # CREADA ya tiene formato fijo de fecha: no puede romper el filtro de jq.
           anterior=$(gh api "repos/$REPO/actions/workflows/$ID_PAGES/runs?branch=datos&status=success&per_page=50" \
             --jq "[.workflow_runs[] | select(.created_at < \"$CREADA\")] | sort_by(.created_at) | last | .head_sha // empty") \
@@ -98,71 +109,102 @@ jobs:
 
           if [[ "$anterior" =~ ^[0-9a-f]{40}$ ]] && git merge-base --is-ancestor "$anterior" "$ACTUAL" 2>/dev/null; then
             # Del más viejo al más nuevo; solo los que cambiaron actual.json.
-            mapfile -t lista < <(git rev-list --reverse "$anterior..$ACTUAL" -- data/actual.json)
+            mapfile -t candidatos < <(git rev-list --reverse "$anterior..$ACTUAL" -- data/actual.json)
             desde="desde la publicación anterior ${anterior:0:7}"
           else
             echo "::warning::No se encontró la publicación anterior de Pages: se mira solo este commit"
-            lista=()
+            candidatos=()
             if [ "$(git log -1 --format=%H "$ACTUAL" -- data/actual.json)" = "$ACTUAL" ]; then
-              lista=("$ACTUAL")
+              candidatos=("$ACTUAL")
             fi
             desde="solo este commit (no se encontró la publicación anterior)"
           fi
 
+          # Los commits de hace más de MAX_HORAS no se lanzan: avisarían algo viejo (por
+          # ejemplo, si Pages estuvo caído horas). Lo cubrió la revisión local de la app.
+          limite=$(( $(date +%s) - MAX_HORAS * 3600 ))
+          lista=()
+          viejos=0
+          for commit in "${candidatos[@]}"; do
+            if [ "$(git log -1 --format=%ct "$commit")" -ge "$limite" ]; then
+              lista+=("$commit")
+            else
+              viejos=$((viejos + 1))
+            fi
+          done
+          if [ "$viejos" -gt 0 ]; then
+            echo "::warning::$viejos commits tienen más de $MAX_HORAS h: no se lanzan"
+          fi
+
+          recortado=false
           if [ "${#lista[@]}" -gt "$MAX_COMMITS" ]; then
             echo "::warning::Hay ${#lista[@]} commits sin lanzar; se lanzan solo los últimos $MAX_COMMITS"
             lista=("${lista[@]: -$MAX_COMMITS}")
+            recortado=true
           fi
-          echo "commits=${lista[*]}" >> "$GITHUB_OUTPUT"
+          {
+            echo "commits=${lista[*]}"
+            echo "recortado=$recortado"
+          } >> "$GITHUB_OUTPUT"
 
-          # Para la semana de prueba: cuánto tardó el evento desde el push.
-          empujado=$(git log -1 --format=%cI "$ACTUAL")
-          ahora=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          demora=$(( $(date -d "$ahora" +%s) - $(date -d "$empujado" +%s) )) || demora=""
+          # Cuánto tardó el evento desde el commit (para ver la demora en Actions).
+          empujado=$(git log -1 --format=%ct "$ACTUAL")
           {
             echo "## Lanzar avisos"
             echo
-            echo "- Publicación de Pages: \`$ACTUAL\` (corrida de $CREADA a ${TERMINADA:-?})"
-            echo "- Commit hecho: $empujado; este trabajo arrancó: $ahora${demora:+ (${demora} s después del commit)}"
+            echo "- Publicación de Pages: \`$ACTUAL\` (corrida creada $CREADA)"
+            echo "- Este trabajo arrancó $(( $(date +%s) - empujado )) s después del commit"
             echo "- Commits que cambiaron actual.json, $desde: ${lista[*]:-ninguno}"
+            if [ "$viejos" -gt 0 ]; then echo "- Sin lanzar por viejos (más de $MAX_HORAS h): $viejos"; fi
+            if [ "$recortado" = true ]; then echo "- **Recortado** a los últimos $MAX_COMMITS"; fi
           } >> "$GITHUB_STEP_SUMMARY"
 
       # El evento ya dice que Pages terminó; esto confirma que la URL pública sirve el
-      # dato (o uno más nuevo) antes de mandar el push. Si en 3 minutos no aparece, se
-      # lanza igual: es peor callar un urgente que mostrar el genérico.
+      # dato (o uno más nuevo) antes de mandar el push. Si no aparece en ESPERA_PAGES_S
+      # segundos se lanza igual: es peor callar un urgente que mostrar el genérico.
+      # Nada de esto corta el paso: cualquier falla (404, tiempo, JSON roto) cuenta como
+      # "todavía no".
       - name: Esperar a que Pages sirva el dato
         id: pages
         if: steps.lista.outputs.commits != ''
         timeout-minutes: 4
         run: |
           cd datos
-          a_epoca() {  # fecha ISO con offset -> segundos, o nada si no tiene ese formato
-            [[ "$1" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([+-][0-9]{2}:[0-9]{2}|Z)$ ]] \
-              && date -d "$1" +%s 2>/dev/null
+          a_epoca() {  # fecha ISO con offset -> segundos; vacío si no sirve. Siempre 0.
+            if [[ "$1" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([+-][0-9]{2}:[0-9]{2}|Z)$ ]]; then
+              date -d "$1" +%s 2>/dev/null || true
+            fi
           }
-          generado() {  # el campo generado de un actual.json que llega por la entrada
-            jq -r '.generado // empty' 2>/dev/null | head -c 40
+          generado() {  # el campo generado de un actual.json que llega por la entrada. Siempre 0.
+            jq -r '.generado // empty' 2>/dev/null | head -c 40 || true
           }
-          esperado=$(a_epoca "$(git show "$ACTUAL:data/actual.json" | generado)")
+          resultado() {  # $1 = valor de la salida, $2 = texto del resumen
+            echo "pages=$1" >> "$GITHUB_OUTPUT"
+            echo "- Pages: $2" >> "$GITHUB_STEP_SUMMARY"
+          }
+
+          esperado=$(a_epoca "$(git show "$ACTUAL:data/actual.json" 2>/dev/null | generado)")
           if [ -z "$esperado" ]; then
             echo "::warning::El actual.json del commit no trae una fecha generado válida; no se puede verificar Pages"
-            echo "pages=sin_verificar" >> "$GITHUB_OUTPUT"
-            echo "- Pages: no se pudo verificar (el commit no trae generado válido)" >> "$GITHUB_STEP_SUMMARY"
+            resultado sin_verificar "no se pudo verificar (el commit no trae generado válido)"
             exit 0
           fi
-          for intento in $(seq 1 18); do  # 18 x 10 s = 3 minutos
-            servido=$(a_epoca "$(curl -fsS --max-time 10 "$URL_ACTUAL" | generado)")
+          # El parámetro v esquiva la caché de la CDN: se pregunta por lo publicado.
+          intento=0
+          fin=$(( SECONDS + ESPERA_PAGES_S ))
+          while :; do
+            intento=$((intento + 1))
+            servido=$(a_epoca "$( (curl -fsS --max-time 5 "$URL_ACTUAL?v=$ACTUAL" 2>/dev/null || true) | generado)")
             if [ -n "$servido" ] && [ "$servido" -ge "$esperado" ]; then
               echo "Pages ya sirve el dato (intento $intento)"
-              echo "pages=publicado" >> "$GITHUB_OUTPUT"
-              echo "- Pages: ya sirve el dato (intento $intento de 18)" >> "$GITHUB_STEP_SUMMARY"
+              resultado publicado "ya sirve el dato (intento $intento, a los $(( SECONDS + ESPERA_PAGES_S - fin )) s)"
               exit 0
             fi
+            [ $(( SECONDS + 10 )) -lt "$fin" ] || break
             sleep 10
           done
-          echo "::warning::Pages no mostró el dato nuevo en 3 minutos; se lanza igual"
-          echo "pages=sin_confirmar" >> "$GITHUB_OUTPUT"
-          echo "- Pages: no mostró el dato en 3 minutos; se lanza igual" >> "$GITHUB_STEP_SUMMARY"
+          echo "::warning::Pages no mostró el dato nuevo en $ESPERA_PAGES_S s; se lanza igual"
+          resultado sin_confirmar "no mostró el dato en $ESPERA_PAGES_S s ($intento intentos); se lanza igual"
 
   # Trabajo aparte: el único con permiso de lanzar workflows. Sin checkout, sin datos,
   # sin acciones de terceros: solo gh y bash del runner.
@@ -179,10 +221,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           COMMITS: ${{ needs.revisar.outputs.commits }}
+          RECORTADO: ${{ needs.revisar.outputs.recortado }}
           # Temas reales solo con AVISOS_REALES=true; cualquier otra cosa, temas prueba-.
           REALES: ${{ vars.AVISOS_REALES }}
           WIF_PROVIDER: ${{ vars.GCP_WIF_PROVIDER }}
           SA_EMAIL: ${{ vars.GCP_SA_EMAIL }}
+          PAUSA_S: "5"
         run: |
           if [ "$REALES" = "true" ]; then prueba=false; else prueba=true; fi
           read -r -a lista <<< "$COMMITS"
@@ -193,29 +237,34 @@ jobs:
             fi
           done
 
-          # Sin la identidad federada (paso 6) avisos.yml no puede enviar nada: lanzarlo
-          # solo llenaría Actions de corridas inútiles (unas 70 por día). Mientras tanto,
-          # este workflow queda en "solo mirar": cuenta qué habría lanzado y termina bien.
+          # Sin la identidad federada avisos.yml no puede enviar nada: lanzarlo solo
+          # llenaría Actions de corridas inútiles. Queda en el resumen qué se habría lanzado.
           if [ -z "$WIF_PROVIDER" ] || [ -z "$SA_EMAIL" ]; then
-            echo "::notice::Solo mirar: faltan GCP_WIF_PROVIDER o GCP_SA_EMAIL; no se lanza avisos.yml"
+            echo "::warning::Faltan GCP_WIF_PROVIDER o GCP_SA_EMAIL; no se lanza avisos.yml"
             {
-              echo "- Lanzamiento: **no** (solo mirar: faltan las variables GCP_WIF_PROVIDER / GCP_SA_EMAIL del paso 6)"
+              echo "- Lanzamiento: **no** (faltan las variables GCP_WIF_PROVIDER / GCP_SA_EMAIL)"
               echo "- Se habría lanzado avisos.yml con prueba=$prueba para: ${lista[*]}"
             } >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
-          # Para no lanzar dos veces el mismo commit (re-corrida de este workflow, o
-          # alguien que lo lanzó a mano): avisos.yml pone el commit en el nombre de la
-          # corrida (run-name). Si la consulta falla se sigue sin ella: las listas de dos
-          # corridas no se pisan, así que lo normal es que no haya repetidos.
-          titulos=$(gh api "repos/$REPO/actions/workflows/avisos.yml/runs?per_page=100" \
-            --jq '.workflow_runs[].display_title') || titulos=""
+          # Para no lanzar dos veces el mismo commit (re-corrida de este workflow, otra
+          # corrida con una lista que se cruza, o alguien que lo lanzó a mano): avisos.yml
+          # pone el commit en el nombre de la corrida (run-name). Cuenta cualquier corrida,
+          # también una fallida o cancelada. Se relee antes de cada lanzamiento. Si la
+          # consulta falla se sigue sin ella (lo normal es que no haya repetidos).
+          titulos() {
+            gh api "repos/$REPO/actions/workflows/avisos.yml/runs?branch=main&event=workflow_dispatch&per_page=100" \
+              --jq '.workflow_runs[].display_title' 2>/dev/null || true
+          }
 
           fallos=0
+          primero=true
           echo "- Lanzamiento (prueba=$prueba):" >> "$GITHUB_STEP_SUMMARY"
           for commit in "${lista[@]}"; do
-            if grep -qxF "Avisos $commit prueba=$prueba" <<< "$titulos"; then
+            # Una pausa entre lanzamientos, para que la corrida anterior ya figure en la lista.
+            if [ "$primero" = true ]; then primero=false; else sleep "$PAUSA_S"; fi
+            if grep -qxF "Avisos $commit prueba=$prueba" <<< "$(titulos)"; then
               echo "Ya hay una corrida de avisos.yml para $commit (prueba=$prueba): no se lanza otra"
               echo "  - \`$commit\`: ya estaba lanzado" >> "$GITHUB_STEP_SUMMARY"
               continue
@@ -230,12 +279,20 @@ jobs:
               fallos=$((fallos + 1))
             fi
           done
+
+          # Si la lista se recortó quedaron commits sin lanzar: termina en error para que
+          # "avisar" abra el issue (los 12 de la lista ya salieron).
+          if [ "$RECORTADO" = true ]; then
+            echo "::error::La lista se recortó a 12: quedaron commits sin lanzar (ver el resumen de revisar)"
+            exit 1
+          fi
           [ "$fallos" -eq 0 ]
 
   # Si algo falló, un issue (como "avisar" en lector.yml): puede haber un urgente sin
   # lanzar. Para recuperarlo alcanza con "Re-run failed jobs": la revisión de nombres de
-  # corrida evita repetir los commits que ya salieron. La revisión local de la app
-  # sigue de respaldo.
+  # corrida evita repetir los commits que ya salieron. Las fallas de avisos.yml mismo
+  # no pasan por acá (se ven en su propia corrida). La revisión local de la app sigue
+  # de respaldo.
   avisar:
     needs: [revisar, lanzar]
     if: failure()

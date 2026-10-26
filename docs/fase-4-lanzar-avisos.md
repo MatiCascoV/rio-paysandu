@@ -3,15 +3,16 @@
 Tarea 3 del paso 6 (requisito del paso 8).
 
 **Decidido por el dueño (26/10/2026): opción (b3)**, el workflow `lanzar-avisos.yml` con `workflow_run` de
-`pages-build-deployment`, empezando con una semana de "solo mirar". **Implementado** en la rama
-`fase-4-lanzar-avisos`:
+`pages-build-deployment`, empezando con una semana de prueba en los temas `prueba-` (sin `AVISOS_REALES`).
+El paso 6 (identidad federada) ya está hecho y `proteger-main` ya exige PR. **Implementado** en la rama
+`fase-4-lanzar-avisos`, con las correcciones de la revisión de código:
 
 - `.github/workflows/lanzar-avisos.yml`, nuevo;
-- una línea `run-name` en `avisos.yml`;
+- en `avisos.yml`, una línea `run-name` y el comentario de `workflow_dispatch`;
 - `lector.yml` sin cambios.
 
-Abajo queda la comparación que llevó a la decisión. Las secciones "El cambio aplicado" y "Semana de solo
-mirar" dicen cómo quedó y qué hacer después del merge.
+Abajo queda la comparación que llevó a la decisión. Las secciones "El cambio aplicado" y "Puesta en
+marcha" dicen cómo quedó y qué hacer después del merge.
 
 ## Recomendación en corto
 
@@ -43,16 +44,16 @@ Por qué:
 **Lo único que no está comprobado:** que GitHub efectivamente dispare `workflow_run` cuando termina
 `pages-build-deployment`. Esas corridas las hace `github-pages[bot]` y no el `GITHUB_TOKEN`, así que la
 regla de "lo que hace el `GITHUB_TOKEN` no dispara workflows" no debería aplicarse. Igual hay que
-**probarlo**: por eso el primer paso de la puesta en marcha es una semana en modo "solo mirar". Si no
+**probarlo**: es lo primero que hay que mirar después del merge (ver "Puesta en marcha"). Si no
 dispara, el plan B está más abajo.
 
 ## Lo que hay hoy (comprobado el 26/10/2026 con la API de GitHub)
 
 - El lector hace **un push por pasada con datos nuevos**, como mucho uno cada ~10 minutos (en un día
-  normal, unos 70 commits en `datos`). Lo hace con el `GITHUB_TOKEN` del trabajo `leer`, que tiene
+  normal, unos 68 commits en `datos`, de los que ~28 cambian `actual.json`). Lo hace con el `GITHUB_TOKEN` del trabajo `leer`, que tiene
   `contents: write`.
 - Pages está configurado en modo rama (`build_type: legacy`, rama `datos`, carpeta `/`). Cada push dispara
-  el workflow interno **`pages-build-deployment`** (ID 379758940, evento `dynamic`, `head_branch: datos`,
+  el workflow interno **`pages-build-deployment`** (ID 379759076, evento `dynamic`, `head_branch: datos`,
   `head_sha` = el commit publicado). Esas corridas las hace **`github-pages[bot]`**, y también el
   *deployment* `github-pages` y sus estados (`waiting → queued → in_progress → success`).
 - Desde el push hasta que el deploy queda en `success` pasan **unos 25 segundos**. Por ejemplo, el commit
@@ -130,10 +131,13 @@ otras cosas: correr el lector con un usuario sin privilegios (tanda pendiente, v
 `main` y `datos` con reglas, y el diseño del push sin texto. Con (b3) el atacante logra **como mucho un
 lanzamiento por commit nuevo**, no ráfagas, y no puede cancelar, desactivar ni borrar nada.
 
-### Otro hueco, que hay que cerrar antes del paso 8: `leer` puede escribir en `main`
+### Otro hueco (cerrado el 26/10/2026): `leer` podía escribir en `main`
 
-Dato de la revisión de credenciales: el ruleset `proteger-main` solo bloquea el borrado y el force-push,
-**no exige PR**. El `contents: write` de `leer` vale para todo el repositorio. Si alguien toma control de
+**Estado:** desde el 26/10/2026 `proteger-main` exige PR (0 aprobaciones, sin bypass), así que esto ya no
+aplica. Queda como registro de por qué hacía falta.
+
+Dato de la revisión de credenciales: el ruleset `proteger-main` bloqueaba el borrado y el force-push, pero
+**no exigía PR**. El `contents: write` de `leer` vale para todo el repositorio. Si alguien toma control de
 `leer`, puede subir a `main` un `lector/avisos.py` alterado. El `GITHUB_TOKEN` no puede tocar
 `.github/workflows/`, pero `avisos.py` no está ahí, y es lo que corre el trabajo `decidir` de
 `avisos.yml`. Un `avisos.py` alterado puede decir "urgente" con cualquier dato, incluso con el río normal.
@@ -150,7 +154,7 @@ Cómo queda cada opción frente a este hueco:
 | **(b6)** PAT o App en `leer` | **Sí**, igual que (a). |
 | **(b8)** vigía (plan B) | **No**: igual que (b3). No corre código de `main` y toma `prueba` de la variable. |
 
-**Mitigación (no aplicada; la decide y la hace el dueño):** agregar a `proteger-main` **"Require a pull
+**Mitigación (aplicada por el dueño el 26/10/2026):** agregar a `proteger-main` **"Require a pull
 request before merging"**, con 0 aprobaciones y **sin bypass para GitHub Actions**, antes del paso 8. Así
 el `GITHUB_TOKEN` de `leer` ya no puede subir a `main`. Tampoco puede abrir un PR, porque no tiene
 `pull-requests: write`. Con esa regla, `avisos.py` solo cambia por un PR del dueño. **Hay que ponerla
@@ -161,42 +165,33 @@ elija la opción que elija**, y con (a) es imprescindible. Con eso, el hueco se 
 
 ### 1. Workflow nuevo `.github/workflows/lanzar-avisos.yml`
 
-El archivo es la referencia; acá va solo cómo está armado. Tiene tres trabajos, `permissions: {}` arriba y
-ninguna acción de terceros (solo bash, git, jq, curl y gh del runner), así que no hay nada que fijar por
-SHA.
+El archivo es la referencia; acá va cómo está armado. Tiene tres trabajos y `permissions: {}` arriba. No
+usa ninguna acción de terceros (solo bash, git, jq, curl y gh del runner), así que no hay nada que fijar por
+SHA. Escucha los dos nombres del workflow de Pages: `pages-build-deployment` y "pages build and
+deployment". Es un solo workflow, así que dispara una vez por publicación. Si alguna vez llegaran dos
+eventos, comparten grupo de concurrencia y el segundo encuentra los commits ya lanzados.
 
 | Trabajo | Permiso | Qué hace |
 |---|---|---|
-| `revisar` | `actions: read` | Valida lo que trae el evento (`head_sha`, `workflow_id` y `created_at`, con expresiones regulares). Busca la publicación anterior de Pages que salió bien y trae `datos` sin token. Lista los commits que cambiaron `data/actual.json` entre esa publicación y esta, con un tope de 12. Espera hasta 3 min a que `https://maticascov.github.io/rio-paysandu/data/actual.json` sirva ese `generado` o uno más nuevo. Escribe en el resumen de la corrida la lista, el estado de Pages y **cuántos segundos pasaron desde el commit**. |
-| `lanzar` | `actions: write` (el único) | Sin checkout ni datos. Vuelve a validar cada SHA. **Si faltan `GCP_WIF_PROVIDER` o `GCP_SA_EMAIL`, no lanza nada** y deja en el resumen qué habría lanzado. Si están, salta los commits que ya tienen una corrida `Avisos <sha> prueba=<…>` y lanza `gh workflow run avisos.yml --ref main -f commit=<sha> -f prueba=<…>`. |
+| `revisar` | `actions: read` | Solo arranca si Pages salió bien, en la rama `datos` de este repositorio, en el **primer intento** (`run_attempt == 1`), y si `LANZAR_AVISOS` no es `false`. Valida lo que trae el evento con expresiones regulares. Busca la publicación anterior de Pages que **salió bien**, trae `datos` sin token y lista los commits que cambiaron `data/actual.json` desde ahí. Descarta los que tienen **más de 3 h** y recorta a los **últimos 12**; si recorta, avisa con `recortado=true`. Después espera **hasta 180 s, medidos por reloj**, a que `…/data/actual.json?v=<sha>` sirva ese `generado` o uno más nuevo (`curl --max-time 5`, un intento cada 10 s). Si Pages contesta 404 o 5xx, se agota el tiempo o el JSON viene roto, **no corta el paso**: lanza igual. En el resumen deja la lista, los descartados, el estado de Pages y cuántos segundos pasaron desde el commit. |
+| `lanzar` | `actions: write` (el único) | Sin checkout ni datos. Vuelve a validar cada SHA. Si faltan `GCP_WIF_PROVIDER` o `GCP_SA_EMAIL`, no lanza nada (protección, por si alguien borra esas variables). Antes de **cada** lanzamiento hace una pausa de 5 s y **relee** las corridas de `avisos.yml` (`?branch=main&event=workflow_dispatch&per_page=100`): saltea el commit si ya hay una llamada `Avisos <sha> prueba=<…>`. Después corre `gh workflow run avisos.yml --ref main -f commit=<sha> -f prueba=<…>`. Si la lista vino recortada, **termina en error** después de lanzar los 12, para que se abra el issue. |
 | `avisar` | `issues: write` | Si `revisar` o `lanzar` fallan, abre o comenta el issue "No se lanzaron los avisos" (etiqueta `avisos-falla`). |
 
 Todo lo que viene de afuera (el evento, las variables, las salidas de `revisar`) entra a los `run:` por
 `env:`, nunca con `${{ }}` dentro del script. La concurrencia es un grupo por commit publicado
-(`lanzar-avisos-<head_sha>`), así dos publicaciones seguidas no se pisan ni se cancelan.
+(`lanzar-avisos-<head_sha>`), así dos publicaciones seguidas no se pisan ni se cancelan. Los tiempos
+cierran: el paso de espera dura como mucho 180 s más 5 s del último `curl`, dentro de sus 4 minutos; y el
+trabajo `revisar` suma 3 + 4 minutos de pasos, dentro de sus 10.
 
-**Por qué `lanzar` no lanza mientras falte la identidad federada.** Sin esas variables, `avisos.yml` no
-puede enviar nada: su trabajo `enviar` termina sin enviar o en error. Lanzarlo igual llenaría Actions con
-unas 70 corridas inútiles por día, y si `avisos.yml` terminara en rojo enterraría las fallas de verdad.
-Frenarlo en `lanzar` tiene tres ventajas:
-
-- mira las mismas variables que usa `avisos.yml`, así que no hay que acordarse de prender nada aparte;
-- deja la corrida en verde, con un aviso `notice` y el resumen de lo que habría lanzado, que es justo lo
-  que hay que mirar en la semana de prueba;
-- en cuanto el dueño termina el paso 6, empieza a lanzar solo, a los temas de prueba.
-
-Costo: los commits publicados durante la semana sin variables no se lanzan nunca, porque cada corrida mira
-solo desde la publicación anterior. Es lo esperado: son avisos viejos.
-
-### 2. Una línea en `avisos.yml`
+### 2. `avisos.yml`: el nombre de la corrida
 
 ```yaml
 run-name: Avisos ${{ inputs.commit }} prueba=${{ inputs.prueba }}
 ```
 
-Es lo único que se tocó en `avisos.yml`, a propósito, para que el merge con los cambios de `enviar` que se
-hacen en otra rama sea trivial. No cambia nada de lo que ve Google: `ref`, `workflow_ref`, `event_name` y
-`run_attempt` siguen iguales.
+Además se corrigió el comentario de `workflow_dispatch`: ya no dice que lo lanza el lector. No se tocó
+nada más, a propósito, para que el merge con los cambios de `enviar` sea trivial. No cambia nada de lo que
+ve Google: `ref`, `workflow_ref`, `event_name` y `run_attempt` siguen iguales.
 
 ### 3. Variables del repositorio (Settings → Secrets and variables → Actions → Variables)
 
@@ -204,7 +199,7 @@ hacen en otra rama sea trivial. No cambia nada de lo que ve Google: `ref`, `work
 |---|---|---|
 | `LANZAR_AVISOS` | El lanzador anda | `false`: **corta todo**. `revisar` ni arranca, así que no se lanza nada. |
 | `AVISOS_REALES` | Todo va a los temas `prueba-` | `true`: temas reales. Cualquier otro valor cuenta como prueba. |
-| `GCP_WIF_PROVIDER`, `GCP_SA_EMAIL` | "Solo mirar": no se lanza nada | Las crea el dueño en el paso 6. Con las dos, se lanza. |
+| `GCP_WIF_PROVIDER`, `GCP_SA_EMAIL` | No se lanza nada | Ya existen (paso 6 hecho). |
 
 Formas de cortar los avisos, de la más suave a la más fuerte:
 
@@ -219,39 +214,71 @@ Ninguna toca el lector ni los datos.
 
 El trabajo `leer` sigue con `contents: write` y nada más.
 
+### 5. Cómo se probó (antes del merge)
+
+- **actionlint 1.7.7**: 0 errores en los 5 workflows.
+- **shellcheck 0.10.0**: 0 hallazgos en los scripts de `lanzar-avisos.yml`, `avisos.yml` y `lector.yml`,
+  sacados del YAML y revisados uno por uno.
+- **Banco local:** 26 casos, todos bien. Corre los scripts de los pasos con `bash -eo pipefail`, con
+  `curl` y `gh` falsos y un repositorio `datos` local. Cubre:
+  - la lista: normal, hueco con commit de solo historial, commit de más de 3 h, más de 12, sin
+    publicación anterior, SHA inválido o ajeno;
+  - la espera de Pages: 404, JSON sin `generado`, respuesta que no es JSON, dato anterior, `curl` que
+    agota el tiempo, aparece en el segundo intento, commit sin `generado`;
+  - el lanzamiento: repetidos, prueba/reales, recortado, sin identidad federada, falla de `gh`, SHA
+    inválido.
+
+  La versión anterior del paso de espera cortaba con `curl` en 404 (código 1, sin salida); la actual no.
+- **Los filtros de `jq` contra la API real:** la publicación anterior de Pages que salió bien y los nombres
+  de las corridas de `avisos.yml`.
+
 ## Cómo se cumple cada requisito
 
 **R2, el push después de Pages:** `workflow_run` llega cuando `pages-build-deployment` terminó con
-`success`, es decir, con el deploy hecho (el *deployment* pasa a `success` antes de que la corrida
-termine). Igual, el paso "Esperar a que Pages sirva el dato" baja **la misma URL que usa la app** y compara
-el campo `generado`: acepta el del commit o uno más nuevo (si ya salió otra publicación, la app va a
-mostrar la más nueva, que está bien). Si en 3 minutos no aparece, lanza igual con un aviso en el registro,
-porque callar un urgente es peor que el genérico. Límite honesto: el runner pregunta a un nodo de la CDN
-en EE. UU. y el teléfono a otro (en la prueba respondió `EZE`, Buenos Aires). Como el deploy limpia la
-caché en todos los nodos, la diferencia es de segundos, y la app ya espera 3 s y reintenta una vez.
+`success`, es decir, con el deploy hecho. Igual, el paso "Esperar a que Pages sirva el dato" baja
+`actual.json` de Pages con `?v=<sha>` (para esquivar la caché de la CDN y ver lo publicado) y compara el
+campo `generado`. Acepta el del commit o uno más nuevo: si ya salió otra publicación, la app va a mostrar
+la más nueva, que está bien. Si en 180 s no aparece, lanza igual con un aviso en el registro, porque callar
+un urgente es peor que el genérico. Límite honesto: la app pide la URL sin parámetro y puede tocarle otro
+nodo de la CDN (en la prueba respondió `EZE`, Buenos Aires). Como el deploy limpia la caché en todos los
+nodos, la diferencia es de segundos, y la app ya espera 3 s y reintenta una vez.
 
 **R3, no perder urgentes:**
 
-- **Pages saltea o falla una publicación:** la próxima que sale bien lanza todos los commits del medio
-  (desde la anterior que salió bien), del más viejo al más nuevo. Cada `avisos.yml` decide sobre su propio
-  commit, igual que si se hubieran lanzado de a uno.
-- **Pages caído mucho tiempo:** la app tampoco puede ver el dato. Cuando vuelve, se lanzan hasta los
-  últimos 12 commits (~2 h); lo más viejo queda para la revisión local, con un aviso en el registro.
+- **Pages saltea o falla una publicación:** la próxima que sale bien lanza todos los commits del medio,
+  del más viejo al más nuevo. Cada `avisos.yml` decide sobre su propio commit, igual que si se hubieran
+  lanzado de a uno.
+- **Pages caído mucho tiempo:** la app tampoco puede ver el dato. Cuando vuelve, se lanzan los commits de
+  las últimas 3 h, hasta 12. Lo más viejo queda para la revisión local. Si hubo que recortar, la corrida
+  termina en error y se abre el issue.
 - **Falla `lanzar-avisos.yml`:** se abre un issue, y "Re-run failed jobs" recupera sin repetir.
 - **El evento se demora:** GitHub a veces atrasa los `workflow_run` unos minutos. Con ~2 minutos de
   demora normal queda margen para los 15 de la aceptación.
 
 **R4, sin duplicados:**
 
-- **Dos publicaciones seguidas:** son dos corridas de Pages y dos de este workflow, cada una con su lista,
-  y las listas no se pisan.
-- **Mismo commit dos veces:** no corren a la vez (el grupo de concurrencia es por commit), y antes de
-  lanzar se mira si ya hay una corrida de `avisos.yml` con ese commit en el nombre.
+- **Dos publicaciones seguidas:** son dos corridas de Pages y dos de este workflow, cada una con su lista.
+  Normalmente las listas no se pisan.
+- **Mismo commit dos veces:** no corren a la vez (el grupo de concurrencia es por commit). Antes de cada
+  lanzamiento se relee si ya hay una corrida de `avisos.yml` con ese commit en el nombre.
+- **Re-correr Pages sobre un commit viejo:** no relanza nada. El evento trae `run_attempt` 2 o más y se
+  ignora, y además los commits de más de 3 h no se lanzan.
 - **Re-corrida de `avisos.yml`:** la frena `run_attempt == 1`, como hoy.
-- **Lanzamiento a mano para reintentar:** sigue funcionando. Quien lanza a mano lo hace a propósito.
-- **Lo que no se cubre:** si alguien lanza a mano con el mismo commit y el mismo `prueba` **justo** a la
-  vez que este workflow, pueden salir dos. La marca compartida de la app evita mostrar dos veces el mismo
-  urgente.
+- **Cualquier corrida de `avisos.yml` cuenta como "ya lanzada"**, también si falló o se canceló. Para
+  reintentar, se lanza a mano (Actions → "Avisos push" → Run workflow, o `gh workflow run avisos.yml`).
+  Las fallas de `avisos.yml` (FCM, autenticación) **no abren issue**: se ven en su propia corrida en rojo.
+  El issue `avisos-falla` es solo para fallas al lanzar.
+
+**Carreras que quedan (poco probables y acotadas):**
+
+- **Dos publicaciones de Pages que se solapan:** pasa si la N+1 arranca antes de que la N termine; hoy
+  están separadas ~10 minutos y duran ~25 s. Para la N+1, la anterior que salió bien es la N−1, así que su
+  lista incluye el commit de N, y las dos corridas pueden querer lanzarlo a la vez. La pausa de 5 s y la
+  relectura antes de cada lanzamiento lo frenan casi siempre. Si igual salen dos, la marca compartida de
+  la app evita mostrar dos veces el mismo urgente. Se eligió así porque tomar como límite una publicación
+  "en curso" perdería sus commits si después falla.
+- **Un lanzamiento a mano** con el mismo commit y el mismo `prueba` justo a la vez: igual que el caso
+  anterior.
 
 **R5:** el token con `actions: write` existe solo en el trabajo `lanzar`, en otra máquina, sin checkout,
 sin datos y sin dependencias. `revisar` toca datos (solo `git` y `jq`, sin ejecutar nada de `datos`) y
@@ -263,63 +290,68 @@ en `relanzar`).
 
 ## Límites y costos
 
-- **API de GitHub:** el `GITHUB_TOKEN` tiene 1.000 pedidos por hora por repositorio. Cada corrida hace unos
-  3 pedidos más uno por commit lanzado; con ~6 publicaciones por hora son menos de 50 por hora.
+- **Cuántas corridas** (contado en `datos`, últimas 24 h al 26/10/2026), unas **95 por día en total**:
+  - ~68 commits, o sea ~68 publicaciones de Pages y una corrida de "Lanzar avisos" por cada una;
+  - ~28 lanzamientos de `avisos.yml`, uno por commit que cambia `actual.json`;
+  - las otras ~40 corridas de "Lanzar avisos" terminan en `revisar`, con la lista vacía (commits de solo
+    historial).
+- **API de GitHub:** el `GITHUB_TOKEN` tiene 1.000 pedidos por hora por repositorio. Cada corrida hace
+  1 pedido en `revisar` y 2 por commit en `lanzar` (releer y lanzar): bastante menos de 50 por hora.
 - **Builds de Pages:** en modo rama, GitHub tiene un límite blando de 10 builds por hora. El lector hace
   como mucho ~6. Si se pasa (por ediciones a mano en `datos`), Pages se atrasa, y la lista de huecos cubre
   lo que quede en el medio.
-- **Minutos de Actions:** el repositorio es público, así que no se cobran. Son unas 140 corridas cortas
-  por día (~30 s cada una) más las de `avisos.yml`.
+- **Minutos de Actions:** el repositorio es público, así que no se cobran.
 - **Cadenas de `workflow_run`:** GitHub corta después de 3 niveles. Acá hay uno solo (Pages → este
   workflow); `avisos.yml` arranca por `workflow_dispatch` y no cuenta como otro nivel.
 - **Commits que solo cambian el historial** (o umbrales editados a mano): no tocan `actual.json`, así que
   no lanzan nada.
 
-## Semana de solo mirar y puesta en marcha
+## Puesta en marcha: semana de prueba en los temas `prueba-`
 
-### Antes del merge (o junto con él)
+Decisión del dueño (26/10/2026): el paso 6 ya está hecho (las tres variables existen y `avisos.yml` ya
+mandó un resumen real a `prueba-resumen-paysandu`), y `proteger-main` ya exige PR. No hace falta un modo
+"solo mirar": **la semana de prueba es lanzar a los temas `prueba-`**, es decir, sin definir
+`AVISOS_REALES`.
 
-0. **Exigir PR en `main`:** agregar "Require a pull request before merging" a `proteger-main`, con 0
-   aprobaciones y sin bypass para GitHub Actions. Tiene que estar antes del paso 8 (ver "Otro hueco").
+### Cómo comprobar que `workflow_run` dispara (después del merge)
 
-### Semana de solo mirar (sin `GCP_WIF_PROVIDER` / `GCP_SA_EMAIL`)
-
-No hace falta configurar nada: mientras el paso 6 no esté hecho, `lanzar` no lanza.
-
-**Después de la primera publicación del lector tras el merge** (como mucho unos 10 minutos), en Actions:
+**Después de la primera publicación del lector** (como mucho unos 10 minutos), en Actions:
 
 1. Al lado de "pages build and deployment" de ese commit aparece una corrida de **"Lanzar avisos"**, con
-   evento `workflow_run` y el mismo commit. **Si no aparece en unos 5 minutos, `workflow_run` no dispara
-   para Pages:** se pasa al plan B (más abajo). Se puede confirmar con
-   `gh run list --workflow lanzar-avisos.yml --limit 5`.
-2. La corrida está en verde, con `revisar` y `lanzar` hechos y `avisar` salteado.
+   evento `workflow_run` y el mismo commit. Se puede ver con
+   `gh run list --workflow lanzar-avisos.yml --limit 5`. **Si no aparece en unos 5 minutos,
+   `workflow_run` no dispara para Pages:** se pasa al plan B (más abajo). Mientras tanto la revisión
+   local de la app sigue avisando.
+2. La corrida está en verde. `avisar` salteado. `lanzar` hecho, o salteado si ese commit no cambió
+   `actual.json`.
 3. En el resumen de la corrida (Summary):
    - "Publicación de Pages" tiene el mismo SHA que el commit de `datos`;
    - "Commits que cambiaron actual.json" trae normalmente uno solo, el mismo;
-   - "Pages: ya sirve el dato (intento 1 de 18)", o un intento bajo;
-   - "este trabajo arrancó: … (N s después del commit)": lo normal sería menos de 2 minutos;
-   - "Lanzamiento: **no** (solo mirar…)", con la lista que habría lanzado.
+   - "Pages: ya sirve el dato (intento 1, …)";
+   - "Este trabajo arrancó N s después del commit": lo normal sería menos de 120;
+   - "Lanzamiento (prueba=true)", con el commit lanzado.
+4. Aparece una corrida **"Avisos <sha> prueba=true"** de `avisos.yml`. Con el río normal termina en
+   "no hay aviso urgente ni resumen del día que mandar".
 
-**Durante la semana**, cada uno o dos días:
+### Durante la semana
 
-- **¿Hay una corrida "Lanzar avisos" por cada "pages build and deployment"?** Se puede comparar
+Cada uno o dos días:
+
+- ¿Hay una corrida "Lanzar avisos" por cada "pages build and deployment"? Se puede comparar
   `gh run list --workflow lanzar-avisos.yml --limit 50` con
   `gh run list --workflow pages-build-deployment --limit 50`.
-- **¿La demora sigue baja?** Anotar la más alta que aparezca.
-- **¿Algún issue `avisos-falla`?** No tendría que haber ninguno.
-- **Commits que solo cambian el historial:** tienen que decir "ninguno" y no lanzar nada.
-
-Si todo esto da bien, `workflow_run` queda comprobado.
+- ¿Hay una "Avisos <sha> prueba=true" por cada commit que cambió `actual.json`, sin repetidos?
+- ¿La demora sigue baja? Anotar la más alta.
+- ¿Algún issue `avisos-falla`?
+- Si llega un resumen o un urgente al Redmi suscrito a los temas de prueba: ¿la notificación muestra el
+  dato y no el genérico "hay novedades"?
 
 ### Después
 
-1. **Paso 6 (dueño):** identidad federada y variables `GCP_WIF_PROVIDER`, `GCP_SA_EMAIL` y
-   `FIREBASE_PROJECT_ID`. Desde ese momento `lanzar` empieza a lanzar `avisos.yml` con `prueba=true`. En
-   Actions aparecen corridas "Avisos <sha> prueba=true", casi todas con "no hay aviso que mandar" (río
-   normal).
-2. **Paso 8:** la prueba en los temas de prueba con el Redmi.
-3. **Con el paso 8 aprobado:** crear `AVISOS_REALES=true`. Las corridas pasan a decir `prueba=false`.
-4. **README (tarea 5):** cómo ver los envíos (Actions → "Lanzar avisos" y "Avisos push") y cómo cortarlos
+1. **Paso 8:** la prueba forzada en los temas de prueba con el Redmi.
+2. **Con el paso 8 y la semana aprobados:** crear `AVISOS_REALES=true`. Las corridas pasan a decir
+   `prueba=false`.
+3. **README (tarea 5):** cómo ver los envíos (Actions → "Lanzar avisos" y "Avisos push") y cómo cortarlos
    (la lista de arriba).
 
 ## Plan B si `workflow_run` no dispara: trabajo "vigía" en `lector.yml`
@@ -355,18 +387,20 @@ Si el dueño prefiere lo más simple y acepta el riesgo, **(a)** es una sola lí
   Se nota porque `lanzar-avisos.yml` deja de correr. Habría que revisar las corridas de vez en cuando; un
   control automático ("hay commits en `datos` sin corrida de avisos") queda como mejora posible.
 - **Un dato falso en `datos` produce un aviso real** (común a todas las opciones; ver más arriba).
-- **Mientras `main` no exija PR**, un `leer` comprometido puede cambiar `lector/avisos.py` y hacer que la
-  próxima corrida legítima mande un urgente falso (ver "Otro hueco").
+- **Si alguna vez se afloja `proteger-main`** (quitar el PR obligatorio o dar bypass a Actions), un `leer`
+  comprometido vuelve a poder cambiar `lector/avisos.py` (ver "Otro hueco").
+- **Carreras de lanzamiento:** dos publicaciones de Pages que se solapan, o un lanzamiento a mano justo a
+  la vez, pueden producir un aviso repetido (ver "Carreras que quedan"); la app no lo muestra dos veces.
 - **Demoras de GitHub Actions** en horas pico: el urgente puede tardar unos minutos más; la revisión local
   sigue de respaldo.
-- **Si Pages no muestra el dato en 3 minutos**, el push sale igual y algunos teléfonos pueden mostrar el
+- **Si Pages no muestra el dato en 180 s**, el push sale igual y algunos teléfonos pueden mostrar el
   genérico "hay novedades" hasta su próxima revisión.
 
 ## Lo que tiene que hacer el dueño después del merge
 
-1. Exigir PR en `proteger-main` (0 aprobaciones, sin bypass para Actions), antes del paso 8.
-2. Hacer la semana de solo mirar: revisar la primera corrida "Lanzar avisos" y, después, cada uno o dos
-   días (ver "Semana de solo mirar"). Si no dispara, avisar para pasar al plan B.
-3. Paso 6: identidad federada y sus variables. Desde ahí se lanza a los temas de prueba.
-4. Paso 8 en los temas de prueba; con el paso aprobado, crear `AVISOS_REALES=true`.
-5. Para cortar en cualquier momento: `LANZAR_AVISOS=false`, o desactivar el workflow en Actions.
+1. Mirar la primera corrida "Lanzar avisos" (ver "Cómo comprobar que `workflow_run` dispara"). Si no
+   aparece, avisar para pasar al plan B.
+2. Semana de prueba en los temas `prueba-`: no definir `AVISOS_REALES` y revisar cada uno o dos días (ver
+   "Durante la semana").
+3. Paso 8 en los temas de prueba; con el paso y la semana aprobados, crear `AVISOS_REALES=true`.
+4. Para cortar en cualquier momento: `LANZAR_AVISOS=false`, o desactivar el workflow en Actions.
