@@ -1,4 +1,7 @@
 name: Avisos push
+# El nombre de cada corrida lleva el commit: así lanzar-avisos.yml sabe si ya se lanzó
+# y en la pestaña Actions se ve qué publicación avisó cada una.
+run-name: Avisos ${{ inputs.commit }} prueba=${{ inputs.prueba }}
 
 # Qué hace (docs/fase-4-avisos-push.md, paso 7):
 # Recibe el commit de datos que acaba de publicar el lector y lector/avisos.py decide,
