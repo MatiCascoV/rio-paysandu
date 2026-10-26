@@ -1,7 +1,9 @@
 # Fase 4, paso 6: proveedor OIDC de GitHub para el pool avisos-github.
 # Se usa con: gcloud iam workload-identity-pools providers create-oidc ... --flags-file=este archivo
 # (así la condición no pasa por las comillas de PowerShell ni de cmd). La condición va en UNA sola línea:
-# con un bloque de varias líneas (>-), gcloud en Windows la rechaza ("token recognition error"), visto el 26/10/2026.
+# con un bloque de varias líneas (>-), gcloud la rechazó ("token recognition error" tras cada &&), visto el
+# 26/10/2026 en Windows. Causa probable (hipótesis, no reproducida): un \r de CRLF pegado tras cada && del
+# bloque. Por eso .gitattributes deja estos archivos con fin de línea LF.
 # Explicación de cada línea: docs/fase-4-paso-6-guia.md.
 --issuer-uri: https://token.actions.githubusercontent.com
 --attribute-mapping: google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.repository_id=assertion.repository_id,attribute.repository_owner_id=assertion.repository_owner_id,attribute.ref=assertion.ref,attribute.workflow_ref=assertion.workflow_ref
