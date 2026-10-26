@@ -63,16 +63,41 @@ $G = "$env:LOCALAPPDATA\google-cloud-sdk-zip\google-cloud-sdk\bin\gcloud.cmd"
 & $G auth print-access-token > $null; if ($?) { 'sesión OK' } else { & $G auth login }
 ```
 
-Los pasos 1 a 7 los puede pegar el dueño en PowerShell, desde `C:\Users\matic\rio-paysandu`, o correrlos
-Claude con su OK explícito: son cambios de permisos en su cuenta de Google.
+Los pasos 1 a 7 los puede pegar el dueño en PowerShell, o correrlos Claude con su OK explícito: son cambios
+de permisos en su cuenta de Google.
+
+**Desde qué carpeta.** Los pasos 3 y 4 usan los archivos `herramientas\paso6\*.yaml`, que hoy solo están en la
+rama del PR #17. Lo normal es mergear primero el PR #17 y correr todo desde `C:\Users\matic\rio-paysandu`
+después de un `git pull`. Si el PR todavía no está mergeado, correr desde el worktree de esa rama,
+`C:\Users\matic\rio-paysandu-guia6`. Pegar todos los bloques en la **misma ventana** de PowerShell: los
+comandos usan las variables `$G`, `$P`, `$N` y `$SA` que se definen acá.
 
 ```powershell
-cd C:\Users\matic\rio-paysandu
+cd C:\Users\matic\rio-paysandu          # con el PR #17 mergeado
+git switch main
+git pull
+# Si el PR #17 no está mergeado, en lugar de lo de arriba:
+# cd C:\Users\matic\rio-paysandu-guia6
+
 $G = "$env:LOCALAPPDATA\google-cloud-sdk-zip\google-cloud-sdk\bin\gcloud.cmd"
 $P = 'mi-rio-uy-8ca81'
 $N = '993936321335'
 $SA = "avisos-fcm@$P.iam.gserviceaccount.com"
 ```
+
+**Controles antes de empezar.** Tienen que dar exactamente esto; si no, **parar**:
+
+```powershell
+Test-Path herramientas\paso6\proveedor.yaml, herramientas\paso6\rol-enviar-fcm.yaml   # dos True
+& $G projects describe $P --format="value(projectNumber)"                             # 993936321335
+```
+
+Si sale algún `False`, se está en la carpeta equivocada o falta el `git pull`. Si el número no es
+`993936321335`, `$P` está mal escrito o la sesión de gcloud es de otra cuenta.
+
+> **Nunca pegar la condición del proveedor a mano en la consola.** Las comillas simples y los `&&` se rompen
+> en PowerShell y en cmd, y un error ahí puede dejar una condición distinta de la acordada. Siempre por el
+> archivo, con `--flags-file` (paso 4).
 
 **1. Activar las APIs** (si ya estaban, no cambia nada):
 
@@ -80,14 +105,19 @@ $SA = "avisos-fcm@$P.iam.gserviceaccount.com"
 & $G services enable iam.googleapis.com iamcredentials.googleapis.com sts.googleapis.com fcm.googleapis.com --project $P
 ```
 
-**2. Confirmar que el permiso se puede usar en un rol propio.** Tiene que aparecer
-`cloudmessaging.messages.create` con `customRolesSupportLevel` distinto de `NOT_SUPPORTED`:
+**2. Confirmar que el permiso se puede usar en un rol propio.** Tiene que aparecer una sola fila,
+`cloudmessaging.messages.create`:
 
 ```powershell
-& $G iam list-testable-permissions "//cloudresourcemanager.googleapis.com/projects/$P" --filter="name:cloudmessaging"
+& $G iam list-testable-permissions "//cloudresourcemanager.googleapis.com/projects/$P" `
+    --filter="name=cloudmessaging.messages.create" --format="table(name,stage,customRolesSupportLevel)"
 ```
 
-Si no aparece o dice `NOT_SUPPORTED`: **parar** y avisar. La alternativa, `roles/firebasecloudmessaging.admin`,
+Mirar la columna `CUSTOM_ROLES_SUPPORT_LEVEL`:
+- vacía o `SUPPORTED`: seguir;
+- `TESTING` o `NOT_SUPPORTED`: **parar** y avisar.
+
+Si no sale ninguna fila, también **parar** y avisar. La alternativa, `roles/firebasecloudmessaging.admin`,
 da más de lo necesario y hay que decidirla.
 
 **3. Crear el rol propio:**
@@ -112,6 +142,9 @@ da más de lo necesario y hay que decidirla.
 & $G projects add-iam-policy-binding $P --member="serviceAccount:$SA" --role="projects/$P/roles/enviarAvisosFcm" --condition=None
 ```
 
+Si la segunda línea dice que la cuenta no existe, es que Google todavía no la terminó de crear: esperar unos
+segundos y repetir **solo la segunda línea**.
+
 **6. Dejar que el pool use esa cuenta.** Solo los carnets del repositorio `1412063651` que ya pasaron la
 condición:
 
@@ -123,6 +156,7 @@ condición:
 **7. Revisar lo creado** (la salida es lo que verifica el Secrets & Credential Hygiene Engineer, tarea 1):
 
 ```powershell
+& $G iam workload-identity-pools providers list --project $P --location=global --workload-identity-pool=avisos-github
 & $G iam workload-identity-pools providers describe github --project $P --location=global --workload-identity-pool=avisos-github
 & $G iam service-accounts get-iam-policy $SA --project $P
 & $G iam service-accounts keys list --iam-account=$SA --managed-by=user   # tiene que salir vacío
@@ -130,18 +164,37 @@ condición:
 ```
 
 Lo esperado:
-- `attributeCondition`: la condición completa, con las 8 líneas.
+- En el pool, un solo proveedor: `github`.
+- En el `describe` del proveedor:
+  - `state: ACTIVE`;
+  - `oidc.issuerUri: https://token.actions.githubusercontent.com`, **sin** `allowedAudiences`;
+  - `attributeMapping` con 6 entradas (`google.subject`, `attribute.repository`, `attribute.repository_id`,
+    `attribute.repository_owner_id`, `attribute.ref`, `attribute.workflow_ref`);
+  - `attributeCondition`: la condición completa, las 8 cláusulas unidas por `&&` (aparece en una sola línea),
+    incluida `assertion.run_attempt == '1'`.
 - La cuenta: un solo `roles/iam.workloadIdentityUser` para ese `principalSet`.
 - Ninguna clave de usuario.
 - En el proyecto, solo `projects/mi-rio-uy-8ca81/roles/enviarAvisosFcm`.
+
+**7b. (Opcional) Registros de auditoría de los canjes de token.** Por defecto Google no guarda quién canjeó un
+carnet por un token. Para poder revisarlo después, en la consola de Google Cloud (proyecto
+`mi-rio-uy-8ca81`): **IAM y administración → Registros de auditoría**. Buscar estos tres servicios, marcarlos
+y activar solo **"Lectura de datos"** (Data Read):
+
+- Identity and Access Management (IAM) API
+- IAM Service Account Credentials API
+- Security Token Service API
+
+El volumen es mínimo: unas pocas entradas por cada corrida de `avisos.yml`. Se ven en el Explorador de
+registros.
 
 **8. Variables del repositorio.** No son secretas: identifican, no autorizan. Las puede cargar Claude con
 el OK del dueño:
 
 ```powershell
-gh variable set FIREBASE_PROJECT_ID --body "mi-rio-uy-8ca81"
-gh variable set GCP_SA_EMAIL --body "avisos-fcm@mi-rio-uy-8ca81.iam.gserviceaccount.com"
-gh variable set GCP_WIF_PROVIDER --body "projects/993936321335/locations/global/workloadIdentityPools/avisos-github/providers/github"
+gh variable set FIREBASE_PROJECT_ID --repo MatiCascoV/rio-paysandu --body "mi-rio-uy-8ca81"
+gh variable set GCP_SA_EMAIL --repo MatiCascoV/rio-paysandu --body "avisos-fcm@mi-rio-uy-8ca81.iam.gserviceaccount.com"
+gh variable set GCP_WIF_PROVIDER --repo MatiCascoV/rio-paysandu --body "projects/993936321335/locations/global/workloadIdentityPools/avisos-github/providers/github"
 ```
 
 **9. Prueba de punta a punta, en los temas de prueba.** El commit `e29d22a` ("Datos de CARU 21/10/2026 10:14",
@@ -171,9 +224,69 @@ foreach ($c in (git log --format=%H origin/datos -n 80)) {
 }
 ```
 
-**10. Prueba en contra** (que la credencial rechace lo que no corresponde). En la página de esa corrida, tocar
-**"Re-run all jobs"**: tiene que terminar en rojo, sin enviar nada. Lo frenan el control de `run_attempt` del
-workflow y la condición del proveedor.
+**10. Prueba en contra: la re-corrida.** En la página de esa corrida, tocar **"Re-run all jobs"**: tiene que
+terminar en rojo, sin enviar nada, con el error "No se envía: es una re-corrida". Lo frena el control de
+`run_attempt` del workflow (la credencial ni se pide). Esta prueba **no** pasa por Google: que la condición del
+proveedor incluye `run_attempt == '1'` se verifica leyendo el `describe` del paso 7.
+
+**10b. (Opcional) Prueba de que Google rechaza.** Para ver la condición del proveedor trabajando, se lanza desde
+una rama descartable un workflow que solo intenta autenticarse, **sin enviar nada**. Como no corre en `main` ni
+es `avisos.yml`, no coinciden `ref` ni `workflow_ref` y Google tiene que rechazarlo.
+
+En la rama `probar-wif`, crear `.github/workflows/probar-wif.yml` con este contenido:
+
+```yaml
+# Prueba descartable: la credencial de avisos.yml NO tiene que funcionar desde acá.
+# Solo autentica; no envía nada. Borrar la rama después.
+name: probar-wif
+on:
+  workflow_dispatch:
+permissions:
+  id-token: write
+jobs:
+  probar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Autenticar en Google Cloud (tiene que fallar)
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_SA_EMAIL }}
+          token_format: access_token
+```
+
+Correrlo desde `C:\Users\matic\rio-paysandu` (no desde el worktree `rio-paysandu-guia6`: ahí no se puede
+cambiar a `main`):
+
+```powershell
+cd C:\Users\matic\rio-paysandu
+git fetch origin
+git switch -c probar-wif origin/main
+# (crear el archivo de arriba)
+git add .github\workflows\probar-wif.yml
+git commit -m "Prueba descartable de la condición del proveedor"
+git push -u origin probar-wif
+gh workflow run probar-wif.yml --repo MatiCascoV/rio-paysandu --ref probar-wif
+gh run list --repo MatiCascoV/rio-paysandu --workflow probar-wif.yml --limit 1
+gh run watch <id de la corrida> --repo MatiCascoV/rio-paysandu
+```
+
+Si `gh workflow run` dice que no encuentra el workflow (GitHub a veces no lanza a mano un workflow que no
+está en `main`), agregar en el archivo, debajo de `workflow_dispatch:`, las líneas `push:` y
+`branches: [probar-wif]`, y hacer otro commit y push: el push mismo lo lanza. Sirve igual, porque tampoco
+coincide `event_name`.
+
+Lo esperado: el paso de `auth` **falla** con `unauthorized_client` y un mensaje sobre la `attribute condition`.
+Si en cambio pasa, **parar**: la condición no es la acordada (revisar el `describe` del paso 7) y desactivar el
+proveedor (ver "Vuelta atrás").
+
+Después, borrar la rama, en GitHub y en la PC:
+
+```powershell
+git switch main
+git push origin --delete probar-wif
+git branch -D probar-wif
+```
 
 ### Si algo sale mal
 
@@ -185,12 +298,23 @@ workflow y la condición del proveedor.
 | FCM responde 403 `PERMISSION_DENIED` | Falta el rol del paso 5, o el permiso del paso 2 no es el correcto |
 | FCM responde 404 | `FIREBASE_PROJECT_ID` mal escrito |
 
-**Vuelta atrás:** borrar las tres variables (`gh variable delete …`) deja a `avisos.yml` sin poder enviar. Para
-cortar del todo, desactivar el proveedor:
+**Vuelta atrás** (con `$G`, `$P` y `$SA` definidos como al principio de los pasos):
 
-```powershell
-& $G iam workload-identity-pools providers disable github --project $P --location=global --workload-identity-pool=avisos-github
-```
+- **Corte inmediato:** desactivar la cuenta de servicio. Desde ese momento no se emite ningún token para ella,
+  aunque el carnet pase la condición. Se revierte con `enable`.
+
+  ```powershell
+  & $G iam service-accounts disable $SA --project $P
+  # para volver atrás: & $G iam service-accounts enable $SA --project $P
+  ```
+
+- Borrar las tres variables (`gh variable delete … --repo MatiCascoV/rio-paysandu`) deja a `avisos.yml` sin
+  poder enviar.
+- Para cortar del todo, desactivar también el proveedor:
+
+  ```powershell
+  & $G iam workload-identity-pools providers disable github --project $P --location=global --workload-identity-pool=avisos-github
+  ```
 
 ## Tareas de los agentes para mañana
 
@@ -246,8 +370,11 @@ dato; si sale antes, la app muestra el genérico "hay novedades".
 - **Code Reviewer:** revisa el diff de la tarea 2.
 - **Reality Checker:** aprueba el paso 6 con evidencia:
   - la corrida verde del paso 9, con el nombre del mensaje de FCM;
-  - la re-corrida en rojo del paso 10;
-  - la salida del paso 7.
+  - la re-corrida en rojo del paso 10, con el error "No se envía: es una re-corrida" y el paso de `auth`
+    salteado (prueba el control del workflow, no la condición de Google);
+  - la salida del paso 7, con `assertion.run_attempt == '1'` dentro de `attributeCondition`: esa es la
+    evidencia de que Google también rechaza las re-corridas;
+  - si se hizo el paso 10b, la corrida de `probar-wif.yml` con `auth` en rojo por la `attribute condition`.
 
   Si no aprueba, se corrige antes de seguir.
 
@@ -263,7 +390,7 @@ Cuando el paso 6 esté aprobado:
 1. Tarea 1, primera parte.
 2. Pasos 1 a 8, con el dueño.
 3. Tarea 1, segunda parte.
-4. Paso 9, y después el paso 10.
+4. Paso 9, y después el paso 10 (y el 10b, si se hace).
 5. Tarea 2 (puede ir en paralelo con la tarea 3, porque tocan archivos distintos).
 6. Tarea 4.
 7. Prueba de la tarea 2 en los temas de prueba.
