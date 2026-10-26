@@ -62,10 +62,10 @@ Detalle completo en `docs/fase-4-avisos-push.md`.
 | 3 | Prueba de entrega en el Redmi | Hecho |
 | 4 | App: pestaña Avisos | Hecho y probado |
 | 5 | Rama `datos` y Pages | Hecho; `datos` protegida con `proteger-datos` (tarea A) |
-| 6 | Identidad federada en Google Cloud | Pendiente (dueño, tarea C) |
-| 7 | `lector/avisos.py` y `avisos.yml` | Hecho, sin probar contra FCM |
+| 6 | Identidad federada en Google Cloud | Hecho (26/10/2026; ver `docs/fase-4-paso-6-guia.md`) |
+| 7 | `lector/avisos.py` y `avisos.yml` | Hecho; mandó un resumen real a `prueba-resumen-paysandu` (26/10/2026). El urgente sigue sin probar contra FCM |
 | 8 | Prueba completa | Pendiente (tareas D y E) |
-| 9 | README: ver, cortar y arreglar envíos | Pendiente (tarea F) |
+| 9 | README: ver, cortar y arreglar envíos | Sección "Avisos push" del README escrita (rama `fase-4-docs-paso-6`) |
 
 ## Tareas pendientes, en orden
 
