@@ -1,4 +1,7 @@
 name: Avisos push
+# El nombre de cada corrida lleva el commit: así lanzar-avisos.yml sabe si ya se lanzó
+# y en la pestaña Actions se ve qué publicación avisó cada una.
+run-name: Avisos ${{ inputs.commit }} prueba=${{ inputs.prueba }}
 
 # Qué hace (docs/fase-4-avisos-push.md, paso 7):
 # Recibe el commit de datos que acaba de publicar el lector y lector/avisos.py decide,
@@ -18,7 +21,7 @@ name: Avisos push
 # ya validados.
 
 on:
-  workflow_dispatch: # lo lanza el lector (más adelante, con prueba=false) o alguien a mano
+  workflow_dispatch: # lo lanza lanzar-avisos.yml cuando Pages publica, o alguien a mano
     inputs:
       commit:
         description: SHA completo (40 caracteres) del commit de datos a avisar
