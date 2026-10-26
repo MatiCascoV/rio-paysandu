@@ -67,12 +67,17 @@ el prefijo `prueba-`):
 | Caso | Destino | Prioridad Android |
 |---|---|---|
 | Urgente alerta | tema `alerta-paysandu` | HIGH |
-| Urgente evacuación | condición `'alerta-paysandu' in topics \|\| 'evacuacion-paysandu' in topics` | HIGH |
+| Urgente evacuación | dos mensajes con los mismos datos: primero al tema `evacuacion-paysandu` y después al tema `alerta-paysandu` | HIGH |
 | Resumen | tema `resumen-paysandu` | NORMAL |
 
 La app suscribe así: "Desde alerta" → `alerta-paysandu`; "Solo evacuación" → `evacuacion-paysandu`; resumen
-prendido → `resumen-paysandu`. Cada teléfono está en un solo tema urgente, y FCM entrega la condición de
-evacuación una sola vez por teléfono. Así todo push que llega corresponde a algo que la persona pidió.
+prendido → `resumen-paysandu`. Cada teléfono está en un solo tema urgente, así que el urgente de evacuación le
+llega una sola vez aunque salga en dos mensajes. Así todo push que llega corresponde a algo que la persona pidió.
+
+Antes el urgente de evacuación era una sola condición de FCM (`'alerta-paysandu' in topics || 'evacuacion-paysandu'
+in topics`), pero en la prueba del 21/10 tardó 42 s contra menos de 1 s de un tema directo. Si falla uno de los
+mensajes no hay reintentos: se intentan igual los demás, la corrida queda en rojo y el resumen del trabajo
+`enviar` dice qué tema recibió el mensaje y cuál no.
 
 **Riesgo a probar primero:** los mensajes de solo datos dependen de que Android despierte la app. En
 algunos Xiaomi hace falta activar "Inicio automático" y quitar la restricción de batería. Si en la prueba
