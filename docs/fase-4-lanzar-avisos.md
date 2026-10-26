@@ -1,9 +1,17 @@
 # Fase 4: cómo se lanza `avisos.yml` después de cada publicación
 
-Propuesta para la tarea 3 del paso 6 (requisito del paso 8). **Nada de esto está aplicado:** no se tocó
-ningún workflow ni código. La decisión es del dueño.
+Tarea 3 del paso 6 (requisito del paso 8).
 
-Fecha: 26/10/2026.
+**Decidido por el dueño (26/10/2026): opción (b3)**, el workflow `lanzar-avisos.yml` con `workflow_run` de
+`pages-build-deployment`, empezando con una semana de "solo mirar". **Implementado** en la rama
+`fase-4-lanzar-avisos`:
+
+- `.github/workflows/lanzar-avisos.yml`, nuevo;
+- una línea `run-name` en `avisos.yml`;
+- `lector.yml` sin cambios.
+
+Abajo queda la comparación que llevó a la decisión. Las secciones "El cambio aplicado" y "Semana de solo
+mirar" dicen cómo quedó y qué hacer después del merge.
 
 ## Recomendación en corto
 
@@ -149,238 +157,63 @@ el `GITHUB_TOKEN` de `leer` ya no puede subir a `main`. Tampoco puede abrir un P
 elija la opción que elija**, y con (a) es imprescindible. Con eso, el hueco se reduce al de "dato falso en
 `datos`" que ya está descrito arriba.
 
-## El cambio propuesto
+## El cambio aplicado
 
 ### 1. Workflow nuevo `.github/workflows/lanzar-avisos.yml`
 
+El archivo es la referencia; acá va solo cómo está armado. Tiene tres trabajos, `permissions: {}` arriba y
+ninguna acción de terceros (solo bash, git, jq, curl y gh del runner), así que no hay nada que fijar por
+SHA.
+
+| Trabajo | Permiso | Qué hace |
+|---|---|---|
+| `revisar` | `actions: read` | Valida lo que trae el evento (`head_sha`, `workflow_id` y `created_at`, con expresiones regulares). Busca la publicación anterior de Pages que salió bien y trae `datos` sin token. Lista los commits que cambiaron `data/actual.json` entre esa publicación y esta, con un tope de 12. Espera hasta 3 min a que `https://maticascov.github.io/rio-paysandu/data/actual.json` sirva ese `generado` o uno más nuevo. Escribe en el resumen de la corrida la lista, el estado de Pages y **cuántos segundos pasaron desde el commit**. |
+| `lanzar` | `actions: write` (el único) | Sin checkout ni datos. Vuelve a validar cada SHA. **Si faltan `GCP_WIF_PROVIDER` o `GCP_SA_EMAIL`, no lanza nada** y deja en el resumen qué habría lanzado. Si están, salta los commits que ya tienen una corrida `Avisos <sha> prueba=<…>` y lanza `gh workflow run avisos.yml --ref main -f commit=<sha> -f prueba=<…>`. |
+| `avisar` | `issues: write` | Si `revisar` o `lanzar` fallan, abre o comenta el issue "No se lanzaron los avisos" (etiqueta `avisos-falla`). |
+
+Todo lo que viene de afuera (el evento, las variables, las salidas de `revisar`) entra a los `run:` por
+`env:`, nunca con `${{ }}` dentro del script. La concurrencia es un grupo por commit publicado
+(`lanzar-avisos-<head_sha>`), así dos publicaciones seguidas no se pisan ni se cancelan.
+
+**Por qué `lanzar` no lanza mientras falte la identidad federada.** Sin esas variables, `avisos.yml` no
+puede enviar nada: su trabajo `enviar` termina sin enviar o en error. Lanzarlo igual llenaría Actions con
+unas 70 corridas inútiles por día, y si `avisos.yml` terminara en rojo enterraría las fallas de verdad.
+Frenarlo en `lanzar` tiene tres ventajas:
+
+- mira las mismas variables que usa `avisos.yml`, así que no hay que acordarse de prender nada aparte;
+- deja la corrida en verde, con un aviso `notice` y el resumen de lo que habría lanzado, que es justo lo
+  que hay que mirar en la semana de prueba;
+- en cuanto el dueño termina el paso 6, empieza a lanzar solo, a los temas de prueba.
+
+Costo: los commits publicados durante la semana sin variables no se lanzan nunca, porque cada corrida mira
+solo desde la publicación anterior. Es lo esperado: son avisos viejos.
+
+### 2. Una línea en `avisos.yml`
+
 ```yaml
-name: Lanzar avisos
-
-# Cuándo corre: cuando GitHub Pages termina de publicar un commit de la rama datos
-# (workflow interno "pages-build-deployment"). Ver docs/fase-4-lanzar-avisos.md.
-#
-# Qué hace: lanza avisos.yml una vez por cada commit de datos que cambió
-# data/actual.json desde la publicación anterior de Pages que salió bien. Casi
-# siempre es uno solo; si Pages salteó o falló alguna, también lanza esos, porque
-# lector/avisos.py compara cada commit con el anterior y un commit sin lanzar
-# perdería su urgente.
-#
-# Por qué acá y no en lector.yml: así el trabajo que procesa lo que manda CARU
-# sigue sin poder lanzar workflows. "revisar" lee datos pero solo puede leer la API;
-# "lanzar" puede lanzar workflows pero no trae el repositorio ni datos: solo recibe
-# SHAs ya validados.
-#
-# workflow_run siempre usa este archivo tal como está en main.
-
-on:
-  workflow_run:
-    workflows: ["pages-build-deployment"]
-    types: [completed]
-
-permissions: {}
-
-# Un grupo por commit (no uno solo): GitHub deja una sola corrida en espera por
-# grupo y cancela la anterior, y eso perdería commits. Las listas de dos corridas
-# no se pisan (cada una va desde la publicación anterior hasta la suya).
-concurrency:
-  group: lanzar-avisos-${{ github.event.workflow_run.head_sha }}
-  cancel-in-progress: false
-
-jobs:
-  revisar:
-    # Solo publicaciones que salieron bien, de la rama datos de este mismo repositorio.
-    if: >-
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.head_branch == 'datos' &&
-      github.event.workflow_run.head_repository.full_name == github.repository
-    runs-on: ubuntu-latest
-    timeout-minutes: 8
-    permissions:
-      actions: read # listar las corridas de pages-build-deployment
-    outputs:
-      commits: ${{ steps.lista.outputs.commits }}
-      pages: ${{ steps.pages.outputs.pages }}
-    env:
-      URL_ACTUAL: https://maticascov.github.io/rio-paysandu/data/actual.json # la misma que usa la app
-      MAX_COMMITS: "12" # unas 2 horas de publicaciones
-    steps:
-      - name: Armar la lista de commits a lanzar
-        id: lista
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          ACTUAL: ${{ github.event.workflow_run.head_sha }}
-          ID_PAGES: ${{ github.event.workflow_run.workflow_id }}
-          CREADA: ${{ github.event.workflow_run.created_at }}
-          GIT_TERMINAL_PROMPT: "0"
-        run: |
-          # Lo que llega del evento se valida antes de usarlo.
-          [[ "$ACTUAL" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::head_sha inválido"; exit 1; }
-          [[ "$ID_PAGES" =~ ^[0-9]+$ ]] || { echo "::error::workflow_id inválido"; exit 1; }
-          [[ "$CREADA" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] \
-            || { echo "::error::created_at inválido"; exit 1; }
-          [[ "$REPO" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || { echo "::error::repositorio inválido"; exit 1; }
-
-          # Publicación anterior de Pages que salió bien (la más nueva antes de esta).
-          anterior=$(gh api "repos/$REPO/actions/workflows/$ID_PAGES/runs?branch=datos&status=success&per_page=50" \
-            --jq "[.workflow_runs[] | select(.created_at < \"$CREADA\")] | sort_by(.created_at) | last | .head_sha // empty") \
-            || anterior=""
-
-          # Historia de datos, sin token: el repositorio es público. No se corre nada
-          # de lo que trae: solo git log y git show de un JSON.
-          git init --quiet datos && cd datos
-          timeout 60 git fetch --quiet --no-tags --depth=300 "https://github.com/$REPO.git" \
-            "+refs/heads/datos:refs/remotes/origin/datos"
-          if ! git merge-base --is-ancestor "$ACTUAL" origin/datos 2>/dev/null; then
-            echo "::error::El commit $ACTUAL no está en datos (o está a más de 300 commits de la punta)"
-            exit 1
-          fi
-
-          if [[ "$anterior" =~ ^[0-9a-f]{40}$ ]] && git merge-base --is-ancestor "$anterior" "$ACTUAL" 2>/dev/null; then
-            # Del más viejo al más nuevo; solo los que cambiaron actual.json.
-            mapfile -t lista < <(git rev-list --reverse "$anterior..$ACTUAL" -- data/actual.json)
-          else
-            echo "::warning::No se encontró la publicación anterior de Pages: se mira solo este commit"
-            lista=()
-            if [ "$(git log -1 --format=%H "$ACTUAL" -- data/actual.json)" = "$ACTUAL" ]; then
-              lista=("$ACTUAL")
-            fi
-          fi
-
-          if [ "${#lista[@]}" -gt "$MAX_COMMITS" ]; then
-            echo "::warning::Hay ${#lista[@]} commits sin lanzar; se lanzan solo los últimos $MAX_COMMITS"
-            lista=("${lista[@]: -$MAX_COMMITS}")
-          fi
-          echo "commits=${lista[*]}" >> "$GITHUB_OUTPUT"
-          echo "Commits a lanzar: ${lista[*]:-(ninguno: esta publicación no cambió actual.json)}"
-
-      # El evento ya dice que Pages terminó; esto confirma que la URL pública sirve el
-      # dato (o uno más nuevo) antes de mandar el push, para que la app no muestre
-      # "hay novedades". Si en 3 minutos no aparece, se lanza igual: es peor callar
-      # un urgente que mostrar el genérico.
-      - name: Esperar a que Pages sirva el dato
-        id: pages
-        if: steps.lista.outputs.commits != ''
-        env:
-          ACTUAL: ${{ github.event.workflow_run.head_sha }}
-        run: |
-          cd datos
-          a_epoca() {  # fecha ISO con offset -> segundos, o vacío si no tiene ese formato
-            [[ "$1" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([+-][0-9]{2}:[0-9]{2}|Z)$ ]] \
-              && date -d "$1" +%s 2>/dev/null
-          }
-          esperado=$(a_epoca "$(git show "$ACTUAL:data/actual.json" | jq -r '.generado // empty' 2>/dev/null | head -c 40)")
-          if [ -z "$esperado" ]; then
-            echo "::warning::El actual.json del commit no trae una fecha generado válida; no se puede verificar Pages"
-            echo "pages=sin_verificar" >> "$GITHUB_OUTPUT"; exit 0
-          fi
-          for intento in $(seq 1 18); do  # 18 x 10 s = 3 minutos
-            servido=$(a_epoca "$(curl -fsS --max-time 10 "$URL_ACTUAL" | jq -r '.generado // empty' 2>/dev/null | head -c 40)")
-            if [ -n "$servido" ] && [ "$servido" -ge "$esperado" ]; then
-              echo "Pages ya sirve el dato (intento $intento)"
-              echo "pages=publicado" >> "$GITHUB_OUTPUT"; exit 0
-            fi
-            sleep 10
-          done
-          echo "::warning::Pages no mostró el dato nuevo en 3 minutos; se lanza igual"
-          echo "pages=sin_confirmar" >> "$GITHUB_OUTPUT"
-
-  # Trabajo aparte: el único con permiso de lanzar workflows. Sin checkout, sin
-  # datos, sin acciones de terceros: solo gh y bash del runner.
-  lanzar:
-    needs: revisar
-    if: needs.revisar.outputs.commits != ''
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      actions: write # lanzar avisos.yml (incluye leer sus corridas)
-    steps:
-      - name: Lanzar avisos.yml por cada commit
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          COMMITS: ${{ needs.revisar.outputs.commits }}
-          # Temas reales solo si el dueño pone la variable del repositorio
-          # AVISOS_REALES=true. Sin ella (o con cualquier otro valor), temas de prueba.
-          REALES: ${{ vars.AVISOS_REALES }}
-        run: |
-          if [ "$REALES" = "true" ]; then prueba=false; else prueba=true; fi
-          read -r -a lista <<< "$COMMITS"
-          if [ "${#lista[@]}" -gt 12 ]; then echo "::error::Demasiados commits"; exit 1; fi
-
-          # Para no lanzar dos veces el mismo commit (re-corrida de este workflow, o
-          # alguien que lo lanzó a mano): avisos.yml pone el commit en el nombre de
-          # la corrida (run-name). Si la lista falla, se sigue sin esta revisión: las
-          # listas de dos corridas no se pisan, así que lo normal es que no haya repetidos.
-          titulos=$(gh api "repos/$REPO/actions/workflows/avisos.yml/runs?per_page=100" \
-            --jq '.workflow_runs[].display_title') || titulos=""
-
-          fallos=0
-          for commit in "${lista[@]}"; do
-            if ! [[ "$commit" =~ ^[0-9a-f]{40}$ ]]; then
-              echo "::error::Commit inválido en la lista"; exit 1
-            fi
-            if grep -qxF "Avisos $commit prueba=$prueba" <<< "$titulos"; then
-              echo "Ya hay una corrida de avisos.yml para $commit (prueba=$prueba): no se lanza otra"
-              continue
-            fi
-            if gh workflow run avisos.yml --repo "$REPO" --ref main \
-                 -f commit="$commit" -f prueba="$prueba"; then
-              echo "Lanzado avisos.yml para $commit (prueba=$prueba)"
-            else
-              echo "::error::No se pudo lanzar avisos.yml para $commit"
-              fallos=$((fallos + 1))
-            fi
-          done
-          [ "$fallos" -eq 0 ]
-
-  # Si algo falló, un issue (como "avisar" en lector.yml): puede haber un urgente sin
-  # lanzar. Para recuperarlo alcanza con "Re-run failed jobs": la revisión de nombres
-  # de corrida evita repetir los commits que ya salieron.
-  avisar:
-    needs: [revisar, lanzar]
-    if: failure()
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      issues: write
-    steps:
-      - name: Abrir o comentar el issue "No se lanzaron los avisos"
-        env:
-          GH_TOKEN: ${{ github.token }}
-          ETIQUETA: avisos-falla
-        run: |
-          corrida="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
-          cuerpo="La corrida $corrida de Lanzar avisos falló: puede haber un aviso que no salió. Revisá el registro y, si corresponde, usá Re-run failed jobs. La revisión local de la app sigue de respaldo."
-          gh label create "$ETIQUETA" --repo "$GITHUB_REPOSITORY" --color B60205 \
-            --description "Falla al lanzar avisos push" 2>/dev/null || true
-          numero=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --label "$ETIQUETA" \
-            --json number --jq '.[0].number // empty')
-          if [ -n "$numero" ]; then
-            gh issue comment "$numero" --repo "$GITHUB_REPOSITORY" --body "$cuerpo"
-          else
-            gh issue create --repo "$GITHUB_REPOSITORY" --title "No se lanzaron los avisos" \
-              --label "$ETIQUETA" --body "$cuerpo"
-          fi
+run-name: Avisos ${{ inputs.commit }} prueba=${{ inputs.prueba }}
 ```
 
-### 2. Una línea en `avisos.yml`: el commit en el nombre de la corrida
+Es lo único que se tocó en `avisos.yml`, a propósito, para que el merge con los cambios de `enviar` que se
+hacen en otra rama sea trivial. No cambia nada de lo que ve Google: `ref`, `workflow_ref`, `event_name` y
+`run_attempt` siguen iguales.
 
-```diff
- name: Avisos push
-+# El nombre de cada corrida lleva el commit: así lanzar-avisos.yml sabe si ya se
-+# lanzó y en la pestaña Actions se ve qué publicación avisó cada una.
-+run-name: Avisos ${{ inputs.commit }} prueba=${{ inputs.prueba }}
-```
+### 3. Variables del repositorio (Settings → Secrets and variables → Actions → Variables)
 
-No cambia nada de lo que ve Google: `ref`, `workflow_ref`, `event_name` y `run_attempt` siguen iguales,
-así que la condición del proveedor del paso 6 queda tal cual.
+| Variable | Sin definir | Con valor |
+|---|---|---|
+| `LANZAR_AVISOS` | El lanzador anda | `false`: **corta todo**. `revisar` ni arranca, así que no se lanza nada. |
+| `AVISOS_REALES` | Todo va a los temas `prueba-` | `true`: temas reales. Cualquier otro valor cuenta como prueba. |
+| `GCP_WIF_PROVIDER`, `GCP_SA_EMAIL` | "Solo mirar": no se lanza nada | Las crea el dueño en el paso 6. Con las dos, se lanza. |
 
-### 3. Variable del repositorio `AVISOS_REALES`
+Formas de cortar los avisos, de la más suave a la más fuerte:
 
-Mientras no exista, todo va a los temas `prueba-`. Para pasar a los temas reales (después de la semana del
-paso 8), el dueño la crea con valor `true` en Settings → Secrets and variables → Actions → Variables. Para
-volver a los de prueba, la borra. No hace falta tocar código.
+1. borrar `AVISOS_REALES`: vuelve a los temas de prueba;
+2. poner `LANZAR_AVISOS=false`: no se lanza nada;
+3. Actions → "Lanzar avisos" → "Disable workflow";
+4. quitar la cuenta de servicio del proveedor en Google Cloud.
+
+Ninguna toca el lector ni los datos.
 
 ### 4. `lector.yml`: sin cambios
 
@@ -442,20 +275,52 @@ en `relanzar`).
 - **Commits que solo cambian el historial** (o umbrales editados a mano): no tocan `actual.json`, así que
   no lanzan nada.
 
-## Puesta en marcha propuesta (en orden)
+## Semana de solo mirar y puesta en marcha
 
-0. **Antes del paso 8, sea cual sea la opción:** el dueño agrega "Require a pull request before merging"
-   a `proteger-main` (ver "Otro hueco").
-1. **Modo "solo mirar", una semana:** subir `lanzar-avisos.yml` con el trabajo `lanzar` desactivado
-   (`if: false`). Hay que comprobar que **corre una vez por cada publicación de Pages**, con el `head_sha`
-   correcto, y medir cuánto tarda desde el push. Esto confirma lo único que no está comprobado. Si no
-   corre nunca, se pasa al plan B.
-2. Agregar `run-name` a `avisos.yml` y activar `lanzar` **sin** `AVISOS_REALES`: todo va a los temas
-   `prueba-`. Esto coincide con la prueba del paso 8.
-3. Con el paso 8 aprobado, el dueño crea `AVISOS_REALES=true`.
-4. Actualizar `docs/fase-4-avisos-push.md` (dice que `avisos.yml` "se lanza desde el workflow del lector")
-   y el README (tarea 5): cómo cortar los avisos (borrar `AVISOS_REALES`, o desactivar `lanzar-avisos.yml`
-   en Actions).
+### Antes del merge (o junto con él)
+
+0. **Exigir PR en `main`:** agregar "Require a pull request before merging" a `proteger-main`, con 0
+   aprobaciones y sin bypass para GitHub Actions. Tiene que estar antes del paso 8 (ver "Otro hueco").
+
+### Semana de solo mirar (sin `GCP_WIF_PROVIDER` / `GCP_SA_EMAIL`)
+
+No hace falta configurar nada: mientras el paso 6 no esté hecho, `lanzar` no lanza.
+
+**Después de la primera publicación del lector tras el merge** (como mucho unos 10 minutos), en Actions:
+
+1. Al lado de "pages build and deployment" de ese commit aparece una corrida de **"Lanzar avisos"**, con
+   evento `workflow_run` y el mismo commit. **Si no aparece en unos 5 minutos, `workflow_run` no dispara
+   para Pages:** se pasa al plan B (más abajo). Se puede confirmar con
+   `gh run list --workflow lanzar-avisos.yml --limit 5`.
+2. La corrida está en verde, con `revisar` y `lanzar` hechos y `avisar` salteado.
+3. En el resumen de la corrida (Summary):
+   - "Publicación de Pages" tiene el mismo SHA que el commit de `datos`;
+   - "Commits que cambiaron actual.json" trae normalmente uno solo, el mismo;
+   - "Pages: ya sirve el dato (intento 1 de 18)", o un intento bajo;
+   - "este trabajo arrancó: … (N s después del commit)": lo normal sería menos de 2 minutos;
+   - "Lanzamiento: **no** (solo mirar…)", con la lista que habría lanzado.
+
+**Durante la semana**, cada uno o dos días:
+
+- **¿Hay una corrida "Lanzar avisos" por cada "pages build and deployment"?** Se puede comparar
+  `gh run list --workflow lanzar-avisos.yml --limit 50` con
+  `gh run list --workflow pages-build-deployment --limit 50`.
+- **¿La demora sigue baja?** Anotar la más alta que aparezca.
+- **¿Algún issue `avisos-falla`?** No tendría que haber ninguno.
+- **Commits que solo cambian el historial:** tienen que decir "ninguno" y no lanzar nada.
+
+Si todo esto da bien, `workflow_run` queda comprobado.
+
+### Después
+
+1. **Paso 6 (dueño):** identidad federada y variables `GCP_WIF_PROVIDER`, `GCP_SA_EMAIL` y
+   `FIREBASE_PROJECT_ID`. Desde ese momento `lanzar` empieza a lanzar `avisos.yml` con `prueba=true`. En
+   Actions aparecen corridas "Avisos <sha> prueba=true", casi todas con "no hay aviso que mandar" (río
+   normal).
+2. **Paso 8:** la prueba en los temas de prueba con el Redmi.
+3. **Con el paso 8 aprobado:** crear `AVISOS_REALES=true`. Las corridas pasan a decir `prueba=false`.
+4. **README (tarea 5):** cómo ver los envíos (Actions → "Lanzar avisos" y "Avisos push") y cómo cortarlos
+   (la lista de arriba).
 
 ## Plan B si `workflow_run` no dispara: trabajo "vigía" en `lector.yml`
 
@@ -497,10 +362,11 @@ Si el dueño prefiere lo más simple y acepta el riesgo, **(a)** es una sola lí
 - **Si Pages no muestra el dato en 3 minutos**, el push sale igual y algunos teléfonos pueden mostrar el
   genérico "hay novedades" hasta su próxima revisión.
 
-## Lo que tiene que decidir el dueño
+## Lo que tiene que hacer el dueño después del merge
 
-1. ¿(b3) con la semana de "solo mirar", o directamente (a) aceptando el riesgo?
-2. Si (b3) no dispara: ¿plan B (vigía) o (a)?
-3. El tope de commits por lanzamiento (12, unas 2 horas) y la espera máxima de Pages (3 minutos).
-4. Usar la variable `AVISOS_REALES` para pasar a los temas reales.
-5. Exigir PR en `proteger-main` (0 aprobaciones, sin bypass para Actions) antes del paso 8.
+1. Exigir PR en `proteger-main` (0 aprobaciones, sin bypass para Actions), antes del paso 8.
+2. Hacer la semana de solo mirar: revisar la primera corrida "Lanzar avisos" y, después, cada uno o dos
+   días (ver "Semana de solo mirar"). Si no dispara, avisar para pasar al plan B.
+3. Paso 6: identidad federada y sus variables. Desde ahí se lanza a los temas de prueba.
+4. Paso 8 en los temas de prueba; con el paso aprobado, crear `AVISOS_REALES=true`.
+5. Para cortar en cualquier momento: `LANZAR_AVISOS=false`, o desactivar el workflow en Actions.

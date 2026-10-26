@@ -43,14 +43,16 @@ El mismo día pueden llegar los dos (por ejemplo, el río sube a alerta a las 8 
 
 ## Cómo funciona
 
-1. El lector publica datos nuevos (como hoy).
-2. Un workflow aparte, `avisos.yml`, corre `lector/avisos.py`, que mira la publicación nueva y las anteriores
+1. El lector publica datos nuevos en la rama `datos` y GitHub Pages los publica (como hoy).
+2. Cuando Pages termina, `lanzar-avisos.yml` confirma que la URL pública ya sirve el dato y lanza
+   `avisos.yml` con ese commit (ver `docs/fase-4-lanzar-avisos.md`).
+3. `avisos.yml` corre `lector/avisos.py`, que mira la publicación nueva y las anteriores
    y decide si corresponde un aviso urgente, un resumen, los dos o nada.
-3. Si corresponde, manda **un mensaje push sin texto** por Firebase Cloud Messaging (FCM) a uno de tres temas
+4. Si corresponde, manda **un mensaje push sin texto** por Firebase Cloud Messaging (FCM) a uno de tres temas
    (ver la tabla de mensajes abajo).
-4. El teléfono recibe el mensaje aunque la app esté cerrada, baja `actual.json` y arma la notificación con
+5. El teléfono recibe el mensaje aunque la app esté cerrada, baja `actual.json` y arma la notificación con
    ese dato.
-5. La revisión periódica local (`revisarNivel`) sigue como respaldo, con las mismas reglas y preferencias, y
+6. La revisión periódica local (`revisarNivel`) sigue como respaldo, con las mismas reglas y preferencias, y
    comparte con el push la marca de lo ya avisado, así que nunca avisan dos veces.
 
 ## Decisiones de diseño
@@ -99,9 +101,12 @@ Hoy el trabajo que procesa contenido de CARU sube commits a `main`, aunque se ni
 
 - El lector publica en una rama **`datos`**, y GitHub Pages pasa a publicar esa rama. Las direcciones
   `https://maticascov.github.io/rio-paysandu/data/...` no cambian, así que las apps instaladas siguen andando.
-- `avisos.yml` vive en `main` y se lanza con `workflow_dispatch` desde el workflow del lector (como el
-  trabajo `relanzar` que ya existe), con el commit de `datos` como entrada. Así siempre corre la versión de
-  `main`, que es la única que la credencial acepta.
+- `avisos.yml` vive en `main` y se lanza con `workflow_dispatch` (`--ref main`) y el commit de `datos` como
+  entrada. Así siempre corre la versión de `main`, que es la única que la credencial acepta. **No lo lanza
+  el lector:** lo lanza `lanzar-avisos.yml`, que arranca cuando GitHub Pages termina de publicar
+  (`workflow_run` de `pages-build-deployment`). Así el trabajo que procesa lo que manda CARU no necesita
+  `actions: write`, y el push sale recién cuando la app ya puede ver el dato. Decidido por el dueño el
+  26/10/2026; detalles, riesgos y cómo cortarlo en `docs/fase-4-lanzar-avisos.md`.
 
 ## Pasos
 
@@ -114,7 +119,7 @@ Hoy el trabajo que procesa contenido de CARU sube commits a `main`, aunque se ni
 | 5 | Mover los datos a la rama `datos` y GitHub Pages a esa rama, sin cortar el servicio (copiar, cambiar Pages, verificar las URLs, recién entonces apuntar el lector). **Hecho** (21/10/2026): `lector.yml` toma el código de `main` y publica en `datos` (`LECTOR_DATOS`); GitHub Pages publica `datos` y `data/` salió de `main`. Falta que el dueño proteja `datos` contra borrado y force-push (Settings → Rules → Rulesets). **Ojo:** el lector se apuntó a `datos` antes de cambiar Pages y la app mostró el dato de las 10:00 durante unas 2 horas; en un corte así, primero Pages y verificar las URLs. | Desarrollo, con OK del dueño | M |
 | 6 | Identidad federada: pool exclusivo y proveedor de GitHub en Google Cloud, con la condición completa de `docs/fase-4-informe-agente.md` (IDs de repositorio y dueño, `ref == refs/heads/main`, `workflow_ref` de `avisos.yml`, `event_name == workflow_dispatch`, `run_attempt == 1`, `runner_environment == github-hosted`); cuenta de servicio con un rol propio de solo `cloudmessaging.messages.create` y nada más. **Hecho** (26/10/2026; ver `docs/fase-4-paso-6-guia.md`, con lo que quedó pendiente). | Dueño (con guía; necesita permisos de su cuenta) | M |
 | 7 | `lector/avisos.py` (decide urgente y resumen desde el historial de `data/actual.json`) y `avisos.yml` (lo corre y envía por la API HTTP v1 de FCM a los tres temas). Acciones fijadas por SHA, permisos mínimos, entrada `prueba` que envía solo a los temas de prueba. Tests con fixtures. **Hecho** (sin probar contra FCM). | Desarrollo | M |
-| 8 | Prueba completa: forzar con datos de prueba una subida a alerta y un resumen, en los temas de prueba, con la app cerrada en el Redmi. Después, una semana en los temas reales con el teléfono del dueño. **Ojo:** la decisión sale del historial de `data/actual.json`, así que un `actual.json` falso commiteado en `main`/`datos` queda en ese historial: una versión falsa del día lista para resumen suprime el resumen real de ese día, y una falsa en alerta hace que la próxima subida real no avise. Hacer la prueba un día con río normal y volver enseguida a los datos reales, o probar en una copia del repositorio. | Desarrollo + dueño | S |
+| 8 | Prueba completa: forzar con datos de prueba una subida a alerta y un resumen, en los temas de prueba, con la app cerrada en el Redmi. Después, una semana en los temas reales con el teléfono del dueño. **Ojo:** la decisión sale del historial de `data/actual.json`, así que un `actual.json` falso commiteado en `main`/`datos` queda en ese historial: una versión falsa del día lista para resumen suprime el resumen real de ese día, y una falsa en alerta hace que la próxima subida real no avise. Hacer la prueba un día con río normal y volver enseguida a los datos reales, o probar en una copia del repositorio. El lanzamiento automático lo hace `lanzar-avisos.yml`: sin la variable `AVISOS_REALES` va a los temas `prueba-`; con `AVISOS_REALES=true`, a los reales (ver `docs/fase-4-lanzar-avisos.md`). | Desarrollo + dueño | S |
 | 9 | Documentar en el README cómo ver los envíos, cómo cortarlos y qué hacer si fallan; agregar Firebase a la futura política de privacidad (Fase 5). | Desarrollo | S |
 
 Orden: 1 → 2 → 3 (si la prueba falla, se revisa el diseño antes de seguir) → 4 → 5 → 6 → 7 → 8 → 9.
