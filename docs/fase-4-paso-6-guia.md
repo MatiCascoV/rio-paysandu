@@ -240,7 +240,8 @@ En la rama `probar-wif`, crear `.github/workflows/probar-wif.yml` con este conte
 # Solo autentica; no envía nada. Borrar la rama después.
 name: probar-wif
 on:
-  workflow_dispatch:
+  push:
+    branches: [probar-wif]
 permissions:
   id-token: write
 jobs:
@@ -265,16 +266,13 @@ git switch -c probar-wif origin/main
 # (crear el archivo de arriba)
 git add .github\workflows\probar-wif.yml
 git commit -m "Prueba descartable de la condición del proveedor"
-git push -u origin probar-wif
-gh workflow run probar-wif.yml --repo MatiCascoV/rio-paysandu --ref probar-wif
+git push -u origin probar-wif            # el push mismo lanza la prueba
 gh run list --repo MatiCascoV/rio-paysandu --workflow probar-wif.yml --limit 1
 gh run watch <id de la corrida> --repo MatiCascoV/rio-paysandu
 ```
 
-Si `gh workflow run` dice que no encuentra el workflow (GitHub a veces no lanza a mano un workflow que no
-está en `main`), agregar en el archivo, debajo de `workflow_dispatch:`, las líneas `push:` y
-`branches: [probar-wif]`, y hacer otro commit y push: el push mismo lo lanza. Sirve igual, porque tampoco
-coincide `event_name`.
+Se lanza con `push` y no a mano porque GitHub solo deja lanzar a mano (`workflow_dispatch`) los workflows que
+ya están en `main`. Además de `ref` y `workflow_ref`, tampoco coincide `event_name`.
 
 Lo esperado: el paso de `auth` **falla** con `unauthorized_client` y un mensaje sobre la `attribute condition`.
 Si en cambio pasa, **parar**: la condición no es la acordada (revisar el `describe` del paso 7) y desactivar el
