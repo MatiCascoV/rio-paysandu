@@ -1,0 +1,8 @@
+# Fase 4, paso 6: proveedor OIDC de GitHub para el pool avisos-github.
+# Se usa con: gcloud iam workload-identity-pools providers create-oidc ... --flags-file=este archivo
+# (así la condición no pasa por las comillas de PowerShell ni de cmd). La condición va en UNA sola línea:
+# con un bloque de varias líneas (>-), gcloud en Windows la rechaza ("token recognition error"), visto el 26/10/2026.
+# Explicación de cada línea: docs/fase-4-paso-6-guia.md.
+--issuer-uri: https://token.actions.githubusercontent.com
+--attribute-mapping: google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.repository_id=assertion.repository_id,attribute.repository_owner_id=assertion.repository_owner_id,attribute.ref=assertion.ref,attribute.workflow_ref=assertion.workflow_ref
+--attribute-condition: "assertion.repository_id == '1412063651' && assertion.repository_owner_id == '141058604' && assertion.repository == 'MatiCascoV/rio-paysandu' && assertion.ref == 'refs/heads/main' && assertion.workflow_ref == 'MatiCascoV/rio-paysandu/.github/workflows/avisos.yml@refs/heads/main' && assertion.event_name == 'workflow_dispatch' && assertion.run_attempt == '1' && assertion.runner_environment == 'github-hosted'"

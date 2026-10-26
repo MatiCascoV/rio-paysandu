@@ -1,0 +1,7 @@
+# Fase 4, paso 6: rol propio con un solo permiso, enviar mensajes de FCM.
+# Se usa con: gcloud iam roles create enviarAvisosFcm --project mi-rio-uy-8ca81 --file=este archivo
+title: Enviar avisos FCM
+description: Solo enviar mensajes de Firebase Cloud Messaging (lo usa avisos.yml de Mi Río UY)
+stage: GA
+includedPermissions:
+  - cloudmessaging.messages.create
