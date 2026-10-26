@@ -241,8 +241,11 @@ firmado con la clave de depuración). Igual conviene correr `flutter test` y `fl
     [docs/fase-4-paso-6-guia.md](docs/fase-4-paso-6-guia.md).
   - 26/10/2026: el ruleset `proteger-main` exige pull request para entrar a `main` (0 aprobaciones, sin
     bypass): `main` ya no acepta push directo.
-  - Pendiente del paso 6: activar los registros de auditoría de los canjes de token (7b), la prueba de que
-    Google rechaza otra rama (10b), y verificar que el mensaje llegó al Redmi.
+  - 26/10/2026: prueba de que Google rechaza (10b). Desde la rama descartable `probar-wif` (corrida
+    40334850975, evento push), el paso `auth` falló con `unauthorized_client`: "The given credential is
+    rejected by the attribute condition".
+  - Pendiente del paso 6: activar los registros de auditoría de los canjes de token (7b), borrar la rama
+    `probar-wif` (`git push origin --delete probar-wif`, dueño), y verificar que el mensaje llegó al Redmi.
   - Falta: que el lector lance `avisos.yml` (hoy solo se lanza a mano), el urgente de evacuación en dos
     mensajes, la prueba completa (paso 8) y una semana en los temas reales.
   - 17/10/2026: arreglados los avisos locales en el APK de release (la reducción de recursos borraba el ícono

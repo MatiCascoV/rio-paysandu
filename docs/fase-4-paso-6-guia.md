@@ -14,8 +14,12 @@ Escrita el 21/10/2026 para retomar al día siguiente. Diseño completo en
 > También el 26/10/2026, el ruleset `proteger-main` pasó a exigir pull request para entrar a `main` (0
 > aprobaciones, sin bypass): `main` ya no acepta push directo.
 >
-> **Quedan pendientes:** el 7b (registros de auditoría, no activados), el 10b (`probar-wif`, sin hacer) y
-> verificar que el mensaje llegó al Redmi.
+> Paso 10b, también el 26/10/2026: desde la rama descartable `probar-wif`, la corrida 40334850975 (evento
+> push) falló en el paso `auth` con `unauthorized_client`: "The given credential is rejected by the attribute
+> condition." Google rechaza un carnet que no cumple la condición.
+>
+> **Quedan pendientes:** el 7b (registros de auditoría, no activados), borrar la rama `probar-wif`
+> (`git push origin --delete probar-wif`, lo hace el dueño) y verificar que el mensaje llegó al Redmi.
 >
 > Lo de abajo queda como estaba al escribir la guía, salvo las notas del paso 4 y del paso 7.
 
