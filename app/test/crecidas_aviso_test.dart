@@ -125,4 +125,19 @@ void main() {
     expect(t.takeException(), isNull);
     await t.pumpWidget(const SizedBox());
   });
+
+  for (final ancho in [360.0, 393.0]) {
+    testWidgets('con letra al 130 % y Roboto, ninguna etiqueta de las pestañas se parte (${ancho.round()} dp)', (t) async {
+      await abrirApp(t, letra: 1.3);
+      t.view.physicalSize = Size(ancho * 2.75, 873 * 2.75);
+      await t.pumpAndSettle();
+      final renglon = t.getSize(find.text('Inicio')).height;
+      for (final e in ['Gráfico', 'Crecidas', 'Qué hacer', 'Avisos']) {
+        expect(t.getSize(find.text(e)).height, renglon, reason: e);
+        expect(t.getSize(find.text(e)).width, lessThanOrEqualTo(ancho / 5), reason: e);
+      }
+      expect(t.takeException(), isNull);
+      await t.pumpWidget(const SizedBox());
+    });
+  }
 }

@@ -514,7 +514,7 @@ class _PantallaCrecidasState extends State<PantallaCrecidas> {
     MapCamera? ultima;
     final titulo = elegida == null
         ? 'Todas las crecidas (${_visibles.length})'
-        : '${elegida.nombre} · ${alturaSegun(elegida)}';
+        : '${elegida.nombre}\n${alturaYFecha(elegida)}';
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         fullscreenDialog: true,

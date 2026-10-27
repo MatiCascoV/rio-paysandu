@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
@@ -323,15 +324,18 @@ class _PaginaPrincipalState extends State<PaginaPrincipal> with WidgetsBindingOb
       bottomNavigationBar: DecoratedBox(
         decoration: BoxDecoration(border: Border(top: BorderSide(color: Colores.bordeSuave))),
         // Tope al agrandado de letra: con más, las cinco etiquetas no entran
-        // en 320 dp (lo mide la prueba de desborde).
-        child: MediaQuery.withClampedTextScaling(
-          maxScaleFactor: topeLetraPestanas,
-          child: NavigationBar(
-            selectedIndex: _pestana.index,
-            onDestinationSelected: (i) => _ir(Pestana.values[i]),
-            destinations: [
-              for (final p in Pestana.values) NavigationDestination(icon: Icon(p.icono), label: p.etiqueta),
-            ],
+        // en 320 dp (lo mide la prueba de desborde). Y en cada teléfono, el
+        // que haga falta para que ninguna etiqueta se parta en dos renglones.
+        child: LayoutBuilder(
+          builder: (context, lugar) => MediaQuery.withClampedTextScaling(
+            maxScaleFactor: topeLetraQueEntra(context, lugar.maxWidth / Pestana.values.length),
+            child: NavigationBar(
+              selectedIndex: _pestana.index,
+              onDestinationSelected: (i) => _ir(Pestana.values[i]),
+              destinations: [
+                for (final p in Pestana.values) NavigationDestination(icon: Icon(p.icono), label: p.etiqueta),
+              ],
+            ),
           ),
         ),
       ),
@@ -341,6 +345,27 @@ class _PaginaPrincipalState extends State<PaginaPrincipal> with WidgetsBindingOb
 
 /// Tope al agrandado de letra en la barra de pestañas.
 const topeLetraPestanas = 1.3;
+
+/// Agrandado de letra más grande (hasta [topeLetraPestanas], y nunca menos
+/// de 1) con el que la etiqueta más larga entra en un renglón en [ancho] dp.
+double topeLetraQueEntra(BuildContext context, double ancho) {
+  final tema = NavigationBarTheme.of(context).labelTextStyle;
+  final estilo = tema?.resolve({WidgetState.selected}) ?? const TextStyle(fontSize: 15, fontWeight: FontWeight.w600);
+  final familia = Theme.of(context).textTheme.bodyMedium?.fontFamily;
+  var mayor = 0.0;
+  for (final p in Pestana.values) {
+    final t = TextPainter(
+      text: TextSpan(text: p.etiqueta, style: estilo.copyWith(fontFamily: estilo.fontFamily ?? familia)),
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+    )..layout();
+    mayor = math.max(mayor, t.width);
+    t.dispose();
+  }
+  // Un poco de aire a los costados de cada etiqueta.
+  final entra = mayor <= 0 ? topeLetraPestanas : (ancho - 8) / mayor;
+  return entra.clamp(1.0, topeLetraPestanas);
+}
 
 extension DatosPestana on Pestana {
   String get etiqueta => switch (this) {

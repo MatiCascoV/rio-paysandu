@@ -539,7 +539,7 @@ void main() {
       expect(completo, findsOneWidget);
       // Ocupa todo el teléfono.
       expect(t.getSize(completo), const Size(393, 852));
-      expect(find.text('Crecida de julio de 2025 · 6,58 m según Dinagua'), findsOneWidget);
+      expect(find.text('Crecida de julio de 2025\n6,58 m según Dinagua · 3 de julio de 2025'), findsOneWidget);
       expect(find.text('No es un pronóstico.'), findsOneWidget);
       expect(find.text('© OpenStreetMap · Dinagua'), findsWidgets);
       final cerrar = find.byKey(const ValueKey('cerrar-pantalla-completa'));
