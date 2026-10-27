@@ -4,8 +4,10 @@ Tarea 3 del paso 6 (requisito del paso 8).
 
 **Decidido por el dueño (26/10/2026): opción (b3)**, el workflow `lanzar-avisos.yml` con `workflow_run` de
 `pages-build-deployment`, empezando con una semana de prueba en los temas `prueba-` (sin `AVISOS_REALES`).
-El paso 6 (identidad federada) ya está hecho y `proteger-main` ya exige PR. **Implementado** en la rama
-`fase-4-lanzar-avisos`, con las correcciones de la revisión de código:
+El paso 6 (identidad federada) ya está hecho y `proteger-main` ya exige PR. **Mergeado en `main` con el PR
+#20 el 26/10/2026**, con las correcciones de la revisión de código. **Disparo comprobado** el mismo día:
+Pages terminó a las 18:19:01 UTC → "Lanzar avisos" arrancó a las 18:19:31 → `avisos.yml` a las 18:19:47. El
+plan B (vigía) no hizo falta. Cambios:
 
 - `.github/workflows/lanzar-avisos.yml`, nuevo;
 - en `avisos.yml`, una línea `run-name` y el comentario de `workflow_dispatch`;

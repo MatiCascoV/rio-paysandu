@@ -18,8 +18,11 @@ Escrita el 21/10/2026 para retomar al día siguiente. Diseño completo en
 > push) falló en el paso `auth` con `unauthorized_client`: "The given credential is rejected by the attribute
 > condition." Google rechaza un carnet que no cumple la condición.
 >
-> **Quedan pendientes:** el 7b (registros de auditoría, no activados), borrar la rama `probar-wif`
-> (`git push origin --delete probar-wif`, lo hace el dueño) y verificar que el mensaje llegó al Redmi.
+> También el 26/10/2026: **7b hecho** (registros de auditoría `DATA_READ` para `iam.googleapis.com` y
+> `sts.googleapis.com`) y rama `probar-wif` borrada.
+>
+> **Queda pendiente:** verificar que los mensajes llegan al Redmi; se hace al pasar a los temas reales
+> (paso 8 de `fase-4-avisos-push.md`).
 >
 > Lo de abajo queda como estaba al escribir la guía, salvo las notas del paso 4 y del paso 7.
 

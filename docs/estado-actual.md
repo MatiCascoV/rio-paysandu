@@ -1,6 +1,6 @@
 # Estado actual y próximas tareas
 
-Última actualización: **21/10/2026**. Este archivo es el punto de partida de cada sesión: leelo antes de
+Última actualización: **27/10/2026**. Este archivo es el punto de partida de cada sesión: leelo antes de
 `PROMPT_MAESTRO.md` y actualizalo al cerrar cada tarea (fecha, qué cambió, qué sigue).
 
 ## Cómo arrancar en VS Code
@@ -63,8 +63,8 @@ Detalle completo en `docs/fase-4-avisos-push.md`.
 | 4 | App: pestaña Avisos | Hecho y probado |
 | 5 | Rama `datos` y Pages | Hecho; `datos` protegida con `proteger-datos` (tarea A) |
 | 6 | Identidad federada en Google Cloud | Hecho (26/10/2026; ver `docs/fase-4-paso-6-guia.md`) |
-| 7 | `lector/avisos.py` y `avisos.yml` | Hecho; mandó un resumen real a `prueba-resumen-paysandu` (26/10/2026). El urgente sigue sin probar contra FCM |
-| 8 | Prueba completa | Pendiente (tareas D y E) |
+| 7 | `lector/avisos.py` y `avisos.yml` | Hecho. El resumen salió por `avisos.yml` contra FCM a `prueba-resumen-paysandu` (corridas 40333610759 del 26/10 y 40489758036 del 27/10). Urgente: el 26/10 se mandó con `herramientas/enviar_aviso_prueba.ps1` a `prueba-evacuacion-paysandu` y `prueba-alerta-paysandu` y FCM aceptó los dos (sin verificar la llegada al teléfono); `avisos.yml` todavía no mandó ningún urgente real (el río viene bajando). El urgente de evacuación va en dos mensajes (#18) |
+| 8 | Prueba completa | En curso. `lanzar-avisos.yml` (#20) lanza `avisos.yml` después de cada publicación de Pages; semana de prueba en los temas `prueba-` desde el 26/10/2026 18:19 UTC hasta el ~2/11/2026 (el 27/10, primer resumen del día sin repetidos ni fallas). Después: `AVISOS_REALES=true` y una semana en los temas reales, verificando la llegada al Redmi |
 | 9 | README: ver, cortar y arreglar envíos | Sección "Avisos push" del README escrita (26/10/2026) |
 
 ## Tareas pendientes, en orden
