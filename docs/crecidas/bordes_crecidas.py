@@ -17,11 +17,22 @@ aparecería una raya en medio del río Uruguay.
 Regla (no mueve ningún punto, solo deja de dibujar tramos):
   1. Se recorre cada anillo segmento por segmento.
   2. Se saca un segmento si mide más de TOPE_M y al menos el 10 % de su
-     largo cae dentro del agua de base.json (el cauce). Esos son los
-     cierres del relevamiento.
-  3. Lo que queda se parte en líneas. Se descartan las líneas que caen casi
-     enteras (90 % o más) dentro del cauce y las de menos de MIN_M.
-Los bordes en tierra quedan con los mismos puntos que da Dinagua.
+     largo cae dentro del río Uruguay (el polígono de agua de mayor área de
+     base.json; los arroyos y lagunas no cuentan). Esos son los cierres del
+     relevamiento.
+  3. Cada segmento sacado tiene que ser de uno de estos dos tipos, o el
+     script se frena con error (para que un cambio en los datos de Dinagua
+     no borre un borde en tierra sin que nadie se entere):
+       - "en el río": al menos el 90 % dentro del río;
+       - "recta a latitud constante": el cierre norte o sur, de este a
+         oeste (diferencia de latitud de menos de LAT_RECTA grados);
+       - "entra o sale del río": un extremo dentro del río (el tramo que
+         une el cierre con la costa).
+  4. Lo que queda se parte en líneas. Se descartan las líneas que caen casi
+     enteras (90 % o más) dentro del río y las de menos de MIN_M.
+Los bordes en tierra quedan con los mismos puntos que da Dinagua. Se
+imprime cada segmento sacado y cada línea descartada (largo, % en el río y
+coordenadas), para revisarlos a mano.
 
 Salida: base.json, curvas/AAAA-MM.json (MultiLineString) e indice.json con
 bytes y sha256 de cada archivo. Necesita shapely.
@@ -34,13 +45,13 @@ import os
 import shutil
 import sys
 
-from shapely.geometry import LineString, shape
-from shapely.ops import unary_union
+from shapely.geometry import LineString, Point, shape
 
 TOPE_M = 250.0
 EN_RIO_CORTE = 0.10
 EN_RIO_LINEA = 0.90
 MIN_M = 20.0
+LAT_RECTA = 0.0005  # unos 55 m
 
 
 def metros(a, b):
@@ -58,13 +69,36 @@ def fraccion_en(agua, a, b):
     return seg.intersection(agua).length / seg.length if seg.length else 0.0
 
 
-def bordes(anillo, agua):
+class CorteSospechoso(Exception):
+    pass
+
+
+def tipo_de_corte(rio, a, b, fraccion):
+    """Qué clase de cierre es el segmento a-b, o None si no es ninguno."""
+    if fraccion >= EN_RIO_LINEA:
+        return "en el río"
+    if abs(b[1] - a[1]) < LAT_RECTA:
+        return "recta a latitud constante"
+    if rio.contains(Point(a)) or rio.contains(Point(b)):
+        return "entra o sale del río"
+    return None
+
+
+def bordes(anillo, rio, nombre="?"):
     """Partes del anillo que son borde del agua (sin cierres)."""
     n = len(anillo) - 1  # el último repite el primero
-    corta = [
-        metros(anillo[i], anillo[i + 1]) > TOPE_M and fraccion_en(agua, anillo[i], anillo[i + 1]) >= EN_RIO_CORTE
-        for i in range(n)
-    ]
+    corta = []
+    for i in range(n):
+        a, b = anillo[i], anillo[i + 1]
+        m = metros(a, b)
+        f = fraccion_en(rio, a, b) if m > TOPE_M else 0.0
+        sacar = m > TOPE_M and f >= EN_RIO_CORTE
+        if sacar:
+            tipo = tipo_de_corte(rio, a, b, f)
+            print(f"  {nombre}: corte de {m:.0f} m, {f:.0%} en el río, {tipo or 'SIN TIPO'}: {a} -> {b}")
+            if tipo is None:
+                raise CorteSospechoso(f"{nombre}: el segmento {a} -> {b} ({m:.0f} m) no es un cierre conocido")
+        corta.append(sacar)
     if not any(corta):
         return [anillo]
     # Empezar justo después de un corte para no partir una línea en dos.
@@ -83,9 +117,12 @@ def bordes(anillo, agua):
     salida = []
     for l in lineas:
         if largo(l) < MIN_M:
+            print(f"  {nombre}: línea descartada de {largo(l):.0f} m (menos de {MIN_M:.0f} m): {l[0]} -> {l[-1]}")
             continue
         g = LineString(l)
-        if g.intersection(agua).length / g.length >= EN_RIO_LINEA:
+        f = g.intersection(rio).length / g.length
+        if f >= EN_RIO_LINEA:
+            print(f"  {nombre}: línea descartada de {largo(l):.0f} m, {f:.0%} en el río: {l[0]} -> {l[-1]}")
             continue
         salida.append(l)
     return salida
@@ -100,9 +137,13 @@ def huella(ruta):
 def main(entrada, salida):
     indice = json.load(open(os.path.join(entrada, "indice.json"), encoding="utf-8"))
     base = json.load(open(os.path.join(entrada, "base.json"), encoding="utf-8"))
-    agua = unary_union(
-        [shape(f["geometry"]).buffer(0) for f in base["features"] if f["properties"].get("t") == "agua"]
-    )
+    # Solo el río Uruguay: el polígono de agua de mayor área.
+    poligonos = []
+    for f in base["features"]:
+        if f["properties"].get("t") == "agua":
+            g = shape(f["geometry"]).buffer(0)
+            poligonos.extend(g.geoms if g.geom_type == "MultiPolygon" else [g])
+    rio = max(poligonos, key=lambda p: p.area)
     os.makedirs(os.path.join(salida, "curvas"), exist_ok=True)
     shutil.copyfile(os.path.join(entrada, "base.json"), os.path.join(salida, "base.json"))
     b_bytes, b_sha = huella(os.path.join(salida, "base.json"))
@@ -118,7 +159,7 @@ def main(entrada, salida):
             poligonos = g["coordinates"] if g["type"] == "MultiPolygon" else [g["coordinates"]]
             for p in poligonos:
                 for anillo in p:
-                    lineas.extend(bordes(anillo, agua))
+                    lineas.extend(bordes(anillo, rio, ref["archivo"]))
         props = curva["features"][0]["properties"]
         assert abs(props["altura_m"] - ref["altura_m"]) < 1e-9, ref["archivo"]
         salida_curva = {

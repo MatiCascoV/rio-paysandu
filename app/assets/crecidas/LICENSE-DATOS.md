@@ -28,7 +28,8 @@ Database Contents License: https://opendatacommons.org/licenses/dbcl/1-0/
 © colaboradores de OpenStreetMap — https://www.openstreetmap.org/copyright
 Extracto usado: Geofabrik, `south-america/uruguay-latest.osm.pbf`, descargado el 21/10/2026.
 La base derivada es este mismo archivo (`app/assets/crecidas/base.json` del repositorio).
-Se generó con `docs/mapa/herramientas/extraer_osm.py` de la rama `mapa-inundacion`.
+Se generó con el script `docs/crecidas/extraer_osm.py` de este mismo repositorio, a partir de ese
+extracto, sin cambios posteriores.
 
 `indice.json` solo lista los archivos, sus huellas y estas fuentes.
 
@@ -36,4 +37,4 @@ Se generó con `docs/mapa/herramientas/extraer_osm.py` de la rama `mapa-inundaci
 
 Mi Río UY es un proyecto comunitario sin vínculo con el Ministerio de Ambiente, Dinagua,
 CARU, el Cecoed, la Intendencia ni la Fundación OpenStreetMap, que no avalan este trabajo.
-Los datos se ofrecen "tal cual", sin garantía.
+Los datos se ofrecen «tal cual», sin garantía.
