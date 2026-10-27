@@ -1,11 +1,21 @@
 # Fase 4: avisos push
 
-Estado (26/10/2026): **pasos 1 a 7 hechos** y en `main`. El paso 4 (app) se probó en el Redmi con el río
-en alerta real (`docs/fase-4-informe-app.md`). El paso 6 (identidad federada) se hizo el 26/10/2026
-(`docs/fase-4-paso-6-guia.md`) y con él `avisos.yml` mandó por primera vez un mensaje real de FCM: un resumen
-al tema de prueba `prueba-resumen-paysandu` (corrida 40333610759; falta verificar que llegó al Redmi). El
-urgente todavía no se probó contra FCM. Faltan el paso 8 y el resto del 9 (el README ya explica cómo ver,
-cortar y revisar los envíos, en "Avisos push").
+Estado (27/10/2026): **pasos 1 a 7 hechos** y en `main`. El paso 3 (prueba de entrega) dio bien en el Redmi
+(ver "Resultado de la prueba de entrega", al final). El paso 4 (app) se probó en el Redmi con el río en alerta
+real (`docs/fase-4-informe-app.md`). El paso 6 (identidad federada) se hizo el 26/10/2026
+(`docs/fase-4-paso-6-guia.md`).
+
+- **Resumen:** `avisos.yml` ya lo mandó contra FCM a `prueba-resumen-paysandu` (corridas 40333610759 del 26/10
+  y 40489758036 del 27/10).
+- **Urgente:** el 26/10 se mandó con `herramientas/enviar_aviso_prueba.ps1` a `prueba-evacuacion-paysandu` y
+  `prueba-alerta-paysandu`, y FCM aceptó los dos mensajes; no se verificó la llegada al teléfono.
+  `avisos.yml` todavía no mandó ningún urgente real (el río viene bajando).
+- **Lanzamiento automático:** desde el 26/10/2026 `lanzar-avisos.yml` (#20) lanza `avisos.yml` después de cada
+  publicación de Pages (`docs/fase-4-lanzar-avisos.md`). Semana de prueba en los temas `prueba-` hasta el
+  ~2/11/2026; después, `AVISOS_REALES=true` y una semana en los temas reales.
+
+Faltan el paso 8 y el resto del 9 (el README ya explica cómo ver, cortar y revisar los envíos, en "Avisos
+push").
 
 `app/android/app/google-services.json` **no está en el repositorio** (`.gitignore`): para compilar hace falta
 la copia local, y la CI de la app lo escribe desde el secreto `GOOGLE_SERVICES_JSON` (Actions y Dependabot,
@@ -87,12 +97,13 @@ mensajes no hay reintentos: se intentan igual los demás, la corrida queda en ro
 `enviar` dice qué tema recibió el mensaje, cuál no y de cuál no se sabe (curl sin respuesta HTTP, por ejemplo
 por tiempo agotado: FCM pudo haberlo recibido, por eso no se reintenta).
 
-**Riesgo a probar primero:** los mensajes de solo datos dependen de que Android despierte la app. En
-algunos Xiaomi hace falta activar "Inicio automático" y quitar la restricción de batería. Si en la prueba
-del paso 3 no llegan de forma confiable, la alternativa es un push **con** texto fijo y neutro por tipo
-("El río subió de nivel. Tocá para ver el dato"), que el sistema muestra solo; se pierde parte de la
-protección de la primera fila, porque el texto lo pondría el mensaje. Esa decisión se toma con los
-resultados de la prueba.
+**Riesgo a probar primero (resuelto en el paso 3):** los mensajes de solo datos dependen de que Android
+despierte la app. En algunos Xiaomi hace falta activar "Inicio automático" y quitar la restricción de batería.
+La alternativa era un push **con** texto fijo y neutro por tipo ("El río subió de nivel. Tocá para ver el
+dato"), que el sistema muestra solo, con lo que se perdía parte de la protección de la primera fila. **No hace
+falta:** en la prueba del 21/10/2026 los mensajes de solo datos llegaron en el Redmi con la app cerrada y en
+ahorro de batería, sin tocar "Inicio automático" (ver "Resultado de la prueba de entrega", al final). Queda
+solo datos, urgente con prioridad HIGH y resumen con NORMAL.
 
 ## Separar los datos del código (antes del envío)
 
@@ -114,11 +125,11 @@ Hoy el trabajo que procesa contenido de CARU sube commits a `main`, aunque se ni
 |---|---|---|---|
 | 1 | Crear el proyecto de Firebase "Mi Río UY" con la cuenta de Google del dueño y registrar la app `uy.miriouy.app`. Bajar `google-services.json`. Sin Analytics. **Hecho.** El archivo queda fuera de git (`.gitignore`): cada uno lo tiene en su copia local, y la CI lo escribe desde el secreto `GOOGLE_SERVICES_JSON` (en los secretos de Actions y de Dependabot; ver `.github/workflows/app.yml`). | Dueño (con guía) | S |
 | 2 | Margen al bajar en el lector (`margen_bajada_m`) y tests. **Hecho.** | Desarrollo | S |
-| 3 | **Prueba de entrega en el Redmi:** app con `firebase_messaging`, suscrita a un tema de prueba; envío manual desde la consola de Firebase con la app cerrada; medir cuánto tarda y si llega con la batería en modo normal y en ahorro, **con prioridad alta y con prioridad normal**. Decide la fila "Riesgo a probar". | Desarrollo + dueño | M |
+| 3 | **Prueba de entrega en el Redmi:** app con `firebase_messaging`, suscrita a un tema de prueba; envío manual desde la consola de Firebase con la app cerrada; medir cuánto tarda y si llega con la batería en modo normal y en ahorro, **con prioridad alta y con prioridad normal**. Decide la fila "Riesgo a probar". **Hecho** (21/10/2026; ver "Resultado de la prueba de entrega"). | Desarrollo + dueño | M |
 | 4 | App: pestaña **Avisos** nueva (ver arriba). Suscribir y desuscribir los temas según las preferencias. Manejador en segundo plano que baja `actual.json` y arma la notificación. La revisión local `revisarNivel` tiene que respetar **las mismas preferencias y reglas** (urgente solo al subir a alerta o evacuación, resumen como máximo uno por día y nada con río normal), con marcas compartidas con el push para el urgente y para el resumen del día. El texto de cada notificación lo arma la app desde `actual.json`, por ejemplo: título "Río hoy: 5,85 m · Alerta", texto "Bajó 13 cm en 24 h. Abrí la app para ver el dato en tiempo real." Pantalla corta con los ajustes de Xiaomi u otros fabricantes si los avisos no llegan. Tests. **Hecho** en `fase-4-app-avisos` (falta probarlo en el Redmi; ver `docs/fase-4-informe-app.md`). | Desarrollo | M |
 | 5 | Mover los datos a la rama `datos` y GitHub Pages a esa rama, sin cortar el servicio (copiar, cambiar Pages, verificar las URLs, recién entonces apuntar el lector). **Hecho** (21/10/2026): `lector.yml` toma el código de `main` y publica en `datos` (`LECTOR_DATOS`); GitHub Pages publica `datos` y `data/` salió de `main`. Falta que el dueño proteja `datos` contra borrado y force-push (Settings → Rules → Rulesets). **Ojo:** el lector se apuntó a `datos` antes de cambiar Pages y la app mostró el dato de las 10:00 durante unas 2 horas; en un corte así, primero Pages y verificar las URLs. | Desarrollo, con OK del dueño | M |
 | 6 | Identidad federada: pool exclusivo y proveedor de GitHub en Google Cloud, con la condición completa de `docs/fase-4-informe-agente.md` (IDs de repositorio y dueño, `ref == refs/heads/main`, `workflow_ref` de `avisos.yml`, `event_name == workflow_dispatch`, `run_attempt == 1`, `runner_environment == github-hosted`); cuenta de servicio con un rol propio de solo `cloudmessaging.messages.create` y nada más. **Hecho** (26/10/2026; ver `docs/fase-4-paso-6-guia.md`, con lo que quedó pendiente). | Dueño (con guía; necesita permisos de su cuenta) | M |
-| 7 | `lector/avisos.py` (decide urgente y resumen desde el historial de `data/actual.json`) y `avisos.yml` (lo corre y envía por la API HTTP v1 de FCM a los tres temas). Acciones fijadas por SHA, permisos mínimos, entrada `prueba` que envía solo a los temas de prueba. Tests con fixtures. **Hecho** (sin probar contra FCM). | Desarrollo | M |
+| 7 | `lector/avisos.py` (decide urgente y resumen desde el historial de `data/actual.json`) y `avisos.yml` (lo corre y envía por la API HTTP v1 de FCM a los tres temas). Acciones fijadas por SHA, permisos mínimos, entrada `prueba` que envía solo a los temas de prueba. Tests con fixtures. **Hecho.** El resumen ya salió contra FCM (corridas 40333610759 y 40489758036); el urgente todavía no salió por `avisos.yml` (ver el estado, arriba). | Desarrollo | M |
 | 8 | Prueba completa: forzar con datos de prueba una subida a alerta y un resumen, en los temas de prueba, con la app cerrada en el Redmi. Después, una semana en los temas reales con el teléfono del dueño. **Ojo:** la decisión sale del historial de `data/actual.json`, así que un `actual.json` falso commiteado en `main`/`datos` queda en ese historial: una versión falsa del día lista para resumen suprime el resumen real de ese día, y una falsa en alerta hace que la próxima subida real no avise. Hacer la prueba un día con río normal y volver enseguida a los datos reales, o probar en una copia del repositorio. El lanzamiento automático lo hace `lanzar-avisos.yml`: sin la variable `AVISOS_REALES` va a los temas `prueba-`; con `AVISOS_REALES=true`, a los reales (ver `docs/fase-4-lanzar-avisos.md`). | Desarrollo + dueño | S |
 | 9 | Documentar en el README cómo ver los envíos, cómo cortarlos y qué hacer si fallan; agregar Firebase a la futura política de privacidad (Fase 5). | Desarrollo | S |
 
@@ -139,7 +150,40 @@ Orden: 1 → 2 → 3 (si la prueba falla, se revisa el diseño antes de seguir) 
   medición, más hasta 20 minutos del lector y GitHub Pages.
 - Si GitHub Actions deja de correr, no hay datos ni avisos: es el mismo punto único de falla de hoy.
 - El resumen va con prioridad **normal**, y en los Xiaomi un mensaje normal puede demorarse (horas) hasta que
-  el teléfono salga del reposo. Se prueba en el paso 3; si se demora demasiado, se pasa a prioridad alta.
+  el teléfono salga del reposo. En la prueba del paso 3 quedó retenido hasta que el teléfono despertó, y se
+  **decidió mantenerlo en NORMAL** (el urgente sigue en HIGH): para un resumen diario es aceptable.
 - El urgente y el resumen pueden llegar juntos (por ejemplo, sube a alerta con la publicación que trae
   Prefectura). **Decidido en el paso 4:** la app muestra solo el urgente (ya trae la altura) y da por hecho el
   resumen de ese día.
+
+## Resultado de la prueba de entrega (paso 3, 21/10/2026)
+
+Redmi del dueño (MIUI), app de prueba suscrita al tema `prueba-entrega` y push de **solo datos** enviados con
+un script. La app de prueba (`lib/push_prueba.dart`) y el script (`herramientas/enviar_push_prueba.ps1`)
+estaban en la rama de prueba `fase-4-prueba-entrega`, que **no se integró a `main`**; para probar contra la
+app real está `herramientas/enviar_aviso_prueba.ps1` (ver `docs/fase-4-informe-app.md`). "Llegó" = la app
+recibió el mensaje y mostró su notificación.
+
+| # | Prioridad | App | Batería | Resultado |
+|---|---|---|---|---|
+| 1 | HIGH | abierta | normal | llegó en < 1 s |
+| 2 | NORMAL | abierta | normal | llegó en < 1 s |
+| 3 | HIGH | cerrada (deslizada) | normal | llegó en < 1 s |
+| 4 | NORMAL | cerrada (proceso aún vivo) | normal | llegó en < 1 s |
+| 5 | HIGH | abierta | ahorro de MIUI | llegó en < 1 s |
+| 6 | NORMAL | abierta | ahorro de MIUI | llegó en < 1 s |
+| 7 | HIGH | cerrada, arranque en frío | ahorro de MIUI | llegó en < 1 s |
+| 8 | NORMAL | cerrada | ahorro de MIUI | llegó en < 1 s |
+| 9 | NORMAL | cerrada, pantalla apagada, reposo profundo forzado (`adb shell dumpsys deviceidle force-idle`) | — | **retenido**: llegó recién al salir del reposo (~50 s después, al despertar el teléfono) |
+| 10 | HIGH | cerrada, pantalla apagada, reposo profundo forzado | — | llegó en < 1 s |
+
+Conclusiones:
+
+- Los push de solo datos funcionan en el Redmi, también con la app cerrada y en ahorro de batería, sin
+  tocar "Inicio automático". **Se mantiene el diseño de solo datos**: no hace falta la alternativa con texto
+  de "Riesgo a probar primero".
+- El **urgente** (HIGH) atraviesa el reposo profundo al instante: es lo que importa.
+- El **resumen** (NORMAL) queda retenido mientras el teléfono duerme y aparece cuando la persona lo usa.
+  Para un resumen diario es aceptable; **se mantiene en NORMAL** (ver "Riesgos que quedan").
+- No probado: varias horas de reposo real (sin forzar), ni la app "forzada a detenerse" desde Ajustes
+  (en ese estado Android no entrega push a ninguna app). Se cubre en la prueba completa del paso 8.

@@ -152,8 +152,11 @@ de atraso respecto de la hora de la medición; eso no depende de este proyecto.
 El workflow **"Avisos push"** (`.github/workflows/avisos.yml`) decide con `lector/avisos.py` si corresponde
 un aviso urgente o el resumen del día y, si corresponde, manda un mensaje sin texto por Firebase Cloud
 Messaging (FCM). Usa la identidad federada de GitHub con Google Cloud: no hay ninguna clave guardada en
-GitHub. Hoy se lanza solo a mano, y por defecto va a los temas de prueba (`prueba-…`). Diseño completo en
-[docs/fase-4-avisos-push.md](docs/fase-4-avisos-push.md).
+GitHub. Lo lanza solo `lanzar-avisos.yml` cada vez que GitHub Pages termina de publicar datos nuevos
+(también se puede lanzar a mano). Mientras la variable del repositorio `AVISOS_REALES` no sea `true`, va solo a
+los temas de prueba (`prueba-…`). Diseño completo en [docs/fase-4-avisos-push.md](docs/fase-4-avisos-push.md);
+cómo se lanza y cómo cortar el lanzamiento automático, en
+[docs/fase-4-lanzar-avisos.md](docs/fase-4-lanzar-avisos.md).
 
 **Ver los envíos.** Pestaña **Actions → Avisos push**, o `gh run list --workflow avisos.yml --limit 5`. En
 cada corrida, el resumen dice qué se decidió (urgente, resumen o nada), si fue a los temas de prueba y, en
@@ -232,27 +235,36 @@ firmado con la clave de depuración). Igual conviene correr `flutter test` y `fl
   - 16/10/2026: rediseño de Inicio: fondo teñido según el nivel, agua que sube con la altura del río,
     gráfico de 7 días en Inicio y paleta azulada en modo claro y oscuro.
 - Fase 4 (notificaciones push): en curso. Hechos el margen al bajar y el lector de avisos (`lector/avisos.py`
-  y `avisos.yml`, sin probar contra FCM). El 19/10/2026 se creó el proyecto de Firebase y se registró la app.
+  y `avisos.yml`). El 19/10/2026 se creó el proyecto de Firebase y se registró la app.
   El 21/10/2026 entraron la app con avisos push (probada en el Redmi) y la rama `datos`. Ver
   [docs/fase-4-avisos-push.md](docs/fase-4-avisos-push.md).
+  - 21/10/2026: **paso 3, prueba de entrega en el Redmi** (10 casos): con la app abierta, cerrada y en ahorro
+    de batería de MIUI todo llegó en menos de 1 s; en reposo profundo forzado los HIGH llegan al instante y
+    los NORMAL esperan a que el teléfono despierte. Quedan mensajes solo de datos, urgente HIGH y resumen
+    NORMAL. Ver [el resultado](docs/fase-4-avisos-push.md#resultado-de-la-prueba-de-entrega-paso-3-21102026).
   - 26/10/2026: **paso 6 hecho** (identidad federada de GitHub con Google Cloud, sin claves; aprobado con
     evidencia). `avisos.yml` mandó un resumen al tema de prueba `prueba-resumen-paysandu` (corrida
-    40333610759) y la re-corrida de esa misma corrida terminó en rojo sin enviar. Detalle en
-    [docs/fase-4-paso-6-guia.md](docs/fase-4-paso-6-guia.md).
+    40333610759) y la re-corrida de esa misma corrida terminó en rojo sin enviar. Prueba de que Google
+    rechaza (10b) desde la rama descartable `probar-wif` (corrida 40334850975): `unauthorized_client`.
+    Registros de auditoría `DATA_READ` de `iam.googleapis.com` y `sts.googleapis.com` activados (7b) y rama
+    `probar-wif` borrada. Detalle en [docs/fase-4-paso-6-guia.md](docs/fase-4-paso-6-guia.md).
   - 26/10/2026: el ruleset `proteger-main` exige pull request para entrar a `main` (0 aprobaciones, sin
     bypass): `main` ya no acepta push directo.
-  - 26/10/2026: prueba de que Google rechaza (10b). Desde la rama descartable `probar-wif` (corrida
-    40334850975, evento push), el paso `auth` falló con `unauthorized_client`: "The given credential is
-    rejected by the attribute condition".
-  - Pendiente del paso 6: activar los registros de auditoría de los canjes de token (7b), borrar la rama
-    `probar-wif` (`git push origin --delete probar-wif`, dueño), y verificar que el mensaje llegó al Redmi.
-  - Falta: que el lector lance `avisos.yml` (hoy solo se lanza a mano), el urgente de evacuación en dos
-    mensajes, la prueba completa (paso 8) y una semana en los temas reales.
+  - 26/10/2026: el urgente de evacuación sale en dos mensajes, uno a cada tema urgente (#18).
+  - 26/10/2026: **el lector ya lanza los avisos.** `lanzar-avisos.yml` (#20) arranca cuando termina
+    `pages-build-deployment` y lanza `avisos.yml`; comprobado que dispara. Sin `AVISOS_REALES=true` manda
+    solo a los temas `prueba-`.
+  - Semana de prueba en los temas `prueba-` desde el 26/10/2026 18:19 UTC hasta el ~2/11/2026. El 27/10 salió
+    el primer resumen del día a `prueba-resumen-paysandu`, sin repetidos ni fallas.
+  - Falta (paso 8): poner `AVISOS_REALES=true` y una semana en los temas reales (con eso se cumple la aceptación: la
+    notificación llega con la app cerrada), verificando que los mensajes llegan al Redmi.
   - 17/10/2026: arreglados los avisos locales en el APK de release (la reducción de recursos borraba el ícono
     de notificación).
   - 19/10/2026: CI de la app (`app.yml`) y dependencias al día (Gradle 9.8.1, AGP 9.4.1, Kotlin 2.4.21).
 - Mapa de inundación (pestaña "Mapa": hasta dónde llega el agua según la altura actual, con datos de Dinagua
-  e IDE Uruguay): en desarrollo, sin publicar.
+  e IDE Uruguay): en desarrollo en la rama `mapa-inundacion`. Pipeline v1.1 corrido con datos reales; control
+  de calidad en curso. Decisión del dueño (26/10/2026): la app que se publica es la de `main`, **sin el
+  mapa**, que queda en su rama hasta que lo revise el Cecoed.
 - Fase 4.b (varias ciudades y enlace a Google Flood Hub): investigada, sin empezar. Ver
   [docs/proxima-etapa-ciudades.md](docs/proxima-etapa-ciudades.md).
 - Fase 5 (publicación): sin empezar.
