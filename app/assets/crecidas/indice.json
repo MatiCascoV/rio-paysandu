@@ -1,0 +1,69 @@
+{
+ "version": 1,
+ "limites": [
+  [
+   -32.365,
+   -58.15
+  ],
+  [
+   -32.24,
+   -58.03
+  ]
+ ],
+ "base": {
+  "archivo": "base.json",
+  "bytes": 268774,
+  "sha256": "5d84537d842513c437d24afcfe3fbc4715ec538f758f355eeb5a03668bf8d322"
+ },
+ "crecidas": [
+  {
+   "nombre": "Crecida de julio de 2025",
+   "altura_m": 6.58,
+   "fecha": "2025-07-03",
+   "fuente": "Dinagua",
+   "archivo": "curvas/2025-07.json",
+   "bytes": 56019,
+   "sha256": "99c9cb90e86f28762cc811a977204caf614ff43a8c510b2527e3d4c27afcbdf4"
+  },
+  {
+   "nombre": "Crecida de enero de 2019",
+   "altura_m": 8.45,
+   "fecha": "2019-01-23",
+   "fuente": "Dinagua",
+   "archivo": "curvas/2019-01.json",
+   "bytes": 25412,
+   "sha256": "e30df676c6b9843522faab6c3c14af36b021d1f971a8531f1bb92351e76c6fd6"
+  },
+  {
+   "nombre": "Crecida de junio de 2017",
+   "altura_m": 8.35,
+   "fecha": "2017-06-12",
+   "fuente": "Dinagua",
+   "archivo": "curvas/2017-06.json",
+   "bytes": 12934,
+   "sha256": "719b39009f7a1726342fc5dbe71e3fdbd2a75b97b83d5816777d1b0093cfe88f"
+  },
+  {
+   "nombre": "Crecida de diciembre de 2015",
+   "altura_m": 9.12,
+   "fecha": "2015-12-10",
+   "fuente": "Dinagua",
+   "archivo": "curvas/2015-12.json",
+   "bytes": 10098,
+   "sha256": "970ed26b24645020c14c3edc06e6330d787033df148084df0856c1cd615521b1"
+  },
+  {
+   "nombre": "Crecida de noviembre de 2009",
+   "altura_m": 8.93,
+   "fecha": "2009-11-10",
+   "fuente": "Dinagua",
+   "archivo": "curvas/2009-11.json",
+   "bytes": 6027,
+   "sha256": "ee90f8a8e436144515209853182f6124950861265abacc0cd7a863444ba02e63"
+  }
+ ],
+ "fuentes": [
+  "Bordes de las crecidas: Dirección Nacional de Aguas (Dinagua), Ministerio de Ambiente",
+  "Calles, río y arroyos: © colaboradores de OpenStreetMap, ODbL"
+ ]
+}

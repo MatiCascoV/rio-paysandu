@@ -1,1 +1,3 @@
 herramientas/paso6/*.yaml text eol=lf
+# Datos de la pestaña Crecidas: se controlan por sha256, no convertir fines de línea
+app/assets/crecidas/** -text
