@@ -354,7 +354,7 @@ class _PantallaAjustesState extends State<PantallaAjustes> with WidgetsBindingOb
           'Los avisos llegan por Firebase Cloud Messaging, el servicio de Google para notificaciones, '
           'sin cuenta ni registro. Además, la app revisa el nivel cuando la abrís y, si el teléfono lo '
           'permite, cada tanto aunque esté cerrada.\n\n'
-          'Los datos son de CARU, la Comisión Administradora del Río Uruguay. '
+          'Las alturas del río son de CARU; las crecidas anteriores, de Dinagua, y el mapa, de OpenStreetMap. '
           'Esta app no pide registro, no tiene publicidad y no recolecta datos personales.',
           style: apoyo,
         ),

@@ -142,15 +142,26 @@ abstract final class TrazosMapa {
   static const ribeteTodas = 2.0;
 
   /// Tipo de trazo de la crecida número [i] con "Ver todas" (null:
-  /// continua). Largo de trazo y de hueco, en píxeles.
+  /// continua). Largo de trazo y de hueco, en píxeles. Cada uno se
+  /// reconoce por la forma, sin mirar el color.
   static List<double>? segmentos(int i) => const [
     null,
     [14.0, 6.0],
     [4.0, 5.0],
     [16.0, 4.0, 3.0, 4.0],
-    [26.0, 8.0],
+    [16.0, 4.0, 3.0, 4.0, 3.0, 4.0],
   ][i % 5];
+
+  /// Nombre del trazo número [i] con "Ver todas", para la leyenda, las
+  /// opciones y el lector de pantalla.
+  static String nombre(int i) =>
+      const ['línea continua', 'trazos', 'puntos', 'raya y punto', 'raya y dos puntos'][i % 5];
 }
+
+/// Ancho de las muestras de línea de la leyenda y de las opciones: alcanza
+/// para que se repita el dibujo del trazo (el más largo mide 34 px).
+const anchoMuestra = 60.0;
+const altoMuestra = 22.0;
 
 // ---------------------------------------------------------------------------
 // Polígonos y líneas listos para flutter_map
@@ -236,7 +247,7 @@ bool _adentro(LatLng q, List<LatLng> anillo) {
 }
 
 // ---------------------------------------------------------------------------
-// Muestras para la leyenda y la lista (36 × 22): el mismo dibujo que el mapa.
+// Muestras para la leyenda y la lista (60 × 22): el mismo dibujo que el mapa.
 
 /// Río y arroyos en su cauce: relleno liso con orilla.
 class MuestraCauce extends CustomPainter {
@@ -269,10 +280,7 @@ class MuestraCrecida extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(Offset.zero & size, const Radius.circular(4)),
-      Paint()..color = c.terreno,
-    );
+    canvas.drawRRect(RRect.fromRectAndRadius(Offset.zero & size, const Radius.circular(4)), Paint()..color = c.terreno);
     final y = size.height / 2;
     final ancho = todas ? TrazosMapa.crecidaTodas : TrazosMapa.crecida;
     final ribete = todas ? TrazosMapa.ribeteTodas : TrazosMapa.ribeteCrecida;

@@ -44,7 +44,10 @@ final _hex64 = RegExp(r'^[0-9a-f]{64}$');
 /// Ruta relativa, sin subir de carpeta ni empezar en "/", terminada en .json.
 final _ruta = RegExp(r'^[a-z0-9_\-]+(/[a-z0-9_\-]+)*\.json$');
 
-final _fecha = RegExp(r'^\d{4}-\d{2}-\d{2}$');
+final _fecha = RegExp(r'^(\d{4})-(\d{2})-(\d{2})$');
+
+/// Única fuente aceptada para las crecidas anteriores.
+const fuenteCrecidas = 'Dinagua';
 
 /// Un archivo que nombra el índice, con su tamaño y su huella.
 class ArchivoCrecidas {
@@ -97,15 +100,20 @@ class Crecida {
     final fuente = _texto(j['fuente'])?.trim();
     if (nombre == null || nombre.isEmpty || nombre.length > 80) return null;
     if (altura == null || altura <= 0 || altura > 20) return null;
-    if (f == null || !_fecha.hasMatch(f)) return null;
-    final fecha = DateTime.tryParse(f);
-    if (fecha == null) return null;
-    // Toda altura lleva su fuente (PROMPT_MAESTRO §9): sin fuente no se muestra.
-    if (fuente == null || fuente.isEmpty || fuente.length > 40) return null;
+    final m = f == null ? null : _fecha.firstMatch(f);
+    if (m == null) return null;
+    final anio = int.parse(m[1]!), mes = int.parse(m[2]!), dia = int.parse(m[3]!);
+    // DateTime corre las fechas imposibles ("2019-02-30" sería el 2 de marzo):
+    // el día y el mes tienen que ser los del texto.
+    final fecha = DateTime(anio, mes, dia);
+    if (fecha.year != anio || fecha.month != mes || fecha.day != dia) return null;
+    // Toda altura lleva su fuente (PROMPT_MAESTRO §9). Por ahora la única
+    // fuente de crecidas anteriores es Dinagua: otra cosa no se muestra.
+    if (fuente != fuenteCrecidas) return null;
     try {
       final a = ArchivoCrecidas.desdeJson(j, 'crecida', TopesCrecidas.bytesBorde);
       if (!a.archivo.startsWith('curvas/')) return null;
-      return Crecida(nombre: nombre, alturaM: altura, fecha: DateTime(fecha.year, fecha.month, fecha.day), fuente: fuente, archivo: a);
+      return Crecida(nombre: nombre, alturaM: altura, fecha: fecha, fuente: fuenteCrecidas, archivo: a);
     } on ErrorCrecidas {
       return null;
     }
@@ -119,15 +127,8 @@ class IndiceCrecidas {
 
   /// De la más reciente a la más vieja.
   final List<Crecida> crecidas;
-  final List<String> fuentes;
 
-  const IndiceCrecidas({
-    required this.surOeste,
-    required this.norEste,
-    required this.base,
-    required this.crecidas,
-    this.fuentes = const [],
-  });
+  const IndiceCrecidas({required this.surOeste, required this.norEste, required this.base, required this.crecidas});
 
   bool dentro(double lat, double lon, {double holgura = 0.01}) =>
       lat >= surOeste.latitude - holgura &&
@@ -168,19 +169,9 @@ class IndiceCrecidas {
     if (crecidas.isEmpty) throw const ErrorCrecidas('no hay ninguna crecida legible');
     crecidas.sort((a, b) => b.fecha.compareTo(a.fecha));
 
-    final fuentes = j['fuentes'];
-    return IndiceCrecidas(
-      surOeste: LatLng(s, o),
-      norEste: LatLng(n, e),
-      base: base,
-      crecidas: crecidas,
-      fuentes: fuentes is List
-          ? [
-              for (final f in fuentes.take(8))
-                if (f is String && f.length <= 300) f,
-            ]
-          : const [],
-    );
+    // El campo "fuentes" del índice es para quien lea el archivo: la app
+    // muestra las fuentes con sus propios textos (pantallas/crecidas.dart).
+    return IndiceCrecidas(surOeste: LatLng(s, o), norEste: LatLng(n, e), base: base, crecidas: crecidas);
   }
 }
 
