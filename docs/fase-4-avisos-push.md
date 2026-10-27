@@ -143,3 +143,35 @@ Orden: 1 → 2 → 3 (si la prueba falla, se revisa el diseño antes de seguir) 
 - El urgente y el resumen pueden llegar juntos (por ejemplo, sube a alerta con la publicación que trae
   Prefectura). **Decidido en el paso 4:** la app muestra solo el urgente (ya trae la altura) y da por hecho el
   resumen de ese día.
+
+## Resultado de la prueba de entrega (paso 3, 21/10/2026)
+
+Redmi del dueño (MIUI), app de prueba suscrita al tema `prueba-entrega` y push de **solo datos** enviados con
+un script. La app de prueba (`lib/push_prueba.dart`) y el script (`herramientas/enviar_push_prueba.ps1`)
+estaban en la rama de prueba `fase-4-prueba-entrega`, que **no se integró a `main`**; para probar contra la
+app real está `herramientas/enviar_aviso_prueba.ps1` (ver `docs/fase-4-informe-app.md`). "Llegó" = la app
+recibió el mensaje y mostró su notificación.
+
+| # | Prioridad | App | Batería | Resultado |
+|---|---|---|---|---|
+| 1 | HIGH | abierta | normal | llegó en < 1 s |
+| 2 | NORMAL | abierta | normal | llegó en < 1 s |
+| 3 | HIGH | cerrada (deslizada) | normal | llegó en < 1 s |
+| 4 | NORMAL | cerrada (proceso aún vivo) | normal | llegó en < 1 s |
+| 5 | HIGH | abierta | ahorro de MIUI | llegó en < 1 s |
+| 6 | NORMAL | abierta | ahorro de MIUI | llegó en < 1 s |
+| 7 | HIGH | cerrada, arranque en frío | ahorro de MIUI | llegó en < 1 s |
+| 8 | NORMAL | cerrada | ahorro de MIUI | llegó en < 1 s |
+| 9 | NORMAL | cerrada, pantalla apagada, reposo profundo forzado (`adb shell dumpsys deviceidle force-idle`) | — | **retenido**: llegó recién al salir del reposo (~50 s después, al despertar el teléfono) |
+| 10 | HIGH | cerrada, pantalla apagada, reposo profundo forzado | — | llegó en < 1 s |
+
+Conclusiones:
+
+- Los push de solo datos funcionan en el Redmi, también con la app cerrada y en ahorro de batería, sin
+  tocar "Inicio automático". **Se mantiene el diseño de solo datos**: no hace falta la alternativa con texto
+  de "Riesgo a probar primero".
+- El **urgente** (HIGH) atraviesa el reposo profundo al instante: es lo que importa.
+- El **resumen** (NORMAL) queda retenido mientras el teléfono duerme y aparece cuando la persona lo usa.
+  Para un resumen diario es aceptable; **se mantiene en NORMAL** (ver "Riesgos que quedan").
+- No probado: varias horas de reposo real (sin forzar), ni la app "forzada a detenerse" desde Ajustes
+  (en ese estado Android no entrega push a ninguna app). Se cubre en la prueba completa del paso 8.
