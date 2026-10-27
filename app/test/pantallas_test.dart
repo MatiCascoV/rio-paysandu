@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -327,7 +328,7 @@ void main() {
       await t.pumpWidget(
           RioPaysanduApp(config: config, prefs: prefs, repositorio: Repositorio(config.urlBase, cliente: cliente)));
       await t.pumpAndSettle();
-      for (final pestana in ['Gráfico', 'Qué hacer', 'Avisos', 'Inicio']) {
+      for (final pestana in ['Gráfico', 'Crecidas', 'Qué hacer', 'Avisos', 'Inicio']) {
         await t.tap(find.text(pestana));
         await t.pumpAndSettle();
         expect(t.takeException(), isNull, reason: 'desborde en $pestana');
@@ -346,6 +347,31 @@ void main() {
       await t.pumpWidget(const SizedBox());
     });
   }
+
+  testWidgets('las cinco pestañas entran en 320 dp con la letra al tope', (t) async {
+    t.view.physicalSize = const Size(640, 1280); // 320 x 640 dp
+    t.view.devicePixelRatio = 2.0;
+    t.platformDispatcher.textScaleFactorTestValue = 2.0; // la barra la limita a 1,3
+    addTearDown(t.view.reset);
+    addTearDown(t.platformDispatcher.clearTextScaleFactorTestValue);
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final cliente = MockClient((pedido) async => http.Response('', 404));
+    await t.pumpWidget(
+        RioPaysanduApp(config: config, prefs: prefs, repositorio: Repositorio(config.urlBase, cliente: cliente)));
+    await t.pump();
+    await t.pump(const Duration(seconds: 1));
+    expect(find.text('Crecidas'), findsOneWidget);
+    expect(t.takeException(), isNull);
+    // Cada etiqueta entra entera en su lugar de la barra.
+    for (final e in ['Inicio', 'Gráfico', 'Crecidas', 'Qué hacer', 'Avisos']) {
+      final texto = t.renderObject<RenderParagraph>(find.text(e));
+      expect(texto.didExceedMaxLines, isFalse, reason: e);
+      expect(t.getSize(find.text(e)).width, lessThanOrEqualTo(320 / 5), reason: e);
+    }
+    await t.pump(const Duration(seconds: 20)); // vence la espera de la red falsa
+    await t.pumpWidget(const SizedBox());
+  });
 
   testWidgets('modo oscuro: se cambia con el botón, se recuerda y no rompe ninguna pestaña', (t) async {
     addTearDown(() => Colores.oscuro = false);
@@ -371,7 +397,7 @@ void main() {
     expect(prefs.getString('tema'), 'oscuro');
     expect(Theme.of(t.element(find.text('ALERTA'))).brightness, Brightness.dark);
     expect(find.text('5,95 m'), findsWidgets);
-    for (final pestana in ['Gráfico', 'Qué hacer', 'Avisos', 'Inicio']) {
+    for (final pestana in ['Gráfico', 'Crecidas', 'Qué hacer', 'Avisos', 'Inicio']) {
       await t.tap(find.text(pestana));
       await t.pumpAndSettle();
       expect(t.takeException(), isNull, reason: 'error en $pestana en modo oscuro');

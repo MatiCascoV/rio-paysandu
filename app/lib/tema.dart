@@ -89,7 +89,8 @@ ThemeData temaApp() {
       scrolledUnderElevation: 0,
       iconTheme: IconThemeData(color: Colores.primario),
       actionsIconTheme: IconThemeData(color: Colores.primario),
-      titleTextStyle: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: Colores.tinta),
+      titleTextStyle: TextStyle(
+          fontFamily: letras.bodyMedium?.fontFamily, fontSize: 20, fontWeight: FontWeight.w600, color: Colores.tinta),
       shape: Border(bottom: BorderSide(color: Colores.divisor)),
     ),
     cardTheme: CardThemeData(

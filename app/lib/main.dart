@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
@@ -6,11 +7,13 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'avisos.dart';
+import 'crecidas/repositorio_crecidas.dart';
 import 'datos.dart';
 import 'ejemplo.dart';
 import 'enlaces.dart';
 import 'notificaciones.dart';
 import 'pantallas/ajustes.dart';
+import 'pantallas/crecidas.dart';
 import 'pantallas/grafico.dart';
 import 'pantallas/inicio.dart';
 import 'pantallas/que_hacer.dart';
@@ -40,7 +43,10 @@ Future<void> main() async {
   final repositorio = ejemplo == null
       ? Repositorio(config.urlBase)
       : Repositorio(config.urlBase, cliente: clienteDeEjemplo(ejemplo), soloLectura: true);
-  runApp(RioPaysanduApp(config: config, prefs: prefs, repositorio: repositorio));
+  // Los bordes de las crecidas vienen dentro de la app; el fondo se lee en otro hilo.
+  final repositorioCrecidas = RepositorioCrecidas(const FuenteAssets(), enSegundoPlano: true);
+  runApp(RioPaysanduApp(
+      config: config, prefs: prefs, repositorio: repositorio, repositorioCrecidas: repositorioCrecidas));
   // El permiso se pide con la app ya a la vista, una sola vez (ver pedirPermisoInicial).
   if (ejemplo == null) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -48,6 +54,10 @@ Future<void> main() async {
     });
   }
 }
+
+/// Pestañas de abajo, en orden. Los saltos entre pestañas usan esto y no
+/// números sueltos, para que agregar una no haga apuntar a la equivocada.
+enum Pestana { inicio, grafico, crecidas, queHacer, avisos }
 
 /// Preferencia guardada del modo: 'claro', 'oscuro' o nada (seguir al teléfono).
 const claveTema = 'tema';
@@ -57,7 +67,11 @@ class RioPaysanduApp extends StatefulWidget {
   final SharedPreferences prefs;
   final Repositorio repositorio;
 
-  const RioPaysanduApp({super.key, required this.config, required this.prefs, required this.repositorio});
+  /// Datos de la pestaña Crecidas. Si no se pasa, se leen de assets/crecidas/.
+  final RepositorioCrecidas? repositorioCrecidas;
+
+  const RioPaysanduApp(
+      {super.key, required this.config, required this.prefs, required this.repositorio, this.repositorioCrecidas});
 
   @override
   State<RioPaysanduApp> createState() => _RioPaysanduAppState();
@@ -67,6 +81,11 @@ class _RioPaysanduAppState extends State<RioPaysanduApp> with WidgetsBindingObse
   Config get config => widget.config;
   SharedPreferences get prefs => widget.prefs;
   Repositorio get repositorio => widget.repositorio;
+
+  /// Vive acá y no en la página: al cambiar claro/oscuro la página se rehace,
+  /// pero lo ya leído queda en memoria.
+  late final RepositorioCrecidas _repositorioCrecidas =
+      widget.repositorioCrecidas ?? RepositorioCrecidas(const FuenteAssets());
 
   @override
   void initState() {
@@ -109,7 +128,12 @@ class _RioPaysanduAppState extends State<RioPaysanduApp> with WidgetsBindingObse
       home: KeyedSubtree(
         key: ValueKey(_oscuro),
         child: PaginaPrincipal(
-            config: config, prefs: prefs, repositorio: repositorio, oscuro: _oscuro, alCambiarTema: _cambiarTema),
+            config: config,
+            prefs: prefs,
+            repositorio: repositorio,
+            repositorioCrecidas: _repositorioCrecidas,
+            oscuro: _oscuro,
+            alCambiarTema: _cambiarTema),
       ),
     );
   }
@@ -119,6 +143,7 @@ class PaginaPrincipal extends StatefulWidget {
   final Config config;
   final SharedPreferences prefs;
   final Repositorio repositorio;
+  final RepositorioCrecidas? repositorioCrecidas;
   final bool oscuro;
   final VoidCallback? alCambiarTema;
 
@@ -127,6 +152,7 @@ class PaginaPrincipal extends StatefulWidget {
     required this.config,
     required this.prefs,
     required this.repositorio,
+    this.repositorioCrecidas,
     this.oscuro = false,
     this.alCambiarTema,
   });
@@ -138,7 +164,13 @@ class PaginaPrincipal extends StatefulWidget {
 class _PaginaPrincipalState extends State<PaginaPrincipal> with WidgetsBindingObserver {
   Datos? _datos; // null mientras carga por primera vez
   bool _actualizando = false;
-  int _pestana = 0;
+  Pestana _pestana = Pestana.inicio;
+
+  /// Pestañas ya abiertas. Crecidas se arma recién la primera vez que se
+  /// visita, para no leer el mapa al arrancar la app.
+  final _visitadas = <Pestana>{Pestana.inicio};
+  late final RepositorioCrecidas _repositorioCrecidas =
+      widget.repositorioCrecidas ?? RepositorioCrecidas(const FuenteAssets());
   Timer? _reloj;
   final _scrollQueHacer = ScrollController();
 
@@ -205,8 +237,13 @@ class _PaginaPrincipalState extends State<PaginaPrincipal> with WidgetsBindingOb
 
   Future<void> _actualizarAPedido() => _cargar(aPedido: true);
 
+  void _ir(Pestana p) => setState(() {
+        _pestana = p;
+        _visitadas.add(p);
+      });
+
   void _irAQueHacer() {
-    setState(() => _pestana = 2);
+    _ir(Pestana.queHacer);
     // La pestaña conserva su posición: se vuelve arriba, donde están los teléfonos.
     if (_scrollQueHacer.hasClients) _scrollQueHacer.jumpTo(0);
   }
@@ -214,28 +251,31 @@ class _PaginaPrincipalState extends State<PaginaPrincipal> with WidgetsBindingOb
   @override
   Widget build(BuildContext context) {
     final datos = _datos;
-    final paginas = [
-      PantallaInicio(
+    final paginas = <Pestana, Widget>{
+      Pestana.inicio: PantallaInicio(
         datos: datos,
         config: widget.config,
         alActualizar: _actualizarAPedido,
         avisosActivos: PreferenciasAvisos.leer(widget.prefs).urgente,
-        alPedirAvisos: () => setState(() => _pestana = 3),
+        alPedirAvisos: () => _ir(Pestana.avisos),
         alVerQueHacer: _irAQueHacer,
-        alVerGrafico: () => setState(() => _pestana = 1),
+        alVerGrafico: () => _ir(Pestana.grafico),
       ),
-      PantallaGrafico(datos: datos),
-      PantallaQueHacer(config: widget.config, controlador: _scrollQueHacer),
-      PantallaAjustes(
+      Pestana.grafico: PantallaGrafico(datos: datos),
+      Pestana.crecidas: _visitadas.contains(Pestana.crecidas)
+          ? PantallaCrecidas(repositorio: _repositorioCrecidas)
+          : const SizedBox.shrink(),
+      Pestana.queHacer: PantallaQueHacer(config: widget.config, controlador: _scrollQueHacer),
+      Pestana.avisos: PantallaAjustes(
         prefs: widget.prefs,
         datos: datos,
         config: widget.config,
         // Al cambiar los avisos se revisa el nivel en el momento.
         alCambiar: () => _cargar(),
       ),
-    ];
+    };
     // En Inicio la pantalla se tiñe con el color del nivel, barra de arriba incluida.
-    final enInicio = _pestana == 0;
+    final enInicio = _pestana == Pestana.inicio;
     final tinte = enInicio ? tinteInicio(datos, widget.config, DateTime.now()) : null;
     return Scaffold(
       appBar: AppBar(
@@ -271,10 +311,10 @@ class _PaginaPrincipalState extends State<PaginaPrincipal> with WidgetsBindingOb
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 600),
               child: IndexedStack(
-                index: _pestana,
+                index: _pestana.index,
                 children: [
                   // Lo que se mueve (las olas de Inicio) se detiene en las pestañas que no están a la vista.
-                  for (final (i, pagina) in paginas.indexed) TickerMode(enabled: i == _pestana, child: pagina),
+                  for (final p in Pestana.values) TickerMode(enabled: p == _pestana, child: paginas[p]!),
                 ],
               ),
             ),
@@ -283,21 +323,64 @@ class _PaginaPrincipalState extends State<PaginaPrincipal> with WidgetsBindingOb
       ),
       bottomNavigationBar: DecoratedBox(
         decoration: BoxDecoration(border: Border(top: BorderSide(color: Colores.bordeSuave))),
-        // Tope al agrandado de letra: con más, las cuatro etiquetas no entran.
-        child: MediaQuery.withClampedTextScaling(
-          maxScaleFactor: 1.3,
-          child: NavigationBar(
-            selectedIndex: _pestana,
-            onDestinationSelected: (i) => setState(() => _pestana = i),
-            destinations: const [
-              NavigationDestination(icon: Icon(Icons.water), label: 'Inicio'),
-              NavigationDestination(icon: Icon(Icons.show_chart), label: 'Gráfico'),
-              NavigationDestination(icon: Icon(Icons.health_and_safety), label: 'Qué hacer'),
-              NavigationDestination(icon: Icon(Icons.notifications), label: 'Avisos'),
-            ],
+        // Tope al agrandado de letra: con más, las cinco etiquetas no entran
+        // en 320 dp (lo mide la prueba de desborde). Y en cada teléfono, el
+        // que haga falta para que ninguna etiqueta se parta en dos renglones.
+        child: LayoutBuilder(
+          builder: (context, lugar) => MediaQuery.withClampedTextScaling(
+            maxScaleFactor: topeLetraQueEntra(context, lugar.maxWidth / Pestana.values.length),
+            child: NavigationBar(
+              selectedIndex: _pestana.index,
+              onDestinationSelected: (i) => _ir(Pestana.values[i]),
+              destinations: [
+                for (final p in Pestana.values) NavigationDestination(icon: Icon(p.icono), label: p.etiqueta),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
+}
+
+/// Tope al agrandado de letra en la barra de pestañas.
+const topeLetraPestanas = 1.3;
+
+/// Agrandado de letra más grande (hasta [topeLetraPestanas], y nunca menos
+/// de 1) con el que la etiqueta más larga entra en un renglón en [ancho] dp.
+double topeLetraQueEntra(BuildContext context, double ancho) {
+  final tema = NavigationBarTheme.of(context).labelTextStyle;
+  final estilo = tema?.resolve({WidgetState.selected}) ?? const TextStyle(fontSize: 15, fontWeight: FontWeight.w600);
+  final familia = Theme.of(context).textTheme.bodyMedium?.fontFamily;
+  var mayor = 0.0;
+  for (final p in Pestana.values) {
+    final t = TextPainter(
+      text: TextSpan(text: p.etiqueta, style: estilo.copyWith(fontFamily: estilo.fontFamily ?? familia)),
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+    )..layout();
+    mayor = math.max(mayor, t.width);
+    t.dispose();
+  }
+  // Un poco de aire a los costados de cada etiqueta.
+  final entra = mayor <= 0 ? topeLetraPestanas : (ancho - 8) / mayor;
+  return entra.clamp(1.0, topeLetraPestanas);
+}
+
+extension DatosPestana on Pestana {
+  String get etiqueta => switch (this) {
+        Pestana.inicio => 'Inicio',
+        Pestana.grafico => 'Gráfico',
+        Pestana.crecidas => 'Crecidas',
+        Pestana.queHacer => 'Qué hacer',
+        Pestana.avisos => 'Avisos',
+      };
+
+  IconData get icono => switch (this) {
+        Pestana.inicio => Icons.water,
+        Pestana.grafico => Icons.show_chart,
+        Pestana.crecidas => Icons.history,
+        Pestana.queHacer => Icons.health_and_safety,
+        Pestana.avisos => Icons.notifications,
+      };
 }
