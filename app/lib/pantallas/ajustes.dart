@@ -355,7 +355,8 @@ class _PantallaAjustesState extends State<PantallaAjustes> with WidgetsBindingOb
           'sin cuenta ni registro. Además, la app revisa el nivel cuando la abrís y, si el teléfono lo '
           'permite, cada tanto aunque esté cerrada.\n\n'
           'Las alturas del río son de CARU; las crecidas anteriores, de Dinagua, y el mapa, de OpenStreetMap. '
-          'Esta app no pide registro, no tiene publicidad y no recolecta datos personales.',
+          'Esta app no pide registro ni tiene publicidad. Para los avisos, Firebase le asigna a tu instalación '
+          'un identificador anónimo; no recibimos tu nombre, tu ubicación ni tus contactos.',
           style: apoyo,
         ),
       ],

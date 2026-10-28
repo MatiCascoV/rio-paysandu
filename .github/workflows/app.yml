@@ -68,8 +68,11 @@ jobs:
             exit 1
           fi
           printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
-      # Sin key.properties firma con la clave de depuración: por eso no se sube como artifact.
+      # CI no tiene la clave de firma: el release falla sin key.properties salvo que se pida a propósito
+      # una compilación de prueba (FIRMA_DEBUG_PRUEBA, solo acá). Firmado con la clave de depuración: por eso no se sube como artifact.
       - run: flutter build apk --release
+        env:
+          FIRMA_DEBUG_PRUEBA: "true"
       # La reducción de recursos borra lo que solo se nombra como texto desde Dart.
       - name: Recursos nombrados desde Dart presentes en el APK
         shell: bash

@@ -217,8 +217,10 @@ firmado con la clave de depuración). Igual conviene correr `flutter test` y `fl
 
 - **Identificador:** `uy.miriouy.app`. No se cambia más: Android trataría otro identificador como otra app.
 - **Firma:** el APK de release se firma con la clave propia si existe `app/android/key.properties`
-  (fuera de git, igual que el `.jks`). Sin ese archivo se firma con la clave de depuración y la compilación
-  lo avisa: ese APK sirve para probar, **no para repartir**. La clave y su contraseña tienen respaldo fuera
+  (fuera de git, igual que el `.jks`). Sin ese archivo el build de release **falla** (no se firma con la clave
+  de depuración). Para una compilación de prueba hay que pedirlo a propósito:
+  `FIRMA_DEBUG_PRUEBA=true flutter build apk --release` (así compila CI); ese APK
+  usa la clave de depuración y **no es para repartir**. La clave y su contraseña tienen respaldo fuera
   de la PC; sin ellas no se pueden publicar actualizaciones.
 - **Ícono:** fuentes SVG en `app/assets_fuente/icono/` (ícono adaptativo, monocromo y el de notificación).
 - **Datos de ejemplo** para revisar el diseño en cada nivel: `flutter build web --dart-define=DATOS_EJEMPLO=url`

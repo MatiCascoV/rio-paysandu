@@ -202,6 +202,9 @@ class PantallaInicio extends StatelessWidget {
             child: const Text('Ver en la página de CARU'),
           ),
         ),
+      if (enlaceSinCifrar(altura.url))
+        Text('Esa página de CARU no usa conexión cifrada (http): no ingreses datos personales en ella.',
+            style: apoyo),
       if (invitarAvisos)
         ListTile(
           contentPadding: EdgeInsets.zero,

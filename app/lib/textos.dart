@@ -264,12 +264,7 @@ String descripcionNivel(Nivel n, Umbrales? u,
 
 /// Nivel que corresponde a [alturaM] con los umbrales [u], con la misma regla
 /// que el lector (altura >= umbral, en centímetros enteros).
-Nivel nivelSegunUmbrales(double alturaM, Umbrales u) {
-  for (final (nivel, valor) in umbralesOrdenados(u)) {
-    if (_cm(alturaM) >= _cm(valor)) return nivel;
-  }
-  return Nivel.normal;
-}
+Nivel nivelSegunUmbrales(double alturaM, Umbrales u) => nivelPorAltura(alturaM, u);
 
 /// La frase con umbrales y cifras, o null si falta el umbral que nombra o si
 /// las cifras no cuadran con el nivel publicado (mejor sin cifras que contradictoria).
