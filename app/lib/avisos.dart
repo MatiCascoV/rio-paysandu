@@ -279,7 +279,7 @@ Future<List<Aviso>> _decidir(Actual actual, SharedPreferences prefs, DateTime ah
   await prefs.reload();
   await migrarPreferencias(prefs);
   final p = PreferenciasAvisos.leer(prefs);
-  // El nivel lo calcula el lector (con su margen al bajar); acá solo se descarta un dato viejo.
+  // El nivel lo calcula el lector (con su margen al bajar); acá se descarta un dato viejo y se cruza con la altura (nunca baja la gravedad).
   final nivel = actual.nivelVigente(ahora, prefs.getInt(claveHorasSinDato) ?? 48);
   if (nivel == Nivel.sinDato) return const []; // "sin dato" ni avisa ni se recuerda
   final guardado = prefs.getString(claveUltimoNivel);

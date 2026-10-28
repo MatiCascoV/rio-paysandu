@@ -39,8 +39,9 @@ Uri? uriPermitida(String? url) {
   if (uri == null || o == null || !_origenes.contains(o)) return null;
   // Si el mismo sitio también está permitido por https, se abre por https: no se
   // usa http sin cifrar donde existe la versión cifrada.
-  if (o.$1 == 'http' && _origenes.contains(('https', o.$2, uri.hasPort && uri.port != 80 ? uri.port : 443))) {
-    return uri.replace(scheme: 'https');
+  // Con un puerto explícito distinto de 80 no se toca: ese puerto no sirve https.
+  if (o.$1 == 'http' && (!uri.hasPort || uri.port == 80) && _origenes.contains(('https', o.$2, 443))) {
+    return uri.replace(scheme: 'https', port: 443);
   }
   return uri;
 }

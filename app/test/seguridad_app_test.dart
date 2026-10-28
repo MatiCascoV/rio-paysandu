@@ -42,6 +42,25 @@ void main() {
       expect(a.avisos, contains('dato_a_verificar'));
     });
 
+    test('margen de bajada: justo a 5 cm del umbral ya no es legítimo', () {
+      final a = _actual('alerta', 4.34);
+      expect(a.nivelVigente(_ahora, 48), Nivel.alerta);
+      expect(a.avisos, contains('dato_a_verificar'));
+      expect(_actual('alerta', 4.35).avisos, isNot(contains('dato_a_verificar')));
+    });
+
+    test('nivel retenido por el lector: un pico no sube a evacuación', () {
+      const reales = Umbrales(atencionM: null, alertaM: 4.39, evacuacionM: 6.89);
+      final j = actualFalso('normal', 7.5);
+      j['nivel_retenido'] = {'fecha_lectura': '2026-10-09T12:00:00-03:00'};
+      final a = Actual.desdeJson(j)!.conUmbrales(reales);
+      expect(a.nivelVigente(_ahora, 48), Nivel.normal);
+      expect(a.avisos, contains('dato_a_verificar'));
+      // Sin retención, el mismo dato sí sube al nivel de la altura.
+      final b = Actual.desdeJson(actualFalso('normal', 7.5))!.conUmbrales(reales);
+      expect(b.nivelVigente(_ahora, 48), Nivel.evacuacion);
+    });
+
     test('sin umbrales o con sin_dato no hay cruce', () {
       final sin = Actual.desdeJson(actualFalso('alerta', 3.0))!;
       expect(sin.nivelVigente(_ahora, 48), Nivel.alerta);
@@ -105,6 +124,14 @@ void main() {
       expect(enlaceSinCifrar(url), isTrue);
       expect(enlaceSinCifrar('https://caru.org.uy/x'), isFalse);
       expect(enlaceSinCifrar(null), isFalse);
+    });
+
+    test('puerto explícito distinto de 80 no se fuerza a https; el 80 sí pasa a 443', () {
+      permitirOrigenes(const ['https://caru.org.uy', 'http://caru.org.uy:8080']);
+      expect(uriPermitida('http://caru.org.uy:8080/x')!.toString(), 'http://caru.org.uy:8080/x');
+      expect(uriPermitida('http://caru.org.uy:80/x'), isNull);
+      permitirOrigenes(const ['https://caru.org.uy', 'http://caru.org.uy']);
+      expect(uriPermitida('http://caru.org.uy:80/x')!.toString(), 'https://caru.org.uy/x');
     });
 
     test('con solo http permitido para un sitio, no se inventa https', () {

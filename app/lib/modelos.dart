@@ -167,6 +167,10 @@ class Actual {
   /// [conUmbrales] al cargar los datos). Sin ellos no hay cruce.
   final Umbrales? umbrales;
 
+  /// El lector retiene a propósito el nivel anterior (salto de más de 1 m, hasta
+  /// 30 min): un pico que todavía no confirmó no debe subir el nivel acá.
+  final bool retenido;
+
   const Actual({
     this.altura,
     this.prefectura,
@@ -176,6 +180,7 @@ class Actual {
     this.cero,
     this.generado,
     this.umbrales,
+    this.retenido = false,
   });
 
   static Actual? desdeJson(Object? j) {
@@ -189,6 +194,7 @@ class Actual {
       avisos: avisos is List ? avisos.whereType<String>().toList() : const [],
       cero: _textoCorto(j['cero'], largoMaximoEtiqueta),
       generado: _fecha(j['generado']),
+      retenido: j['nivel_retenido'] is Map,
     );
   }
 
@@ -205,6 +211,7 @@ class Actual {
       cero: cero,
       generado: generado,
       umbrales: u,
+      retenido: retenido,
     );
     if (!base._cruce().incoherente || avisos.contains('dato_a_verificar')) return base;
     return Actual(
@@ -216,6 +223,7 @@ class Actual {
       cero: cero,
       generado: generado,
       umbrales: u,
+      retenido: retenido,
     );
   }
 
@@ -223,7 +231,7 @@ class Actual {
   /// bajar la gravedad que se muestra.
   /// - Publicado por debajo del que da la altura: se usa el de la altura (un JSON
   ///   adulterado o un lector con error no puede mostrar menos de lo que mide el río).
-  /// - Publicado por encima: es legítimo hasta [margenBajadaCm] bajo ese umbral
+  /// - Publicado por encima: es legítimo mientras la altura + [margenBajadaCm] supere ese umbral
   ///   (el lector baja de nivel con ese margen para no parpadear). Más allá no
   ///   coincide con la altura, pero igual se muestra el publicado (no se baja la
   ///   gravedad) y se marca el dato como a verificar.
@@ -235,10 +243,11 @@ class Actual {
     final calculado = nivelPorAltura(a.valorM, u);
     final p = ordenDeNivel(nivel);
     final c = ordenDeNivel(calculado);
-    if (p < c) return (nivel: calculado, incoherente: true);
+    // Si el lector retiene el nivel a propósito (pico sin confirmar), no se sube: solo se marca.
+    if (p < c) return (nivel: retenido ? nivel : calculado, incoherente: true);
     if (p == c) return (nivel: nivel, incoherente: false);
     final umbral = u.de(nivel);
-    final legitimo = umbral != null && _cm(a.valorM) >= _cm(umbral) - margenBajadaCm;
+    final legitimo = umbral != null && _cm(a.valorM) > _cm(umbral) - margenBajadaCm;
     return (nivel: nivel, incoherente: !legitimo);
   }
 
