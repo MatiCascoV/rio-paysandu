@@ -1,0 +1,6 @@
+# Dueño por defecto de todo el repositorio
+*                      @MatiCascoV
+# Cambios en CI, seguridad y despliegue siempre pasan por el dueño
+/.github/              @MatiCascoV
+/SECURITY.md           @MatiCascoV
+/.gitleaks.toml        @MatiCascoV

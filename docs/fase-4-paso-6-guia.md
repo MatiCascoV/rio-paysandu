@@ -89,17 +89,17 @@ Los pasos 1 a 7 los puede pegar el dueño en PowerShell, o correrlos Claude con 
 de permisos en su cuenta de Google.
 
 **Desde qué carpeta.** Los pasos 3 y 4 usan los archivos `herramientas\paso6\*.yaml`, que hoy solo están en la
-rama del PR #17. Lo normal es mergear primero el PR #17 y correr todo desde `C:\Users\matic\rio-paysandu`
+rama del PR #17. Lo normal es mergear primero el PR #17 y correr todo desde `<REPO>`
 después de un `git pull`. Si el PR todavía no está mergeado, correr desde el worktree de esa rama,
-`C:\Users\matic\rio-paysandu-guia6`. Pegar todos los bloques en la **misma ventana** de PowerShell: los
+`<CARPETA_DEL_WORKTREE_guia6>`. Pegar todos los bloques en la **misma ventana** de PowerShell: los
 comandos usan las variables `$G`, `$P`, `$N` y `$SA` que se definen acá.
 
 ```powershell
-cd C:\Users\matic\rio-paysandu          # con el PR #17 mergeado
+cd <REPO>          # con el PR #17 mergeado
 git switch main
 git pull
 # Si el PR #17 no está mergeado, en lugar de lo de arriba:
-# cd C:\Users\matic\rio-paysandu-guia6
+# cd <CARPETA_DEL_WORKTREE_guia6>
 
 $G = "$env:LOCALAPPDATA\google-cloud-sdk-zip\google-cloud-sdk\bin\gcloud.cmd"
 $P = 'mi-rio-uy-8ca81'
@@ -284,11 +284,11 @@ jobs:
           token_format: access_token
 ```
 
-Correrlo desde `C:\Users\matic\rio-paysandu` (no desde el worktree `rio-paysandu-guia6`: ahí no se puede
+Correrlo desde `<REPO>` (no desde el worktree `rio-paysandu-guia6`: ahí no se puede
 cambiar a `main`):
 
 ```powershell
-cd C:\Users\matic\rio-paysandu
+cd <REPO>
 git fetch origin
 git switch -c probar-wif origin/main
 # (crear el archivo de arriba)
