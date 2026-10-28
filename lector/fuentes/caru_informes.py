@@ -3,6 +3,7 @@ import io
 import re
 import unicodedata
 from datetime import date
+from itertools import islice
 from urllib.parse import urljoin
 
 import pdfplumber
@@ -28,10 +29,38 @@ def _fecha_segura(a, m, d):
         return None
 
 
+# El índice real pesa ~140 KB y tiene ~115 enlaces. Con enlaces `<a>` sin cerrar el
+# parser los anida y leer el texto de cada uno se vuelve cuadrático (2000 enlaces
+# tardan segundos). Más que esto se descarta el índice entero (falla cerrada).
+MAX_BYTES_INDICE = 1_000_000
+MAX_ANCLAS_INDICE = 1500
+# Del texto de un enlace solo se leen los primeros fragmentos: alcanza para la
+# fecha y la palabra "informe", y no depende de cuántos nodos tenga adentro.
+MAX_FRAGMENTOS_TEXTO = 20
+MAX_CARACTERES_TEXTO = 500
+
+
+class IndiceAnomalo(ValueError):
+    """El índice tiene un tamaño o una cantidad de enlaces anormales."""
+
+
+def _texto_del_enlace(a):
+    fragmentos = []
+    for s in islice(a.strings, MAX_FRAGMENTOS_TEXTO):
+        s = s.strip()
+        if s:
+            fragmentos.append(s)
+    return " ".join(fragmentos)[:MAX_CARACTERES_TEXTO]
+
+
 def listar_informes(html, base_url, hoy=None):
     """Lee los enlaces a PDF del índice (no construye URLs: el nombre del archivo
     varía). Devuelve [{"fecha": date, "url": str}], el más reciente primero.
     Si se pasa `hoy`, descarta fechas futuras (errores de tipeo en el índice)."""
+    if len(html) > MAX_BYTES_INDICE:
+        raise IndiceAnomalo(f"el índice pesa {len(html)} caracteres (tope {MAX_BYTES_INDICE})")
+    if html.lower().count("<a") > MAX_ANCLAS_INDICE:
+        raise IndiceAnomalo(f"el índice tiene más de {MAX_ANCLAS_INDICE} enlaces")
     sopa = BeautifulSoup(html, "html.parser")
     informes = {}
     for a in sopa.find_all("a", href=True):
@@ -41,7 +70,7 @@ def listar_informes(html, base_url, hoy=None):
         # El PDF se descarga y su dirección se publica: solo desde el sitio de CARU.
         if not url_permitida(url, "informes"):
             continue
-        texto = a.get_text(" ", strip=True)
+        texto = _texto_del_enlace(a)
         if "informe" not in texto.lower() and "crecida" not in url.lower():
             continue
         fecha = None

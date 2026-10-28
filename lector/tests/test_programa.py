@@ -1,6 +1,7 @@
 """El programa completo (main) con la red simulada: orden de escritura, códigos
 de salida, aviso de pronóstico y PDF que falla. No usa internet."""
 import json
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -27,7 +28,7 @@ class Cortado(BaseException):
     """Simula que el workflow mata al lector (no es un Exception común)."""
 
 
-def red_falsa(fallar=(), cortar=(), pdf=None):
+def red_falsa(fallar=(), cortar=(), pdf=None, registro=None, indice=None):
     paginas = {
         CFG["registro_url"]: "registro_alturas_2026-10-09.html",
         CFG["informes_indice_url"]: "informes_indice_2026-10-09.html",
@@ -45,6 +46,10 @@ def red_falsa(fallar=(), cortar=(), pdf=None):
             raise red.requests.ConnectionError("caído")
         if url == URL_PDF and pdf is not None:
             return pdf
+        if url == CFG["registro_url"] and registro is not None:
+            return registro
+        if url == CFG["informes_indice_url"] and indice is not None:
+            return indice
         return (FIXTURES / paginas[url]).read_bytes()
     return descargar, pedidos
 
@@ -239,3 +244,45 @@ def test_pdf_aislado_controla_la_salida_del_hijo():
     assert d["altura_esperada_m"] is None and d["texto"] is None and d["caudal_salto_grande_m3s"] is None
     with pytest.raises(pdf_aislado.PdfIlegible):
         pdf_aislado._validar_salida(b"no es json")
+
+
+# ---------- entradas anómalas (seguridad) ----------
+
+def _con_datos_buenos(entorno):
+    data, correr = entorno
+    assert correr()[0] == 0
+    return data, correr, (data / "actual.json").read_text(encoding="utf-8"), (data / "historial.json").read_text(encoding="utf-8")
+
+
+def test_registro_con_tablas_anidadas_se_descarta_sin_pisar_datos_buenos(entorno):
+    data, correr, actual_bueno, historial_bueno = _con_datos_buenos(entorno)
+    t0 = time.monotonic()
+    codigo, _ = correr(registro=("<table><th>Puerto</th><tr><td>x" * 3000).encode())
+    assert time.monotonic() - t0 < 10
+    assert codigo == 3  # igual que una fuente caída: el ciclo sigue y avisa
+    a = leer(data, "actual.json")
+    assert a["altura_actual"]["valor_m"] == 5.89 and "fuente_no_disponible" in a["avisos"]
+    assert (data / "historial.json").read_text(encoding="utf-8") == historial_bueno
+
+
+def test_indice_con_anclas_anidadas_no_rompe_el_ciclo(entorno):
+    data, correr, _, _ = _con_datos_buenos(entorno)
+    t0 = time.monotonic()
+    codigo, _ = correr(indice=(b"<a href='/x/20261008-Crecida.pdf'>Informe " * 5000))
+    assert time.monotonic() - t0 < 10
+    assert codigo == 0
+    a = leer(data, "actual.json")
+    assert a["altura_actual"]["valor_m"] == 5.89 and a["pronostico"]["url_informe"] == URL_PDF  # el pronóstico bueno sigue
+
+
+def test_historial_con_demasiados_puntos_no_se_toca(entorno):
+    data, correr = entorno
+    enorme = "[" + ",".join(
+        '{"fecha": "2026-10-09T07:%02d:00-03:00", "valor_m": 5.0, "fuente": "estacion"}' % (i % 60)
+        for i in range(lector.MAX_PUNTOS_HISTORIAL + 1)) + "]"
+    (data / "historial.json").write_text(enorme, encoding="utf-8")
+    codigo, pedidos = correr()
+    assert codigo == 0
+    assert leer(data, "actual.json")["altura_actual"]["valor_m"] == 5.89
+    assert (data / "historial.json").read_text(encoding="utf-8") == enorme
+    assert not any("estacion/19" in u for u, _ in pedidos)
