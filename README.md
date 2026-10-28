@@ -102,6 +102,12 @@ Un archivo de `data/` ilegible no frena la pasada (se avisa con `::error::` en e
 archivo no se pisa); `historial.json` no se toca en esa pasada; `actual.json` se trata como si no hubiera
 dato anterior; `estado_lector.json` se empieza de cero.
 
+`historial.json` con más de 20.000 puntos (`MAX_PUNTOS_HISTORIAL`, hoy hay unos pocos cientos o miles) se
+trata igual que uno ilegible: queda congelado, la pasada sigue con código 0 y el único rastro es una línea
+`::error::data/historial.json tiene N puntos (tope 20000)` en el registro del workflow. Para recuperarlo,
+en la rama `datos` borrá `data/historial.json` (se rearma con la última semana) o recortalo a mano a los
+puntos más recientes, y hacé commit.
+
 ## Datos publicados
 
 GitHub Actions corre el lector **cada unos 10 minutos**, en un bucle que se relanza solo (workflow

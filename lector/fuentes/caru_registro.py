@@ -19,6 +19,27 @@ from red import url_permitida
 # Una semana cada 30 minutos son 336 lecturas; más que esto no es una página normal.
 MAX_LECTURAS_HISTORIAL = 1000
 
+# La página real pesa ~40 KB y tiene 2 tablas, 24 filas y ~180 celdas. Un registro
+# muy por encima de eso no es una página normal: armado a propósito, el recorrido
+# del árbol (tablas o filas anidadas) tarda segundos con 3 KB y minutos con 30 KB.
+# Ante algo así se descarta el registro entero (falla cerrada) antes de parsearlo.
+MAX_BYTES_REGISTRO = 200_000
+MAX_ETIQUETAS_REGISTRO = {"<table": 10, "<tr": 200, "<th": 200, "<td": 2000}
+
+
+class RegistroAnomalo(ValueError):
+    """El registro tiene un tamaño o una estructura que una página normal no tiene."""
+
+
+def _verificar_registro(html):
+    if len(html) > MAX_BYTES_REGISTRO:
+        raise RegistroAnomalo(f"el registro pesa {len(html)} caracteres (tope {MAX_BYTES_REGISTRO})")
+    bajo = html.lower()
+    for etiqueta, tope in MAX_ETIQUETAS_REGISTRO.items():
+        if bajo.count(etiqueta) > tope:
+            raise RegistroAnomalo(f"el registro tiene más de {tope} etiquetas {etiqueta}>")
+
+
 # CARU publica en hora de Uruguay, que es UTC-3 todo el año.
 TZ_UY = timezone(timedelta(hours=-3))
 
@@ -103,7 +124,9 @@ def _fila_del_puerto(tabla, puerto, base_url):
 
 def parsear_registro(html, base_url, puerto="Paysandú"):
     """Devuelve {"cero", "prefectura", "estacion"}; cada lectura es un dict o
-    None si la fila no está o no se pudo leer."""
+    None si la fila no está o no se pudo leer. Lanza RegistroAnomalo si la página
+    tiene un tamaño o una estructura anormales (no se intenta leerla)."""
+    _verificar_registro(html)
     sopa = BeautifulSoup(html, "html.parser")
 
     cero = None

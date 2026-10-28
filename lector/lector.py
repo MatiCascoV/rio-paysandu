@@ -276,6 +276,15 @@ def armar_pronostico(informe, url, anterior, hoy, cfg):
 
 # ---------- historial ----------
 
+# Con la configuración real el historial tiene unos pocos miles de puntos (una
+# semana de la estación cada 30 min más 4 por día de un año). 20.000 ya es una
+# señal clara de archivo anómalo; la app (que lo baja con tope de 2 MB) no
+# debería procesar más que eso. Si el archivo YA en disco lo supera, queda
+# congelado (como uno ilegible) con un `::error::` y código de salida 0; se
+# recupera borrándolo o recortándolo a mano en la rama `datos` (ver README).
+MAX_PUNTOS_HISTORIAL = 20_000
+
+
 def actualizar_historial(historial, nuevas, ahora, cfg):
     """Agrega lecturas sin duplicar (misma fecha y fuente), descarta las de más
     de `historial_dias` y aligera las viejas: de la estación automática (una cada
@@ -311,7 +320,8 @@ def actualizar_historial(historial, nuevas, ahora, cfg):
             if fecha.minute != 0 or fecha.hour % 6 != 0:
                 continue
         salida.append(entrada)
-    return sorted(salida, key=lambda e: (_fecha_iso(e["fecha"]), e["fuente"]))
+    salida.sort(key=lambda e: (_fecha_iso(e["fecha"]), e["fuente"]))
+    return salida[-MAX_PUNTOS_HISTORIAL:]  # si se pasara, se pierden los más viejos
 
 
 def historial_a_texto(historial):
@@ -451,6 +461,9 @@ def main():
     umbrales, umbrales_rotos = leer_o("umbrales.json", None, dict)
     anterior, _ = leer_o("actual.json", None, dict)
     historial_previo, historial_roto = leer_o("historial.json", [], list)
+    if len(historial_previo) > MAX_PUNTOS_HISTORIAL:
+        print(f"::error::data/historial.json tiene {len(historial_previo)} puntos (tope {MAX_PUNTOS_HISTORIAL})")
+        historial_previo, historial_roto = [], True
     estado, _ = leer_o("estado_lector.json", {}, dict)
     if umbrales_rotos:
         umbrales = {}  # inválidos: no hay nivel hasta que se corrija el archivo

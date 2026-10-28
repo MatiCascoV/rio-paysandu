@@ -261,3 +261,80 @@ def test_resumen_del_informe_tiene_largo_acotado():
         d = caru_informes.parsear_informe(archivo.read_bytes())
         assert d["texto"] and len(d["texto"]) <= caru_informes.MAX_RESUMEN + 1
         assert 0 < d["caudal_salto_grande_m3s"] <= caru_informes.MAX_CAUDAL_M3S
+
+
+# ----- denegación de servicio por estructura anidada (M-2, B-1) -----
+
+PRESUPUESTO_S = 5.0  # la página real se lee en centésimas; el ataque tardaba minutos
+
+
+def _tardanza(f, *args):
+    t0 = time.perf_counter()
+    try:
+        f(*args)
+    except ValueError:
+        pass
+    return time.perf_counter() - t0
+
+
+@pytest.mark.parametrize("n", [80, 300, 3000, 20000])
+def test_registro_con_tablas_anidadas_tiene_tiempo_acotado(n):
+    html = "<table><th>Puerto</th><tr><td>x" * n  # n=160 (5 KB) tardaba 5 s antes del tope
+    assert _tardanza(caru_registro.parsear_registro, html, URL_REGISTRO) < PRESUPUESTO_S
+
+
+def test_registro_con_filas_anidadas_sin_tablas_tiene_tiempo_acotado():
+    html = "<table><th>Puerto</th>" + "<tr><td>x" * 20000
+    assert _tardanza(caru_registro.parsear_registro, html, URL_REGISTRO) < PRESUPUESTO_S
+
+
+def test_registro_muy_grande_o_con_muchas_etiquetas_se_rechaza():
+    for html in ("<table><th>Puerto</th>" + "<b>" * 300_000,
+                 "<TABLE><th>Puerto</th>" * 11,
+                 "<table><th>Puerto</th>" + "<tr><td>x</td></tr>" * 300):
+        with pytest.raises(caru_registro.RegistroAnomalo):
+            caru_registro.parsear_registro(html, URL_REGISTRO)
+
+
+def test_registro_con_marcado_hondo_pero_dentro_del_tope_es_rapido():
+    html = "<table><th>Puerto</th><tr><td>" + "<b>" * 60_000
+    assert _tardanza(caru_registro.parsear_registro, html, URL_REGISTRO) < PRESUPUESTO_S
+
+
+def test_registro_real_sigue_pasando_los_topes():
+    assert registro_real()["prefectura"] is not None
+    assert len(pagina()) < caru_registro.MAX_BYTES_REGISTRO / 4
+
+
+@pytest.mark.parametrize("n", [1400, 2000, 8000])
+def test_indice_con_anclas_anidadas_tiene_tiempo_acotado(n):
+    html = "<a href='https://caru.org.uy/a/20261001-crecida.pdf'>informe " * n
+    assert _tardanza(caru_informes.listar_informes, html, URL_INDICE) < PRESUPUESTO_S
+
+
+def test_indice_enorme_o_con_demasiadas_anclas_se_rechaza():
+    for html in ("<a href='/x.pdf'>informe</a>" * (caru_informes.MAX_ANCLAS_INDICE + 1),
+                 "x" * (caru_informes.MAX_BYTES_INDICE + 1)):
+        with pytest.raises(caru_informes.IndiceAnomalo):
+            caru_informes.listar_informes(html, URL_INDICE)
+
+
+def test_indice_real_sigue_dando_los_mismos_informes():
+    html = (FIXTURES / "informes_indice_2026-10-09.html").read_text(encoding="utf-8")
+    informes = caru_informes.listar_informes(html, URL_INDICE, AHORA.date())
+    assert informes and informes[0]["url"].endswith("20261008-Crecida.pdf")
+
+
+def test_historial_se_recorta_al_tope_y_conserva_lo_reciente():
+    tope = lector.MAX_PUNTOS_HISTORIAL
+    base = AHORA - timedelta(days=3)
+    previo = [{"fecha": (base + timedelta(seconds=i)).isoformat(), "valor_m": 5.0, "fuente": "prefectura"}
+              for i in range(tope + 500)]
+    salida = lector.actualizar_historial(previo, {}, AHORA, CFG)
+    assert len(salida) == tope
+    assert salida[-1] == previo[-1]
+
+
+def test_el_tope_de_anclas_no_cuenta_otras_etiquetas_con_a():
+    html = "<article><abbr>x</abbr><aside></aside></article>" * 2000 + "<a href='https://caru.org.uy/20261008-Crecida.pdf'>Informe</a>"
+    assert caru_informes.listar_informes(html, URL_INDICE)
