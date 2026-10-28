@@ -36,8 +36,19 @@ Uri? uriPermitida(String? url) {
   if (url == null || url.length > 2000) return null;
   final uri = Uri.tryParse(url.trim());
   final o = _origen(uri);
-  return o != null && _origenes.contains(o) ? uri : null;
+  if (uri == null || o == null || !_origenes.contains(o)) return null;
+  // Si el mismo sitio también está permitido por https, se abre por https: no se
+  // usa http sin cifrar donde existe la versión cifrada.
+  // Con un puerto explícito distinto de 80 no se toca: ese puerto no sirve https.
+  if (o.$1 == 'http' && (!uri.hasPort || uri.port == 80) && _origenes.contains(('https', o.$2, 443))) {
+    return uri.replace(scheme: 'https', port: 443);
+  }
+  return uri;
 }
+
+/// ¿Este enlace permitido se abriría por http, sin cifrar? (CARU publica la
+/// página de alturas solo por http.) La pantalla lo avisa junto al botón.
+bool enlaceSinCifrar(String? url) => uriPermitida(url)?.scheme == 'http';
 
 /// El número listo para "tel:" (solo dígitos, con un + inicial opcional), o
 /// null si trae cualquier otra cosa. Los espacios de formato se quitan.

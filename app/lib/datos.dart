@@ -193,10 +193,12 @@ class Repositorio {
     // La tarea en segundo plano corre aparte y pudo haber guardado datos más nuevos.
     await prefs.reload();
     final r = await Future.wait(_archivos.map((a) => _leer(a, prefs, usarRed && !(soloActual && a != 'actual'))));
-    final actual = Actual.desdeJson(r[0].$1);
+    final umbrales = Umbrales.desdeJson(r[1].$1);
+    // El actual conoce los umbrales para cruzar `nivel` con la altura.
+    final actual = Actual.desdeJson(r[0].$1)?.conUmbrales(umbrales);
     return Datos(
       actual: actual,
-      umbrales: Umbrales.desdeJson(r[1].$1),
+      umbrales: umbrales,
       historial: PuntoHistorial.listaDesdeJson(r[2].$1, generado: actual?.generado),
       sinConexion: usarRed && !r[0].$2,
     );

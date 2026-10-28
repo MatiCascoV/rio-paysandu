@@ -5,7 +5,7 @@ library;
 import 'enlaces.dart';
 
 // Inicio decide con esto si muestra el botón del enlace.
-export 'enlaces.dart' show enlacePermitido;
+export 'enlaces.dart' show enlacePermitido, enlaceSinCifrar;
 
 enum Nivel { normal, atencion, alerta, evacuacion, sinDato }
 
@@ -54,10 +54,23 @@ const _caudalMaximo = 200000;
 /// Tope del texto del pronóstico, para que un texto raro no ocupe la pantalla.
 const largoMaximoTexto = 600;
 
-String? _textoCorto(Object? v) {
+String? _textoCorto(Object? v, [int maximo = largoMaximoTexto]) {
   final t = _texto(v);
-  if (t == null || t.runes.length <= largoMaximoTexto) return t;
-  return '${String.fromCharCodes(t.runes.take(largoMaximoTexto - 1))}…';
+  if (t == null || t.runes.length <= maximo) return t;
+  return '${String.fromCharCodes(t.runes.take(maximo - 1))}…';
+}
+
+/// Tope de los textos cortos que llegan en los JSON (estado, fuente, cero).
+const largoMaximoEtiqueta = 80;
+
+/// `periodo` se interpola en la pantalla principal ("Crece 12 cm en …"): solo
+/// se acepta la forma que produce el lector ("30 min", "24 hs", "2 días"); cualquier
+/// otro texto se descarta. Es el mismo patrón que valida el lector (caru_registro._periodo).
+final _formaPeriodo = RegExp(r'^\d{1,3} ?(min|hs?|d[ií]as?)$');
+
+String? _periodo(Object? v) {
+  final t = _texto(v);
+  return t != null && t.length <= 12 && _formaPeriodo.hasMatch(t) ? t : null;
 }
 
 /// Una lectura más de 1 h posterior a `generado` (del mismo JSON) es un error.
@@ -96,9 +109,9 @@ class Lectura {
       valorM: valor,
       fecha: fecha,
       variacionM: _variacion(j['variacion_m']),
-      periodo: _texto(j['periodo']),
-      estado: _texto(j['estado']),
-      fuente: _texto(j['fuente']),
+      periodo: _periodo(j['periodo']),
+      estado: _textoCorto(j['estado'], largoMaximoEtiqueta),
+      fuente: _textoCorto(j['fuente'], largoMaximoEtiqueta),
       url: _enlace(j['url']),
     );
   }
@@ -150,6 +163,14 @@ class Actual {
   /// Cuándo armó el lector este contenido.
   final DateTime? generado;
 
+  /// Umbrales con los que se cruza `nivel` (no vienen en actual.json: los pone
+  /// [conUmbrales] al cargar los datos). Sin ellos no hay cruce.
+  final Umbrales? umbrales;
+
+  /// El lector retiene a propósito el nivel anterior (salto de más de 1 m, hasta
+  /// 30 min): un pico que todavía no confirmó no debe subir el nivel acá.
+  final bool retenido;
+
   const Actual({
     this.altura,
     this.prefectura,
@@ -158,6 +179,8 @@ class Actual {
     this.avisos = const [],
     this.cero,
     this.generado,
+    this.umbrales,
+    this.retenido = false,
   });
 
   static Actual? desdeJson(Object? j) {
@@ -169,21 +192,102 @@ class Actual {
       pronostico: Pronostico.desdeJson(j['pronostico']),
       nivel: nivelDesdeTexto(_texto(j['nivel'])),
       avisos: avisos is List ? avisos.whereType<String>().toList() : const [],
-      cero: _texto(j['cero']),
+      cero: _textoCorto(j['cero'], largoMaximoEtiqueta),
       generado: _fecha(j['generado']),
+      retenido: j['nivel_retenido'] is Map,
     );
+  }
+
+  /// Una copia que conoce los [umbrales] para cruzar `nivel` con la altura (ver
+  /// [nivelVigente]). Si el cruce no coincide agrega el aviso `dato_a_verificar`,
+  /// que la pantalla y las notificaciones ya saben mostrar.
+  Actual conUmbrales(Umbrales? u) {
+    final base = Actual(
+      altura: altura,
+      prefectura: prefectura,
+      pronostico: pronostico,
+      nivel: nivel,
+      avisos: avisos,
+      cero: cero,
+      generado: generado,
+      umbrales: u,
+      retenido: retenido,
+    );
+    if (!base._cruce().incoherente || avisos.contains('dato_a_verificar')) return base;
+    return Actual(
+      altura: altura,
+      prefectura: prefectura,
+      pronostico: pronostico,
+      nivel: nivel,
+      avisos: [...avisos, 'dato_a_verificar'],
+      cero: cero,
+      generado: generado,
+      umbrales: u,
+      retenido: retenido,
+    );
+  }
+
+  /// Cruza el `nivel` publicado con la altura y los umbrales. Criterio: nunca
+  /// bajar la gravedad que se muestra.
+  /// - Publicado por debajo del que da la altura: se usa el de la altura (un JSON
+  ///   adulterado o un lector con error no puede mostrar menos de lo que mide el río).
+  /// - Publicado por encima: es legítimo mientras la altura + [margenBajadaCm] supere ese umbral
+  ///   (el lector baja de nivel con ese margen para no parpadear). Más allá no
+  ///   coincide con la altura, pero igual se muestra el publicado (no se baja la
+  ///   gravedad) y se marca el dato como a verificar.
+  /// Sin umbrales, sin altura o con `sinDato` publicado, no hay nada que cruzar.
+  ({Nivel nivel, bool incoherente}) _cruce() {
+    final a = altura;
+    final u = umbrales;
+    if (a == null || u == null || nivel == Nivel.sinDato) return (nivel: nivel, incoherente: false);
+    final calculado = nivelPorAltura(a.valorM, u);
+    final p = ordenDeNivel(nivel);
+    final c = ordenDeNivel(calculado);
+    // Si el lector retiene el nivel a propósito (pico sin confirmar), no se sube: solo se marca.
+    if (p < c) return (nivel: retenido ? nivel : calculado, incoherente: true);
+    if (p == c) return (nivel: nivel, incoherente: false);
+    final umbral = u.de(nivel);
+    final legitimo = umbral != null && _cm(a.valorM) > _cm(umbral) - margenBajadaCm;
+    return (nivel: nivel, incoherente: !legitimo);
   }
 
   /// Nivel que la app puede mostrar: si no hay altura, o es demasiado vieja
   /// (por ejemplo porque el lector dejó de correr), es "sin dato". Una lectura
-  /// posterior a cuando se armó el JSON también: el dato está mal.
+  /// posterior a cuando se armó el JSON también: el dato está mal. Con umbrales
+  /// conocidos, además se cruza con la altura (ver [_cruce]).
   Nivel nivelVigente(DateTime ahora, int horasSinDato) {
     final a = altura;
     if (a == null) return Nivel.sinDato;
     if (_posteriorA(a.fecha, generado)) return Nivel.sinDato;
     if (ahora.difference(a.fecha).inMinutes > horasSinDato * 60) return Nivel.sinDato;
-    return nivel;
+    return _cruce().nivel;
   }
+}
+
+/// Margen con el que el lector baja de nivel (5 cm bajo el umbral).
+const margenBajadaCm = 5;
+
+int _cm(double m) => (m * 100).round();
+
+int ordenDeNivel(Nivel n) => switch (n) {
+      Nivel.sinDato => -1,
+      Nivel.normal => 0,
+      Nivel.atencion => 1,
+      Nivel.alerta => 2,
+      Nivel.evacuacion => 3,
+    };
+
+/// Nivel que corresponde a [alturaM] con los umbrales [u]: altura >= umbral,
+/// en centímetros enteros (la misma regla del lector, sin su margen al bajar).
+Nivel nivelPorAltura(double alturaM, Umbrales u) {
+  for (final (nivel, valor) in [
+    (Nivel.evacuacion, u.evacuacionM),
+    (Nivel.alerta, u.alertaM),
+    (Nivel.atencion, u.atencionM),
+  ]) {
+    if (valor != null && _cm(alturaM) >= _cm(valor)) return nivel;
+  }
+  return Nivel.normal;
 }
 
 class Umbrales {
@@ -229,7 +333,7 @@ class PuntoHistorial {
       final fecha = _fecha(e['fecha']);
       final valor = _altura(e['valor_m']);
       if (fecha != null && valor != null && !_posteriorA(fecha, generado)) {
-        puntos.add(PuntoHistorial(fecha, valor, _texto(e['fuente']) ?? ''));
+        puntos.add(PuntoHistorial(fecha, valor, _textoCorto(e['fuente'], largoMaximoEtiqueta) ?? ''));
       }
     }
     puntos.sort((a, b) => a.fecha.compareTo(b.fecha));
