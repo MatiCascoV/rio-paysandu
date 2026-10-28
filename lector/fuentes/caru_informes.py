@@ -40,6 +40,10 @@ MAX_FRAGMENTOS_TEXTO = 20
 MAX_CARACTERES_TEXTO = 500
 
 
+# Solo la etiqueta <a>, no <abbr>, <article>, <aside>, etc.
+_ANCLA = re.compile(r"<a[\s>/]", re.IGNORECASE)
+
+
 class IndiceAnomalo(ValueError):
     """El índice tiene un tamaño o una cantidad de enlaces anormales."""
 
@@ -59,7 +63,7 @@ def listar_informes(html, base_url, hoy=None):
     Si se pasa `hoy`, descarta fechas futuras (errores de tipeo en el índice)."""
     if len(html) > MAX_BYTES_INDICE:
         raise IndiceAnomalo(f"el índice pesa {len(html)} caracteres (tope {MAX_BYTES_INDICE})")
-    if html.lower().count("<a") > MAX_ANCLAS_INDICE:
+    if len(_ANCLA.findall(html)) > MAX_ANCLAS_INDICE:
         raise IndiceAnomalo(f"el índice tiene más de {MAX_ANCLAS_INDICE} enlaces")
     sopa = BeautifulSoup(html, "html.parser")
     informes = {}

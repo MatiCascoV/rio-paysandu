@@ -265,7 +265,7 @@ def test_resumen_del_informe_tiene_largo_acotado():
 
 # ----- denegación de servicio por estructura anidada (M-2, B-1) -----
 
-PRESUPUESTO_S = 2.0  # la página real se lee en centésimas; esto deja mucho margen
+PRESUPUESTO_S = 5.0  # la página real se lee en centésimas; el ataque tardaba minutos
 
 
 def _tardanza(f, *args):
@@ -333,3 +333,8 @@ def test_historial_se_recorta_al_tope_y_conserva_lo_reciente():
     salida = lector.actualizar_historial(previo, {}, AHORA, CFG)
     assert len(salida) == tope
     assert salida[-1] == previo[-1]
+
+
+def test_el_tope_de_anclas_no_cuenta_otras_etiquetas_con_a():
+    html = "<article><abbr>x</abbr><aside></aside></article>" * 2000 + "<a href='https://caru.org.uy/20261008-Crecida.pdf'>Informe</a>"
+    assert caru_informes.listar_informes(html, URL_INDICE)

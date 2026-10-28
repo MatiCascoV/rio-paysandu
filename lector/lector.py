@@ -279,7 +279,9 @@ def armar_pronostico(informe, url, anterior, hoy, cfg):
 # Con la configuración real el historial tiene unos pocos miles de puntos (una
 # semana de la estación cada 30 min más 4 por día de un año). 20.000 ya es una
 # señal clara de archivo anómalo; la app (que lo baja con tope de 2 MB) no
-# debería procesar más que eso.
+# debería procesar más que eso. Si el archivo YA en disco lo supera, queda
+# congelado (como uno ilegible) con un `::error::` y código de salida 0; se
+# recupera borrándolo o recortándolo a mano en la rama `datos` (ver README).
 MAX_PUNTOS_HISTORIAL = 20_000
 
 
