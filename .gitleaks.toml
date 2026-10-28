@@ -1,0 +1,18 @@
+# Configuración de gitleaks (escaneo de secretos en CI).
+# Usa las reglas por defecto y solo agrega excepciones para falsos positivos confirmados
+# (informe de secretos del 28/10/2026): nada de esto es una credencial real.
+title = "Mi Río UY"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Falsos positivos confirmados: entorno virtual local, ejemplos didácticos de agentes y correos ficticios de tests"
+paths = [
+  '''(^|/)lector/\.venv/''',          # dependencias de terceros (ignorado por git; solo aparece en escaneos de carpeta)
+  '''(^|/)\.claude/agents/[^/]+\.md$''', # ejemplos de plantillas de los subagentes (p. ej. contraseñas y correos de muestra)
+]
+regexes = [
+  '''(clave|usuario)@caru\.org\.uy''',   # correos ficticios en los tests de seguridad del lector
+  '''caru\.org\.uy@evil\.com''',
+]
