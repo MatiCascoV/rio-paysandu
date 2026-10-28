@@ -261,12 +261,19 @@ firmado con la clave de depuración). Igual conviene correr `flutter test` y `fl
   - 17/10/2026: arreglados los avisos locales en el APK de release (la reducción de recursos borraba el ícono
     de notificación).
   - 19/10/2026: CI de la app (`app.yml`) y dependencias al día (Gradle 9.8.1, AGP 9.4.1, Kotlin 2.4.21).
-- Mapa de inundación (pestaña "Mapa": hasta dónde llega el agua según la altura actual, con datos de Dinagua
-  e IDE Uruguay): en desarrollo en la rama `mapa-inundacion`. Pipeline v1.1 corrido con datos reales; control
-  de calidad en curso. Decisión del dueño (26/10/2026): la app que se publica es la de `main`, **sin el
-  mapa**, que queda en su rama hasta que lo revise el Cecoed.
+- Pestaña "Crecidas" (los bordes medidos por Dinagua de 5 crecidas reales, sin modelo de agua): en `main`
+  desde el 27/10/2026 (#22). Es lo que lleva la app publicada. Ver
+  [docs/crecidas-anteriores.md](docs/crecidas-anteriores.md).
+- Mapa de inundación con modelo (pestaña "Mapa": hasta dónde llega el agua según la altura actual, con datos de
+  Dinagua e IDE Uruguay): sigue en la rama `mapa-inundacion` hasta que lo revise el Cecoed. La app publicada es
+  la de `main`, que lleva Crecidas y no incluye este mapa. Pipeline v1.1 corrido con datos reales; control de
+  calidad en curso.
 - Fase 4.b (varias ciudades y enlace a Google Flood Hub): investigada, sin empezar. Ver
   [docs/proxima-etapa-ciudades.md](docs/proxima-etapa-ciudades.md).
-- Fase 5 (publicación): sin empezar.
+- Fase 5 (publicación): en preparación. Hay una ficha de Google Play (textos, política de privacidad y enlace
+  en la app) en el PR #23, rama `ficha-play`, todavía sin mergear.
+  - 28/10/2026: dependencias al día (Dependabot #24 a #29 y #31): firebase_core 5.1.0, firebase_messaging 17.0.1,
+    fl_chart 1.3.0, flutter_local_notifications 22.3.3, actions/setup-python 7.1.0, Gradle wrapper 9.8.2 y
+    google-services 4.5.0.
 - Umbrales de Paysandú: provisorios hasta que los valide el Cecoed. Pendiente consultar a CARU si el
   registro de alturas tiene acceso por HTTPS.
