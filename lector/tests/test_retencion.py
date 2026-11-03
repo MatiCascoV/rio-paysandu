@@ -69,8 +69,13 @@ def test_estacion_7_20_y_prefectura_de_hace_17_h_no_congela():
     for i in range(3):
         a = pasada(reg, anterior, ahora + timedelta(minutes=10 * i))
         assert a["nivel"] == "evacuacion"
-        assert "dato_a_verificar" not in a["avisos"]
+        # M-1: la subida se publica "a verificar" mientras no llegue otra lectura.
+        assert "dato_a_verificar" in a["avisos"]
         anterior = a
+    # La estación informa 7,25 media hora después: confirmada, ya no se marca.
+    reg = registro(7.25, ahora, 7.20, 6.00, ahora - timedelta(hours=17))
+    a = pasada(reg, anterior, ahora + timedelta(minutes=35))
+    assert a["nivel"] == "evacuacion" and "dato_a_verificar" not in a["avisos"]
 
 
 def test_discrepancia_entre_fuentes_avisa_pero_no_retiene():
@@ -182,3 +187,38 @@ def test_contraste_con_pronostico_reciente_avisa_sin_retener():
     # Diferencia chica, pronóstico viejo (2 días, aunque siga vigente) o no vigente: sin aviso.
     for p in (pronostico(0, 6.5, ahora), pronostico(2, 5.5, ahora), dict(pronostico(0, 5.5, ahora), vigente=False)):
         assert lector.armar_actual(reg, p, UMBRALES, anterior, ahora, CFG)["avisos"] == []
+
+
+def test_m1_subida_a_alerta_se_marca_a_verificar_hasta_la_segunda_lectura():
+    t0 = datetime(2026, 10, 9, 7, 0, tzinfo=TZ_UY)
+    pre = (5.9, t0 - timedelta(hours=1))
+    anterior = pasada(registro(5.80, t0, 5.75, *pre), None, t0 + timedelta(minutes=5))
+    assert anterior["nivel"] == "atencion" and "dato_a_verificar" not in anterior["avisos"]
+    # 07:30: sube de a poco (sin salto) y cruza la alerta: primera lectura, a verificar.
+    t1 = t0 + timedelta(minutes=30)
+    primera = pasada(registro(6.05, t1, 5.80, *pre), anterior, t1 + timedelta(minutes=5))
+    assert primera["nivel"] == "alerta" and "dato_a_verificar" in primera["avisos"]
+    assert "nivel_retenido" not in primera
+    # El lector corre cada 10 min: con la misma lectura sigue marcado.
+    repetida = pasada(registro(6.05, t1, 5.80, *pre), primera, t1 + timedelta(minutes=15))
+    assert repetida["nivel"] == "alerta" and "dato_a_verificar" in repetida["avisos"]
+    # 08:00: llega otra lectura que mantiene el nivel y la marca se va.
+    t2 = t0 + timedelta(hours=1)
+    segunda = pasada(registro(6.12, t2, 6.05, *pre), repetida, t2 + timedelta(minutes=5))
+    assert segunda["nivel"] == "alerta" and "dato_a_verificar" not in segunda["avisos"]
+
+
+def test_m1_no_marca_bajadas_ni_el_mismo_nivel_ni_atencion():
+    t0 = datetime(2026, 10, 9, 7, 0, tzinfo=TZ_UY)
+    pre = (5.9, t0 - timedelta(hours=1))
+    alerta = pasada(registro(6.30, t0, 6.28, *pre), {"nivel": "alerta", "avisos": [],
+                    "altura_actual": {"valor_m": 6.28, "fecha": (t0 - timedelta(minutes=30)).isoformat()}},
+                    t0 + timedelta(minutes=5))
+    assert "dato_a_verificar" not in alerta["avisos"]           # alerta -> alerta
+    t1 = t0 + timedelta(minutes=30)
+    baja = pasada(registro(5.90, t1, 6.30, *pre), alerta, t1 + timedelta(minutes=5))
+    assert baja["nivel"] == "atencion" and "dato_a_verificar" not in baja["avisos"]
+    previo = {"nivel": "normal", "avisos": [],
+              "altura_actual": {"valor_m": 4.9, "fecha": (t0 - timedelta(minutes=30)).isoformat()}}
+    atencion = pasada(registro(5.10, t0, 4.9, *pre), previo, t0 + timedelta(minutes=5))
+    assert atencion["nivel"] == "atencion" and "dato_a_verificar" not in atencion["avisos"]
