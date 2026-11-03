@@ -40,7 +40,7 @@ Solo dos tipos. Nada por cada centímetro, nada con el río normal, nada por pro
 
 | Tipo | Cuándo sale | Cuándo no sale |
 |---|---|---|
-| **Aviso urgente** | Cuando el nivel **sube** a `alerta` o a `evacuacion` (comparado con el último nivel con dato). | Bajadas; normal → atención; pronóstico; entrar o salir de `sin_dato` (después de `sin_dato` se compara con el último nivel con dato: atención → `sin_dato` → alerta sí avisa). |
+| **Aviso urgente** | Cuando el nivel **sube** a `alerta` o a `evacuacion` (comparado con el último nivel con dato) **y una segunda lectura lo confirma** (ver "Segunda lectura antes del urgente"). | Bajadas; normal → atención; pronóstico; entrar o salir de `sin_dato` (después de `sin_dato` se compara con el último nivel con dato: atención → `sin_dato` → alerta sí avisa). |
 | **Resumen del día** | Una vez por día, solo si el nivel es `atencion`, `alerta` o `evacuacion`. Sale con la primera publicación del día que trae la lectura de Prefectura de ese día (la de las 06:00, que CARU suele publicar entre 7:30 y 9 en días hábiles). Si a las **10:00** todavía no llegó, sale con la primera publicación desde las 10:00, con el dato de la estación automática. Si el río entra en atención o más recién más tarde, sale en ese momento. | Río normal; un segundo resumen el mismo día; pronóstico. |
 
 El mismo día pueden llegar los dos (por ejemplo, el río sube a alerta a las 8 justo cuando llega Prefectura).
@@ -64,6 +64,80 @@ El mismo día pueden llegar los dos (por ejemplo, el río sube a alerta a las 8 
    ese dato.
 6. La revisión periódica local (`revisarNivel`) sigue como respaldo, con las mismas reglas y preferencias, y
    comparte con el push la marca de lo ya avisado, así que nunca avisan dos veces.
+
+## Segunda lectura antes del urgente (M-1)
+
+CARU solo contesta por HTTP sin cifrar. Para que una altura inventada (o un error del sensor) no dispare
+un "subió a EVACUACIÓN" a todos los suscritos, el urgente espera una segunda lectura:
+
+- La primera publicación con el nivel nuevo **no avisa**. Queda en espera (el motivo dice "Urgente en
+  espera").
+- Sale en la **primera publicación posterior** que trae una segunda lectura de la estación: `altura_actual.fecha`
+  **mayor** que la de la primera (una fecha anterior no vale), de la **misma fuente**, que mantiene el nivel
+  (o más) y **sin salto brusco** contra la primera (hasta 1 m). Solo el salto brusco frena la confirmación:
+  la marca `dato_a_verificar` por contraste con el pronóstico o por diferencia entre fuentes se repite en
+  cada publicación mientras dura (por ejemplo, una crecida real más alta que el informe de CARU) y **no**
+  frena el aviso. Si no se pueden comparar las alturas, se exige que la lectura no traiga la marca.
+- **Tope de 60 minutos**: si no llega esa segunda lectura (la estación se atrasa, o hay un salto brusco
+  sostenido), el urgente sale igual en la **primera publicación con 60 minutos o más** desde la primera. Con la
+  latencia de Pages y del lanzamiento puede llegar hasta ~70 minutos después. Nunca se calla una crecida.
+- Si el lector acaba de soltar una retención por salto brusco (`nivel_retenido`), el lector ya esperó una
+  lectura más nueva: la subida sale de una, **solo si** el nivel que se suelta es el mismo que guardó la
+  retención (`nivel_retenido.nivel`, el calculado de la lectura retenida). Si se retuvo "alerta" y se suelta
+  "evacuación", hay una sola lectura alta y se espera otra; lo mismo con retenciones viejas sin ese campo.
+- Si entre medio el nivel baja, la confirmación se reinicia (un pico de una sola lectura no avisa nunca).
+  Las publicaciones `sin_dato` en el medio se saltean, como siempre.
+- **Niveles mezclados** (alerta → evacuación → alerta): cada nivel avisa a lo sumo una vez por subida, en la
+  primera publicación *de ese nivel* que confirma (o que llega a los 60 min). Una publicación de nivel más
+  alto en el medio no confirma ni cuenta como "ya avisó" para el nivel de abajo. En concreto:
+  - alerta en espera, sube a evacuación y vuelve a alerta sin que la evacuación se haya confirmado: sale la
+    alerta (una sola vez) en la primera publicación de alerta que confirma;
+  - alerta en espera y la evacuación se confirma: sale la evacuación y no sale una alerta redundante (si
+    después baja a alerta, es una bajada y no avisa);
+  - alerta confirmada y después evacuación: avisan las dos, cada una una vez.
+- **Huecos de publicación**: si el lector estuvo parado y vuelve, la primera publicación posterior que
+  queda a 60 minutos o más de la primera lectura saca el urgente por plazo (aunque el hueco sea de horas),
+  y las siguientes no lo repiten. Un hueco de menos de 60 minutos no cambia nada. Mientras el lector no
+  publique no hay decisión (ver "Si el lector se corta" más abajo).
+- Oscilación alerta ↔ evacuación: cada cruce confirmado vuelve a mandar un push. Si el río sube a
+  evacuación (aviso), baja a alerta (no avisa) y vuelve a evacuación con dos lecturas arriba, sale otra
+  evacuación; es la misma situación que la oscilación alerta ↔ atención de abajo.
+- Oscilación alerta ↔ atención (M-3): cada baja publicada reinicia la espera, así que un río que oscila en el
+  umbral manda el urgente solo cuando se queda dos lecturas seguidas arriba (el margen al bajar del lector
+  ya amortigua esas oscilaciones).
+- Sigue sin guardar estado: la decisión se reconstruye del historial de `data/actual.json` (se leen solo las
+  publicaciones del último plazo, no toda una racha larga), así que es la misma al re-correr un commit y
+  nunca sale dos veces.
+- Mientras tanto el lector publica la primera lectura con `dato_a_verificar`, y la app ya la muestra como
+  "Este dato puede tener un error" sin cambios en `app/`. La marca dura mientras el lector repite la misma
+  lectura y se va con la primera distinta.
+- Costo: el urgente llega unos 30 minutos más tarde (la estación informa cada 30 min), hasta 60 como tope. Una
+  crecida del río Uruguay sube de a centímetros por hora, así que no cambia mucho el tiempo para reaccionar
+  (criterio, no medido).
+- Con un salto brusco marcado ya no sale el "subió a …" en el primer push (era un error: `avisos.py` ignoraba
+  `dato_a_verificar`).
+
+**Límites que quedan** (la mitigación reduce el riesgo, no lo elimina):
+
+- No frena a quien mantenga la mentira en el tiempo, ni a una fuente que repita el mismo error en dos lecturas.
+  La solución de fondo es HTTPS o un feed firmado de CARU.
+- La revisión local de la app (`revisarNivel`, el respaldo) decide solo con `actual.json` y **no conoce esta
+  espera**: un teléfono con la app abierta o con el respaldo corriendo puede mostrar el urgente en la primera
+  lectura (con el texto "Dato a verificar por CARU."). Cerrarlo requiere un cambio en `app/` (que el respaldo
+  trate `dato_a_verificar` como "esperar" con el mismo tope de 60 minutos). Queda pendiente, sin hacer.
+- **Si el lector se corta después de la primera lectura**, el urgente queda en espera hasta que vuelva a
+  publicar: la decisión se toma al publicar, no hay un reloj aparte. Lo mitigan el respaldo local de la app y
+  el issue automático `avisos-falla`. **Mejora futura (no implementada):** un chequeo de "urgente en espera sin
+  publicaciones nuevas" que avise o fuerce el urgente pasado el plazo.
+- La confirmación exige la misma fuente: una primera lectura de Prefectura solo se confirma con otra de
+  Prefectura (que llega una vez por día) o a los 60 minutos del tope.
+- Borde con niveles mezclados y huecos de publicación de más de 60 minutos (por ejemplo, alerta a los 180
+  min, evacuación a los 250 y normal a los 260): un urgente en espera puede no salir si el nivel baja antes
+  de la siguiente publicación, porque la decisión solo se toma al publicar. Es un caso más del límite anterior
+  y lo cubriría la misma mejora futura (chequeo de "urgente en espera sin publicaciones nuevas"); no se
+  cambió la lógica por esto.
+- En el modo de dos archivos (`avisos.py ANTERIOR.json NUEVO.json`, solo para pruebas manuales) no hay
+  historial: el urgente nunca sale. El workflow usa `--commit`.
 
 ## Decisiones de diseño
 

@@ -4,7 +4,8 @@ Lo usa .github/workflows/avisos.yml: el push va sin texto, así que acá solo se
 decide *si* avisar y de qué tipo; la app arma el aviso con lo que diga actual.json.
 
 Hay dos avisos, independientes (pueden salir los dos en la misma pasada):
-- Urgente: el nivel SUBE a alerta o a evacuación.
+- Urgente: el nivel SUBE a alerta o a evacuación y una segunda lectura de la
+  estación, con otra fecha, lo confirma (o pasaron 60 min sin que llegue).
 - Resumen del día: uno por día, solo con nivel atención o más.
 
 Uso (desde la raíz del repositorio):
@@ -46,6 +47,14 @@ ZONA_LOCAL = timezone(timedelta(hours=-3))
 # Si a esta hora local todavía no llegó la lectura de Prefectura del día, el
 # resumen sale con la estación automática.
 HORA_RESPALDO = 10
+
+# M-1: una subida a alerta o evacuación no sale en el primer push; hace falta una
+# segunda lectura (otra fecha, sin dato_a_verificar) que mantenga el nivel. Si no
+# llega en este plazo desde la primera publicación con el nivel, sale igual: nunca callar.
+VENTANA_CONFIRMACION = timedelta(minutes=60)
+# Salto máximo (m) entre la primera lectura y la que la confirma; el mismo que usa
+# el lector para retener un salto brusco (validar.SALTO_MAX_M).
+SALTO_MAX_M = 1.0
 
 RUTA_ACTUAL = "data/actual.json"
 REVISION_VALIDA = re.compile(r"[0-9A-Za-z_./~^-]+")
@@ -93,6 +102,58 @@ def _generado(publicacion):
     return _hora_local(publicacion.get("generado"))
 
 
+def _fecha_lectura(publicacion):
+    """Fecha de la lectura de altura publicada (altura_actual.fecha), o None."""
+    altura = publicacion.get("altura_actual") if isinstance(publicacion, dict) else None
+    if not isinstance(altura, dict):
+        return None
+    return _hora_local(altura.get("fecha"))
+
+
+def _a_verificar(publicacion):
+    avisos = publicacion.get("avisos") if isinstance(publicacion, dict) else None
+    return isinstance(avisos, list) and "dato_a_verificar" in avisos
+
+
+def _retencion_confirma(publicacion, nivel):
+    """True si la publicación (la última con dato antes de una subida) estaba
+    reteniendo un nivel calculado igual a `nivel`: el lector ya esperó una lectura
+    más nueva para soltarlo y esa lectura mantiene el mismo nivel, así que la
+    subida que sigue ya viene confirmada. Si la retenida era de otro nivel (o la
+    retención no guarda el nivel), no confirma."""
+    retenido = publicacion.get("nivel_retenido") if isinstance(publicacion, dict) else None
+    return isinstance(retenido, dict) and retenido.get("nivel") == nivel
+
+
+def _valor_lectura(publicacion):
+    altura = publicacion.get("altura_actual") if isinstance(publicacion, dict) else None
+    valor = altura.get("valor_m") if isinstance(altura, dict) else None
+    return float(valor) if type(valor) in (int, float) else None
+
+
+def _fuente_lectura(publicacion):
+    altura = publicacion.get("altura_actual") if isinstance(publicacion, dict) else None
+    return altura.get("fuente") if isinstance(altura, dict) else None
+
+
+def _confirma(primera, otra):
+    """True si `otra` es una segunda lectura que confirma a `primera`: fecha
+    posterior, misma fuente, y sin salto brusco contra la primera. Solo el salto
+    brusco bloquea; la marca dato_a_verificar por contraste con el pronóstico o por
+    diferencia entre fuentes se repite en cada publicación mientras dura (una
+    crecida real más alta que el informe de CARU) y no debe frenar el aviso.
+    Si no se pueden comparar las alturas, se exige que no traiga la marca."""
+    f0, f1 = _fecha_lectura(primera), _fecha_lectura(otra)
+    if f0 is None or f1 is None or f1 <= f0:
+        return False
+    if _fuente_lectura(primera) != _fuente_lectura(otra):
+        return False
+    v0, v1 = _valor_lectura(primera), _valor_lectura(otra)
+    if v0 is None or v1 is None:
+        return not _a_verificar(otra)
+    return abs(v1 - v0) <= SALTO_MAX_M
+
+
 def _fecha_prefectura(publicacion):
     lectura = publicacion.get("lectura_prefectura") if isinstance(publicacion, dict) else None
     if not isinstance(lectura, dict):
@@ -118,6 +179,90 @@ def resumen_listo(publicacion):
     return None
 
 
+def _rango(nivel):
+    return NIVELES_CON_DATO.index(nivel)
+
+
+def _racha_vencida(racha, nivel):
+    """True si ya se leyó historia de más: o bien una publicación del mismo nivel
+    pasó el plazo de confirmación contra la más vieja leída (el urgente de ese nivel
+    ya salió en ella o antes), o bien las publicaciones ANTERIORES abarcan más del
+    doble del plazo (una racha de nivel más alto ya tuvo su propio aviso). Se mide
+    contra la publicación anterior y no contra la nueva: tras un hueco de
+    publicaciones la nueva sigue evaluándose y sale por plazo. Con eso no se lee
+    más historia."""
+    vieja = _generado(racha[-1])
+    if vieja is None:
+        return False
+    reciente = _generado(racha[0])
+    if reciente is not None and reciente - vieja >= 2 * VENTANA_CONFIRMACION:
+        return True
+    for r in racha[:-1]:
+        g = _generado(r)
+        if _nivel(r) == nivel and g is not None and g - vieja >= VENTANA_CONFIRMACION:
+            return True
+    return False
+
+
+def _evento_en(cadena, j, pub_antes):
+    """M-1. ¿Sale el urgente del nivel de cadena[j] en esa publicación? `cadena`
+    son las publicaciones con alerta o más, de la más vieja a la más reciente.
+    Devuelve (sale, como): "confirmada", "plazo" o "espera" (todavía no hay evento).
+
+    La subida a ese nivel empieza en la primera publicación de la racha continua
+    con ese nivel o más que termina en j. Solo las publicaciones de ESE nivel
+    pueden confirmar o vencer: una publicación de un nivel más alto en el medio
+    decide su propio aviso, no el de este nivel. El evento es el primero que
+    confirma (fecha mayor, misma fuente, sin salto brusco) o que llega 60 min
+    después de la primera."""
+    nivel = _nivel(cadena[j])
+    s = j
+    while s > 0 and _rango(_nivel(cadena[s - 1])) >= _rango(nivel):
+        s -= 1
+    run = cadena[s:j + 1]
+    if s == 0 and _retencion_confirma(pub_antes, nivel):
+        return (j == 0), ("confirmada" if j == 0 else "")
+    gen0 = _generado(run[0])
+    for i in range(1, len(run)):
+        p = run[i]
+        if _nivel(p) != nivel:
+            continue
+        gen = _generado(p)
+        if _confirma(run[0], p):
+            return (i == len(run) - 1), "confirmada"
+        # Si no se puede medir el tiempo se prefiere avisar a callar.
+        if gen0 is None or gen is None or gen - gen0 >= VENTANA_CONFIRMACION:
+            return (i == len(run) - 1), "plazo"
+    return False, "espera"
+
+
+def _evaluar_urgente(nuevo, racha, pub_antes):
+    """M-1. `racha` son las publicaciones anteriores con el nivel nuevo o más,
+    de la más vieja a la más reciente. Devuelve (sale, como) para `nuevo`:
+    - (True, "confirmada"): esta publicación es la primera que confirma la subida.
+    - (True, "plazo"): es la primera que pasa de los 60 min sin confirmación.
+    - (False, "espera"): todavía no se confirmó ni venció el plazo.
+    - (False, ""): el urgente de este nivel ya salió antes, o no corresponde.
+
+    Regla con niveles mezclados (alerta -> evacuación -> alerta): cada nivel avisa
+    a lo sumo una vez por subida, en la primera publicación DE ESE NIVEL que
+    confirma. Si la evacuación ya salió, volver a alerta es una bajada y no avisa;
+    si la evacuación nunca salió, la alerta sostenida sí avisa al confirmarse. Y si
+    se confirma la evacuación sin que antes saliera la alerta, no sale una alerta
+    redundante después.
+    Sin estado guardado: se reconstruye del historial de actual.json, así que
+    correr dos veces sobre el mismo commit da lo mismo y nunca sale dos veces."""
+    cadena = racha + [nuevo]
+    ultimo = len(cadena) - 1
+    for j in range(ultimo):
+        if _rango(_nivel(cadena[j])) > _rango(_nivel(nuevo)):
+            sale_antes, _ = _evento_en(cadena, j, pub_antes)
+            if sale_antes:
+                return False, ""        # un nivel más alto ya avisó: esto es una bajada
+    sale, como = _evento_en(cadena, ultimo, pub_antes)
+    return sale, ("" if not sale and como != "espera" else como)
+
+
 def decidir(nuevo, anteriores):
     """Decide los avisos de `nuevo`. `anteriores` son las publicaciones previas,
     de la más reciente a la más vieja (puede ser un generador: se lee solo lo
@@ -128,6 +273,12 @@ def decidir(nuevo, anteriores):
       nivel con dato anterior (se saltean las publicaciones sin_dato, así una
       caída de la fuente no hace perder una subida real). Bajar, quedarse igual
       o entrar/salir de sin_dato no avisa. Sin anterior con dato no avisa.
+      M-1: la primera publicación con el nivel nuevo no avisa. Sale en la primera
+      que trae otra lectura (altura_actual.fecha posterior, misma fuente, sin salto
+      brusco contra la primera; la marca dato_a_verificar sola no bloquea), o
+      en la primera que llega 60 min después de aquella, lo que pase antes. Si el
+      lector acababa de soltar una retención del mismo nivel (nivel_retenido.nivel) ya hubo
+      segunda lectura.
       El nivel publicado ya trae la retención y el margen al bajar del lector,
       así que no se recalcula desde la altura.
     - Resumen: `resumen_listo(nuevo)` no es None y ninguna publicación anterior
@@ -140,14 +291,25 @@ def decidir(nuevo, anteriores):
     fuente = resumen_listo(nuevo)
 
     nivel_antes = None
+    pub_antes = None
+    racha = []      # anteriores con el nivel nuevo o más, de la más reciente a la más vieja
     ya_hubo_resumen = False
     buscar_nivel = nivel_ahora in NIVELES_URGENTES
     buscar_dia = fuente is not None
     iterador = iter(anteriores) if (buscar_nivel or buscar_dia) else iter(())
     for anterior in iterador:
         if buscar_nivel and _nivel(anterior):
-            nivel_antes = _nivel(anterior)
-            buscar_nivel = False
+            if _rango(_nivel(anterior)) >= _rango(nivel_ahora):
+                racha.append(anterior)
+                if _racha_vencida(racha, nivel_ahora):
+                    # La publicación anterior ya había pasado el plazo: el urgente
+                    # (si correspondía) salió antes. No se lee más historia.
+                    buscar_nivel = False
+                    racha = None
+            else:
+                nivel_antes = _nivel(anterior)
+                pub_antes = anterior
+                buscar_nivel = False
         if buscar_dia:
             fecha = _generado(anterior)
             if fecha is None or fecha.date() > hoy:
@@ -161,15 +323,24 @@ def decidir(nuevo, anteriores):
             break       # no se lee una versión más de la necesaria (cada una es un git show)
 
     urgente = None
-    if (nivel_ahora in NIVELES_URGENTES and nivel_antes
-            and NIVELES_CON_DATO.index(nivel_ahora) > NIVELES_CON_DATO.index(nivel_antes)):
-        urgente = nivel_ahora
+    en_espera = False
+    como = ""
+    if nivel_antes and racha is not None:
+        sale, como = _evaluar_urgente(nuevo, list(reversed(racha)), pub_antes)
+        urgente = nivel_ahora if sale else None
+        en_espera = como == "espera"
     resumen = fuente is not None and not ya_hubo_resumen
 
     partes = []
     if urgente:
         partes.append("El nivel subió de {} a {}.".format(
             NOMBRES_NIVEL[nivel_antes], NOMBRES_NIVEL[urgente]))
+        if como == "plazo":
+            partes.append("No llegó una segunda lectura que lo confirme y pasaron 60 min: sale igual.")
+    if en_espera:
+        partes.append("Urgente en espera: el nivel subió a {} y falta una segunda lectura de la "
+                      "estación con otra fecha (si no llega en 60 min, sale igual)."
+                      .format(NOMBRES_NIVEL[nivel_ahora]))
     if resumen:
         partes.append("Resumen del día con la lectura de Prefectura."
                       if fuente == "prefectura" else

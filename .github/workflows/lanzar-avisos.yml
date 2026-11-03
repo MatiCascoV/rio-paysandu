@@ -54,8 +54,9 @@ jobs:
       github.event.workflow_run.head_branch == 'datos' &&
       github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
-    # Lista (hasta 3 min) + espera de Pages (hasta 4 min) + preparación.
-    timeout-minutes: 10
+    # Lista (hasta 8 min con los reintentos del fetch) + espera de Pages (hasta 4 min)
+    # + preparación.
+    timeout-minutes: 15
     permissions:
       actions: read # listar las corridas de pages-build-deployment
     outputs:
@@ -71,7 +72,7 @@ jobs:
     steps:
       - name: Armar la lista de commits a lanzar
         id: lista
-        timeout-minutes: 3
+        timeout-minutes: 8
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -100,8 +101,19 @@ jobs:
           # lo que trae: solo git rev-list, git log y git show de un JSON.
           git init --quiet datos
           cd datos
-          timeout 60 git fetch --quiet --no-tags --depth=300 "https://github.com/$REPO.git" \
-            "+refs/heads/datos:refs/remotes/origin/datos"
+          # Hasta 3 intentos con pausa corta: una vez el fetch pasó el límite de 60 s y la
+          # corrida falló sin motivo (issue #36). Es el mismo fetch; solo se reintenta.
+          traido=no
+          for intento in 1 2 3; do
+            if timeout 120 git fetch --quiet --no-tags --depth=300 "https://github.com/$REPO.git" \
+                "+refs/heads/datos:refs/remotes/origin/datos"; then
+              traido=si
+              break
+            fi
+            echo "::warning::El fetch de datos falló o pasó el tiempo (intento $intento de 3)"
+            if [ "$intento" -lt 3 ]; then sleep $((intento * 5)); fi
+          done
+          [ "$traido" = si ] || { echo "::error::No se pudo traer la rama datos después de 3 intentos"; exit 1; }
           if ! git merge-base --is-ancestor "$ACTUAL" origin/datos 2>/dev/null; then
             echo "::error::El commit $ACTUAL no está en datos (o está a más de 300 commits de la punta)"
             exit 1
