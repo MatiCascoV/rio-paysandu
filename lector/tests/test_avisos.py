@@ -920,3 +920,79 @@ def test_revision_que_empieza_con_guion_se_rechaza_sin_llamar_a_git(monkeypatch)
     for revision in ("-h", "--output=x", "-", "-HEAD", "HEAD;ls", "HEAD:data/x", "", None):
         with pytest.raises(avisos.ErrorAvisos):
             avisos._resolver(revision)
+
+
+# ---------- niveles mezclados: alerta -> evacuación -> alerta ----------
+
+def secuencia(*publicaciones):
+    """Urgente que sale en cada publicación (de la más vieja a la más nueva),
+    decidiendo con el historial anterior. Además comprueba que re-correr cada
+    commit da la misma decisión."""
+    historia, salidas = [], []
+    for p in publicaciones:
+        d = decidir(p, *historia)
+        assert d == decidir(copy.deepcopy(p), *copy.deepcopy(historia))
+        salidas.append(d["urgente"])
+        historia.insert(0, p)
+    return salidas
+
+
+def test_alerta_en_espera_evacuacion_y_vuelve_a_alerta_avisa_la_alerta():
+    # Hueco de la 2.ª revisión: antes no salía ni la alerta ni la evacuación.
+    salidas = secuencia(
+        pub("atencion", "08:00", prefectura=AYER, valor=5.0),
+        pub("alerta", "08:30", prefectura=AYER, valor=6.0),
+        pub("evacuacion", "09:00", prefectura=AYER, valor=7.0),
+        pub("alerta", "09:30", prefectura=AYER, valor=6.1),
+        pub("alerta", "10:00", prefectura=AYER, valor=6.2),
+        pub("alerta", "10:30", prefectura=AYER, valor=6.3))
+    assert salidas == [None, None, None, "alerta", None, None]      # una alerta, sin repetir
+
+
+def test_alerta_en_espera_y_evacuacion_confirmada_no_manda_alerta_redundante():
+    salidas = secuencia(
+        pub("atencion", "08:00", prefectura=AYER, valor=5.0),
+        pub("alerta", "08:30", prefectura=AYER, valor=6.0),
+        pub("evacuacion", "09:00", prefectura=AYER, valor=7.0),
+        pub("evacuacion", "09:30", prefectura=AYER, valor=7.1),
+        # Baja a alerta después de avisada la evacuación: es una bajada, no avisa.
+        pub("alerta", "10:00", prefectura=AYER, valor=6.1),
+        pub("alerta", "10:30", prefectura=AYER, valor=6.2),
+        pub("alerta", "11:00", prefectura=AYER, valor=6.3))
+    assert salidas == [None, None, None, "evacuacion", None, None, None]
+
+
+def test_alerta_confirmada_y_despues_evacuacion_avisan_las_dos_una_vez():
+    salidas = secuencia(
+        pub("atencion", "08:00", prefectura=AYER, valor=5.0),
+        pub("alerta", "08:30", prefectura=AYER, valor=6.0),
+        pub("alerta", "09:00", prefectura=AYER, valor=6.1),
+        pub("evacuacion", "09:30", prefectura=AYER, valor=7.0),
+        pub("evacuacion", "10:00", prefectura=AYER, valor=7.1),
+        pub("alerta", "10:30", prefectura=AYER, valor=6.2),
+        pub("alerta", "11:00", prefectura=AYER, valor=6.3))
+    assert salidas == [None, None, "alerta", None, "evacuacion", None, None]
+
+
+def test_evacuacion_sin_confirmar_y_alerta_sostenida_sale_igual_por_plazo():
+    # La evacuación tiene un salto dudoso y nunca se confirma; la alerta sostenida no puede quedar muda.
+    salidas = secuencia(
+        pub("atencion", "08:00", prefectura=AYER, valor=5.0),
+        pub("alerta", "08:30", prefectura=AYER, valor=6.0),
+        pub("evacuacion", "09:00", prefectura=AYER, valor=9.0),
+        pub("alerta", "09:30", prefectura=AYER, valor=6.1),
+        pub("alerta", "10:00", prefectura=AYER, valor=6.2))
+    assert salidas == [None, None, None, "alerta", None]
+
+
+def test_git_alerta_evacuacion_alerta_una_sola_alerta(repo):
+    secuencia_pub = [
+        pub("atencion", "08:00", prefectura=AYER, valor=5.0),
+        pub("alerta", "08:30", prefectura=AYER, valor=6.0),
+        pub("evacuacion", "09:00", prefectura=AYER, valor=7.0),
+        pub("alerta", "09:30", prefectura=AYER, valor=6.1),
+        pub("alerta", "10:00", prefectura=AYER, valor=6.2)]
+    commits = [repo.commit(p, p["generado"]) for p in secuencia_pub]
+    salidas = [decision_git(repo, c)["urgente"] for c in commits]
+    assert salidas == [None, None, None, "alerta", None]
+    assert [decision_git(repo, c)["urgente"] for c in commits] == salidas       # re-correr da lo mismo

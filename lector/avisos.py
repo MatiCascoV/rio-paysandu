@@ -183,40 +183,80 @@ def _rango(nivel):
     return NIVELES_CON_DATO.index(nivel)
 
 
-def _racha_vencida(racha):
-    """True si la racha (de la más reciente a la más vieja) abarca ya el plazo de
-    confirmación entre su publicación más reciente y la más vieja leída. Con eso
-    la publicación anterior ya había pasado el plazo y el urgente salió antes."""
-    if len(racha) < 2:
+def _racha_vencida(racha, nivel, generado):
+    """True si ya se leyó historia de más: o bien una publicación del mismo nivel
+    pasó el plazo de confirmación contra la más vieja leída (el urgente de ese nivel
+    ya salió en ella o antes), o bien la racha abarca más del doble del plazo (una
+    racha de nivel más alto ya tuvo su propio aviso). Con eso no se lee más historia."""
+    vieja = _generado(racha[-1])
+    if vieja is None:
         return False
-    reciente, vieja = _generado(racha[0]), _generado(racha[-1])
-    return reciente is not None and vieja is not None and reciente - vieja >= VENTANA_CONFIRMACION
+    if generado is not None and generado - vieja >= 2 * VENTANA_CONFIRMACION:
+        return True
+    for r in racha[:-1]:
+        g = _generado(r)
+        if _nivel(r) == nivel and g is not None and g - vieja >= VENTANA_CONFIRMACION:
+            return True
+    return False
+
+
+def _evento_en(cadena, j, pub_antes):
+    """M-1. ¿Sale el urgente del nivel de cadena[j] en esa publicación? `cadena`
+    son las publicaciones con alerta o más, de la más vieja a la más reciente.
+    Devuelve (sale, como): "confirmada", "plazo" o "espera" (todavía no hay evento).
+
+    La subida a ese nivel empieza en la primera publicación de la racha continua
+    con ese nivel o más que termina en j. Solo las publicaciones de ESE nivel
+    pueden confirmar o vencer: una publicación de un nivel más alto en el medio
+    decide su propio aviso, no el de este nivel. El evento es el primero que
+    confirma (fecha mayor, misma fuente, sin salto brusco) o que llega 60 min
+    después de la primera."""
+    nivel = _nivel(cadena[j])
+    s = j
+    while s > 0 and _rango(_nivel(cadena[s - 1])) >= _rango(nivel):
+        s -= 1
+    run = cadena[s:j + 1]
+    if s == 0 and _retencion_confirma(pub_antes, nivel):
+        return (j == 0), ("confirmada" if j == 0 else "")
+    gen0 = _generado(run[0])
+    for i in range(1, len(run)):
+        p = run[i]
+        if _nivel(p) != nivel:
+            continue
+        gen = _generado(p)
+        if _confirma(run[0], p):
+            return (i == len(run) - 1), "confirmada"
+        # Si no se puede medir el tiempo se prefiere avisar a callar.
+        if gen0 is None or gen is None or gen - gen0 >= VENTANA_CONFIRMACION:
+            return (i == len(run) - 1), "plazo"
+    return False, "espera"
 
 
 def _evaluar_urgente(nuevo, racha, pub_antes):
     """M-1. `racha` son las publicaciones anteriores con el nivel nuevo o más,
-    de la más vieja a la más reciente; la primera de la cadena (racha + nuevo)
-    es la primera lectura de la subida. Devuelve (sale, como):
+    de la más vieja a la más reciente. Devuelve (sale, como) para `nuevo`:
     - (True, "confirmada"): esta publicación es la primera que confirma la subida.
     - (True, "plazo"): es la primera que pasa de los 60 min sin confirmación.
     - (False, "espera"): todavía no se confirmó ni venció el plazo.
-    - (False, ""): el urgente ya salió antes.
+    - (False, ""): el urgente de este nivel ya salió antes, o no corresponde.
+
+    Regla con niveles mezclados (alerta -> evacuación -> alerta): cada nivel avisa
+    a lo sumo una vez por subida, en la primera publicación DE ESE NIVEL que
+    confirma. Si la evacuación ya salió, volver a alerta es una bajada y no avisa;
+    si la evacuación nunca salió, la alerta sostenida sí avisa al confirmarse. Y si
+    se confirma la evacuación sin que antes saliera la alerta, no sale una alerta
+    redundante después.
     Sin estado guardado: se reconstruye del historial de actual.json, así que
     correr dos veces sobre el mismo commit da lo mismo y nunca sale dos veces."""
     cadena = racha + [nuevo]
     ultimo = len(cadena) - 1
-    if _retencion_confirma(pub_antes, _nivel(cadena[0])):
-        return (ultimo == 0), ("confirmada" if ultimo == 0 else "")
-    gen0 = _generado(cadena[0])
-    for i in range(1, len(cadena)):
-        p = cadena[i]
-        gen = _generado(p)
-        if _confirma(cadena[0], p):
-            return (i == ultimo), ("confirmada" if i == ultimo else "")
-        # Si no se puede medir el tiempo se prefiere avisar a callar.
-        if gen0 is None or gen is None or gen - gen0 >= VENTANA_CONFIRMACION:
-            return (i == ultimo), ("plazo" if i == ultimo else "")
-    return False, "espera"
+    for j in range(ultimo):
+        if _rango(_nivel(cadena[j])) > _rango(_nivel(nuevo)):
+            sale_antes, _ = _evento_en(cadena, j, pub_antes)
+            if sale_antes:
+                return False, ""        # un nivel más alto ya avisó: esto es una bajada
+    sale, como = _evento_en(cadena, ultimo, pub_antes)
+    return sale, ("" if not sale and como != "espera" else como)
 
 
 def decidir(nuevo, anteriores):
@@ -257,7 +297,7 @@ def decidir(nuevo, anteriores):
         if buscar_nivel and _nivel(anterior):
             if _rango(_nivel(anterior)) >= _rango(nivel_ahora):
                 racha.append(anterior)
-                if _racha_vencida(racha):
+                if _racha_vencida(racha, nivel_ahora, generado):
                     # La publicación anterior ya había pasado el plazo: el urgente
                     # (si correspondía) salió antes. No se lee más historia.
                     buscar_nivel = False

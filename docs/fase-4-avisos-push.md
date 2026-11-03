@@ -86,8 +86,15 @@ un "subió a EVACUACIÓN" a todos los suscritos, el urgente espera una segunda l
   retención (`nivel_retenido.nivel`, el calculado de la lectura retenida). Si se retuvo "alerta" y se suelta
   "evacuación", hay una sola lectura alta y se espera otra; lo mismo con retenciones viejas sin ese campo.
 - Si entre medio el nivel baja, la confirmación se reinicia (un pico de una sola lectura no avisa nunca).
-  Las publicaciones `sin_dato` en el medio se saltean, como siempre. Si la alerta estaba en espera y el nivel
-  sube a evacuación, la alerta no sale: queda en espera la evacuación, que sale a su segunda lectura.
+  Las publicaciones `sin_dato` en el medio se saltean, como siempre.
+- **Niveles mezclados** (alerta → evacuación → alerta): cada nivel avisa a lo sumo una vez por subida, en la
+  primera publicación *de ese nivel* que confirma (o que llega a los 60 min). Una publicación de nivel más
+  alto en el medio no confirma ni cuenta como "ya avisó" para el nivel de abajo. En concreto:
+  - alerta en espera, sube a evacuación y vuelve a alerta sin que la evacuación se haya confirmado: sale la
+    alerta (una sola vez) en la primera publicación de alerta que confirma;
+  - alerta en espera y la evacuación se confirma: sale la evacuación y no sale una alerta redundante (si
+    después baja a alerta, es una bajada y no avisa);
+  - alerta confirmada y después evacuación: avisan las dos, cada una una vez.
 - Oscilación alerta ↔ atención (M-3): cada baja publicada reinicia la espera, así que un río que oscila en el
   umbral manda el urgente solo cuando se queda dos lecturas seguidas arriba (el margen al bajar del lector
   ya amortigua esas oscilaciones).
@@ -115,6 +122,8 @@ un "subió a EVACUACIÓN" a todos los suscritos, el urgente espera una segunda l
   publicar: la decisión se toma al publicar, no hay un reloj aparte. Lo mitigan el respaldo local de la app y
   el issue automático `avisos-falla`. **Mejora futura (no implementada):** un chequeo de "urgente en espera sin
   publicaciones nuevas" que avise o fuerce el urgente pasado el plazo.
+- La confirmación exige la misma fuente: una primera lectura de Prefectura solo se confirma con otra de
+  Prefectura (que llega una vez por día) o a los 60 minutos del tope.
 - En el modo de dos archivos (`avisos.py ANTERIOR.json NUEVO.json`, solo para pruebas manuales) no hay
   historial: el urgente nunca sale. El workflow usa `--commit`.
 
