@@ -40,7 +40,7 @@ Solo dos tipos. Nada por cada centímetro, nada con el río normal, nada por pro
 
 | Tipo | Cuándo sale | Cuándo no sale |
 |---|---|---|
-| **Aviso urgente** | Cuando el nivel **sube** a `alerta` o a `evacuacion` (comparado con el último nivel con dato). | Bajadas; normal → atención; pronóstico; entrar o salir de `sin_dato` (después de `sin_dato` se compara con el último nivel con dato: atención → `sin_dato` → alerta sí avisa). |
+| **Aviso urgente** | Cuando el nivel **sube** a `alerta` o a `evacuacion` (comparado con el último nivel con dato) **y una segunda lectura lo confirma** (ver "Segunda lectura antes del urgente"). | Bajadas; normal → atención; pronóstico; entrar o salir de `sin_dato` (después de `sin_dato` se compara con el último nivel con dato: atención → `sin_dato` → alerta sí avisa). |
 | **Resumen del día** | Una vez por día, solo si el nivel es `atencion`, `alerta` o `evacuacion`. Sale con la primera publicación del día que trae la lectura de Prefectura de ese día (la de las 06:00, que CARU suele publicar entre 7:30 y 9 en días hábiles). Si a las **10:00** todavía no llegó, sale con la primera publicación desde las 10:00, con el dato de la estación automática. Si el río entra en atención o más recién más tarde, sale en ese momento. | Río normal; un segundo resumen el mismo día; pronóstico. |
 
 El mismo día pueden llegar los dos (por ejemplo, el río sube a alerta a las 8 justo cuando llega Prefectura).
@@ -64,6 +64,47 @@ El mismo día pueden llegar los dos (por ejemplo, el río sube a alerta a las 8 
    ese dato.
 6. La revisión periódica local (`revisarNivel`) sigue como respaldo, con las mismas reglas y preferencias, y
    comparte con el push la marca de lo ya avisado, así que nunca avisan dos veces.
+
+## Segunda lectura antes del urgente (M-1)
+
+CARU solo contesta por HTTP sin cifrar. Para que una altura inventada (o un error del sensor) no dispare
+un "subió a EVACUACIÓN" a todos los suscritos, el urgente espera una segunda lectura:
+
+- La primera publicación con el nivel nuevo **no avisa**. Queda en espera (el motivo dice "Urgente en
+  espera").
+- Sale en la **primera publicación posterior** que trae otra lectura de la estación
+  (`altura_actual.fecha` distinta), mantiene el nivel (o más) y **no** trae `dato_a_verificar`.
+- **Tope de 60 minutos**: si no llega esa segunda lectura (la estación se atrasa, o el aviso
+  `dato_a_verificar` no se va), el urgente sale igual en la primera publicación que pasa de 60 minutos
+  desde la primera. Nunca se calla una crecida.
+- Si el lector acaba de soltar una retención por salto brusco (`nivel_retenido`), el lector ya esperó una
+  lectura más nueva: la subida sale de una, sin esperar otra.
+- Si entre medio el nivel baja, la confirmación se reinicia (un pico de una sola lectura no avisa nunca).
+  Las publicaciones `sin_dato` en el medio se saltean, como siempre.
+- Sigue sin guardar estado: la decisión se reconstruye del historial de `data/actual.json` (se leen solo las
+  publicaciones del último plazo, no toda una racha larga), así que es la misma al re-correr un commit y
+  nunca sale dos veces.
+- Mientras tanto el lector publica la primera lectura con `dato_a_verificar`, y la app ya la muestra como
+  "Este dato puede tener un error" sin cambios en `app/`. La marca dura mientras el lector repite la misma
+  lectura y se va con la primera distinta.
+- Costo: el urgente llega unos 30 minutos más tarde (la estación informa cada 30 min), hasta 60 como tope. Una
+  crecida del río Uruguay sube de a centímetros por hora, así que no cambia mucho el tiempo para reaccionar
+  (criterio, no medido).
+- Con `dato_a_verificar` ya no sale el "subió a …" en el primer push (era un error: `avisos.py` lo
+  ignoraba).
+
+**Límites que quedan** (la mitigación reduce el riesgo, no lo elimina):
+
+- No frena a quien mantenga la mentira en el tiempo, ni a una fuente que repita el mismo error en dos lecturas.
+  La solución de fondo es HTTPS o un feed firmado de CARU.
+- La revisión local de la app (`revisarNivel`, el respaldo) decide solo con `actual.json` y **no conoce esta
+  espera**: un teléfono con la app abierta o con el respaldo corriendo puede mostrar el urgente en la primera
+  lectura (con el texto "Dato a verificar por CARU."). Cerrarlo requiere un cambio en `app/` (que el respaldo
+  trate `dato_a_verificar` como "esperar" con el mismo tope de 60 minutos). Queda pendiente, sin hacer.
+- Con `dato_a_verificar` por otras causas (por ejemplo, el informe de crecida contradice la altura) el urgente
+  espera hasta los 60 minutos.
+- En el modo de dos archivos (`avisos.py ANTERIOR.json NUEVO.json`, solo para pruebas manuales) no hay
+  historial: el urgente nunca sale. El workflow usa `--commit`.
 
 ## Decisiones de diseño
 

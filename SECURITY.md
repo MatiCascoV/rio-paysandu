@@ -26,6 +26,16 @@ Fuera del alcance:
 - Las claves de cliente de Firebase que viajan en la app son públicas por diseño; sí interesa si
   permiten un abuso concreto.
 
+## Limitaciones conocidas
+
+- **Datos de CARU sin cifrar.** La estación automática y el registro de alturas de CARU solo se pueden leer
+  por HTTP (puerto 8080), así que alguien en la ruta podría falsear una altura. Mitigaciones: un salto de más
+  de 1 m se retiene una pasada; la app cruza el nivel con la altura y marca `dato_a_verificar`; y el aviso
+  urgente (alerta o evacuación) espera una **segunda lectura** de la estación con otra fecha, con tope de
+  60 minutos para no callar nunca (ver `docs/fase-4-avisos-push.md`, "Segunda lectura antes del urgente").
+  Esto reduce el riesgo pero no lo elimina: la solución de fondo es que CARU ofrezca HTTPS o un feed firmado.
+  El aviso urgente es opt-in (apagado por defecto).
+
 ## Qué esperar
 
 Es un proyecto personal y sin fines de lucro, mantenido por una sola persona:
