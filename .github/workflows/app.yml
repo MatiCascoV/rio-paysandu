@@ -29,7 +29,14 @@ jobs:
         with:
           channel: stable
           flutter-version: 3.47.7
-          cache: true
+          # cache: true haría que flutter-action llame a actions/cache@v5 (sin SHA) desde adentro y el
+          # repo (sha_pinning_required) lo rechaza; por eso el caché de pub va en un paso propio, pinneado.
+          cache: false
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ~/.pub-cache
+          key: pub-${{ runner.os }}-${{ hashFiles('app/pubspec.lock') }}
+          restore-keys: pub-${{ runner.os }}-
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test
@@ -53,7 +60,14 @@ jobs:
         with:
           channel: stable
           flutter-version: 3.47.7
-          cache: true
+          # cache: true haría que flutter-action llame a actions/cache@v5 (sin SHA) desde adentro y el
+          # repo (sha_pinning_required) lo rechaza; por eso el caché de pub va en un paso propio, pinneado.
+          cache: false
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ~/.pub-cache
+          key: pub-${{ runner.os }}-${{ hashFiles('app/pubspec.lock') }}
+          restore-keys: pub-${{ runner.os }}-
       - run: flutter pub get
       # google-services.json no está en el repositorio: se guarda como secreto (también como secreto de
       # Dependabot, para que compilen sus PR) y el plugin de Google Services lo necesita para compilar.
