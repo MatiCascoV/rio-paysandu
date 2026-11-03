@@ -21,12 +21,16 @@ quiere publicar).
 **No hay cuentas, registro ni inicio de sesión.** La app no te pide nombre, correo, teléfono ni ningún dato
 personal, no usa tu ubicación, no tiene publicidad y no usa Google Analytics ni informes de fallos.
 
+**Primer arranque:** la primera vez que abrís la app te pregunto si querés avisos de crecida. «Activar avisos» prende el aviso urgente (desde alerta) y el resumen del día, y recién ahí la app pide el permiso de notificaciones y te suscribe a los temas. «Ahora no» deja todo apagado y sin suscripciones. Lo podés cambiar cuando quieras en la pestaña Avisos.
+
+**Importante:** apagar los avisos quita las suscripciones a los temas, pero **no borra el identificador de instalación**: Firebase se lo asigna a la app desde que se abre y sigue hasta que la desinstales (o borres sus datos).
+
 Lo único que pasa fuera de tu teléfono es esto:
 
 | Dato | Para qué | Quién lo recibe |
 |---|---|---|
-| Un **identificador de instalación y un token de notificaciones** que genera Firebase Cloud Messaging (FCM) en tu teléfono | Que Google pueda entregarte los avisos de nivel del río en ese teléfono | Google (Firebase). Yo, como autor de la app, **no recibo ni guardo** ese identificador. |
-| Los **temas de avisos** a los que te suscribe la app según lo que elegiste en la pestaña Avisos («alerta-paysandu», «evacuacion-paysandu» y «resumen-paysandu»; según lo que elijas, la app te suscribe a uno de los dos temas urgentes y, si querés, al del resumen) | Mandarte solo los avisos que pediste | Google (Firebase). Son temas generales: no dicen quién sos. |
+| Un **identificador de instalación y un token de notificaciones** que genera Firebase Cloud Messaging (FCM) en tu teléfono **desde que abrís la app, aunque no actives ningún aviso** | Que Google pueda entregarte los avisos de nivel del río en ese teléfono, si los pedís | Google (Firebase). Yo, como autor de la app, **no recibo ni guardo** ese identificador. |
+| Los **temas de avisos** a los que te suscribe la app **solo si elegís activarlos** (en la pantalla de primer arranque o en la pestaña Avisos; hasta que elegís, todo está apagado y no hay ninguna suscripción) («alerta-paysandu», «evacuacion-paysandu» y «resumen-paysandu»; según lo que elijas, la app te suscribe a uno de los dos temas urgentes y, si querés, al del resumen) | Mandarte solo los avisos que pediste | Google (Firebase). Son temas generales: no dicen quién sos. |
 | Tu **dirección IP** y datos técnicos habituales de cualquier conexión (modelo de navegador/cliente, hora) | Descargar los datos del río, que están publicados en GitHub Pages (`maticascov.github.io`) | GitHub (Microsoft), que aloja los archivos. Yo no veo esos registros como un listado de usuarios. |
 
 Los datos del río (altura, nivel, pronóstico) son de **CARU** (Comisión Administradora del Río Uruguay) y se
@@ -60,9 +64,9 @@ revisa el río por su cuenta cada tanto.
 ## Cuánto tiempo se guardan los datos
 
 - **Datos en tu teléfono:** hasta que desinstales la app o borres sus datos.
-- **Identificador y token de FCM, y suscripción a temas:** los administra Google. Dejan de usarse cuando
-  desinstalás la app, borrás sus datos o la desuscribís de los avisos (apagando los interruptores en la
-  pestaña Avisos); según la documentación de Firebase, Google también descarta los tokens que llevan mucho
+- **Identificador y token de FCM, y suscripción a temas:** los administra Google. El identificador y el token siguen
+  hasta que desinstalás la app o borrás sus datos; apagar los interruptores en la pestaña Avisos solo quita las
+  suscripciones a temas. Según la documentación de Firebase, Google también descarta los tokens que llevan mucho
   tiempo sin actividad. **PENDIENTE (revisar):** confirmar el plazo vigente en la documentación de FCM antes
   de publicar y, si se quiere, ponerlo acá.
 - **Registros de GitHub Pages:** los conserva GitHub según su política:
@@ -79,8 +83,8 @@ identificador de FCM), en la práctica casi no tengo datos tuyos para entregarte
 - Escribime a **matiascas13@gmail.com** (**PENDIENTE:** confirmar) y te respondo dentro de los plazos legales
   (**PENDIENTE:** el dueño confirma que se compromete a responder en 5 días hábiles, el plazo que fija la ley
   para acceso y rectificación; verificarlo con el texto vigente).
-- Para dejar de recibir datos en Google: apagá los interruptores en la pestaña Avisos, o desinstalá la app o
-  borrá sus datos.
+- Para dejar de recibir avisos: apagá los interruptores en la pestaña Avisos (quita las suscripciones, pero el
+  identificador sigue). Para que Google deje de tener el identificador: desinstalá la app o borrá sus datos.
 - Los derechos sobre lo que tengan Google o GitHub los podés ejercer directamente ante ellos.
 - Si creés que no se respetaron tus derechos, podés reclamar ante la **Unidad Reguladora y de Control de Datos
   Personales (URCDP)**: <https://www.gub.uy/unidad-reguladora-control-datos-personales>.

@@ -88,6 +88,54 @@ Future<void> migrarPreferencias(SharedPreferences prefs) async {
   await prefs.setInt(claveVersionAvisos, 1);
 }
 
+// ---------- primer arranque ----------
+
+/// Si la persona ya vio la pantalla de primer arranque: [primerArranquePendiente]
+/// (hay que mostrarla) o [primerArranqueHecho] (ya eligió, o es una instalación
+/// que venía de antes y no la ve). Sin valor: todavía no se decidió.
+const clavePrimerArranque = 'primer_arranque';
+const primerArranquePendiente = 'pendiente';
+const primerArranqueHecho = 'hecho';
+
+/// Claves que solo existen si esta instalación ya corrió una versión anterior.
+const _clavesDeInstalacionExistente = [
+  claveVersionAvisos,
+  claveUrgente,
+  claveResumen,
+  claveViejaActivos,
+  claveUrl,
+  claveUltimoNivel,
+  'permiso_avisos_pedido', // notificaciones.dart (acá no se importa: lleva plugins)
+  'temas_al_dia', // push.dart, ídem
+  'tema', // claro/oscuro, en main.dart
+];
+
+/// Decide, una sola vez por instalación, si hay que mostrar la pantalla de
+/// primer arranque. Se llama en main() ANTES de preparar los avisos, porque
+/// [migrarPreferencias] escribe preferencias y la instalación nueva pasaría por vieja.
+///
+/// - Instalación que venía de antes (hay alguna preferencia guardada): queda
+///   en [primerArranqueHecho]; no ve nada y no cambia nada.
+/// - Instalación nueva: queda en [primerArranquePendiente] y con todo apagado
+///   de forma explícita (el resumen ya no viene prendido por defecto), hasta que elija.
+/// Se puede llamar las veces que sea: si ya hay un valor, no toca nada.
+Future<void> prepararPrimerArranque(SharedPreferences prefs) async {
+  if (prefs.getString(clavePrimerArranque) != null) return;
+  if (_clavesDeInstalacionExistente.any(prefs.containsKey)) {
+    await prefs.setString(clavePrimerArranque, primerArranqueHecho);
+    return;
+  }
+  await prefs.setBool(claveUrgente, false);
+  await prefs.setString(claveUrgenteDesde, nivelATexto(Nivel.alerta));
+  await prefs.setBool(claveResumen, false);
+  await prefs.setInt(claveVersionAvisos, 1);
+  await prefs.setString(clavePrimerArranque, primerArranquePendiente);
+}
+
+/// ¿Hay que mostrar la pantalla de primer arranque?
+bool debeMostrarPrimerArranque(SharedPreferences prefs) =>
+    prefs.getString(clavePrimerArranque) == primerArranquePendiente;
+
 // ---------- reglas (las de lector/avisos.py) ----------
 
 int ordenNivel(Nivel n) => switch (n) {
