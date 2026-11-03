@@ -95,6 +95,13 @@ un "subió a EVACUACIÓN" a todos los suscritos, el urgente espera una segunda l
   - alerta en espera y la evacuación se confirma: sale la evacuación y no sale una alerta redundante (si
     después baja a alerta, es una bajada y no avisa);
   - alerta confirmada y después evacuación: avisan las dos, cada una una vez.
+- **Huecos de publicación**: si el lector estuvo parado y vuelve, la primera publicación posterior que
+  queda a 60 minutos o más de la primera lectura saca el urgente por plazo (aunque el hueco sea de horas),
+  y las siguientes no lo repiten. Un hueco de menos de 60 minutos no cambia nada. Mientras el lector no
+  publique no hay decisión (ver "Si el lector se corta" más abajo).
+- Oscilación alerta ↔ evacuación: cada cruce confirmado vuelve a mandar un push. Si el río sube a
+  evacuación (aviso), baja a alerta (no avisa) y vuelve a evacuación con dos lecturas arriba, sale otra
+  evacuación; es la misma situación que la oscilación alerta ↔ atención de abajo.
 - Oscilación alerta ↔ atención (M-3): cada baja publicada reinicia la espera, así que un río que oscila en el
   umbral manda el urgente solo cuando se queda dos lecturas seguidas arriba (el margen al bajar del lector
   ya amortigua esas oscilaciones).

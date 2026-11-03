@@ -183,15 +183,19 @@ def _rango(nivel):
     return NIVELES_CON_DATO.index(nivel)
 
 
-def _racha_vencida(racha, nivel, generado):
+def _racha_vencida(racha, nivel):
     """True si ya se leyó historia de más: o bien una publicación del mismo nivel
     pasó el plazo de confirmación contra la más vieja leída (el urgente de ese nivel
-    ya salió en ella o antes), o bien la racha abarca más del doble del plazo (una
-    racha de nivel más alto ya tuvo su propio aviso). Con eso no se lee más historia."""
+    ya salió en ella o antes), o bien las publicaciones ANTERIORES abarcan más del
+    doble del plazo (una racha de nivel más alto ya tuvo su propio aviso). Se mide
+    contra la publicación anterior y no contra la nueva: tras un hueco de
+    publicaciones la nueva sigue evaluándose y sale por plazo. Con eso no se lee
+    más historia."""
     vieja = _generado(racha[-1])
     if vieja is None:
         return False
-    if generado is not None and generado - vieja >= 2 * VENTANA_CONFIRMACION:
+    reciente = _generado(racha[0])
+    if reciente is not None and reciente - vieja >= 2 * VENTANA_CONFIRMACION:
         return True
     for r in racha[:-1]:
         g = _generado(r)
@@ -297,7 +301,7 @@ def decidir(nuevo, anteriores):
         if buscar_nivel and _nivel(anterior):
             if _rango(_nivel(anterior)) >= _rango(nivel_ahora):
                 racha.append(anterior)
-                if _racha_vencida(racha, nivel_ahora, generado):
+                if _racha_vencida(racha, nivel_ahora):
                     # La publicación anterior ya había pasado el plazo: el urgente
                     # (si correspondía) salió antes. No se lee más historia.
                     buscar_nivel = False

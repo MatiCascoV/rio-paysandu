@@ -996,3 +996,90 @@ def test_git_alerta_evacuacion_alerta_una_sola_alerta(repo):
     salidas = [decision_git(repo, c)["urgente"] for c in commits]
     assert salidas == [None, None, None, "alerta", None]
     assert [decision_git(repo, c)["urgente"] for c in commits] == salidas       # re-correr da lo mismo
+
+
+# ---------- huecos de publicación y propiedades ----------
+
+def hm(minutos):
+    return f"{minutos // 60:02d}:{minutos % 60:02d}"
+
+
+@pytest.mark.parametrize("hueco", [59, 60, 119, 120, 121, 130, 600])
+@pytest.mark.parametrize("nivel", ["alerta", "evacuacion"])
+def test_hueco_de_publicaciones_sale_por_plazo(nivel, hueco):
+    # El lector estuvo parado y vuelve: la primera publicación posterior (60 min o más
+    # después de la primera) saca el urgente por plazo, aunque la estación siga con la misma lectura.
+    kw = dict(prefectura=AYER, lectura="2026-10-17T00:05:00-03:00")
+    salidas = secuencia(pub("atencion", hm(0), **kw),
+                        pub(nivel, hm(10), **kw),
+                        pub(nivel, hm(10 + hueco), **kw))
+    assert salidas == [None, None, nivel if hueco >= 60 else None]
+
+
+@pytest.mark.parametrize("hueco", [119, 120, 121, 130])
+def test_hueco_con_niveles_mezclados(hueco):
+    kw = dict(prefectura=AYER, lectura="2026-10-17T00:05:00-03:00")
+    # Evacuación que se confirma por plazo tras el hueco; volver a alerta es una bajada.
+    salidas = secuencia(pub("atencion", hm(0), **kw),
+                        pub("alerta", hm(10), **kw),
+                        pub("evacuacion", hm(20), **kw),
+                        pub("evacuacion", hm(20 + hueco), **kw),
+                        pub("alerta", hm(30 + hueco), **kw))
+    assert salidas == [None, None, None, "evacuacion", None]
+    # Si la evacuación tiene una sola publicación, la alerta sostenida sale por plazo tras el hueco.
+    salidas = secuencia(pub("atencion", hm(0), **kw),
+                        pub("alerta", hm(10), **kw),
+                        pub("evacuacion", hm(20), **kw),
+                        pub("alerta", hm(20 + hueco), **kw))
+    assert salidas == [None, None, None, "alerta"]
+
+
+def _secuencia_aleatoria(azar):
+    niveles = ["atencion"]
+    for _ in range(azar.randint(8, 30)):
+        niveles.append(niveles[-1] if azar.random() < 0.8
+                       else azar.choice(["atencion", "alerta", "evacuacion"]))
+    altura = {"atencion": 5.0, "alerta": 5.8, "evacuacion": 6.6}
+    publicaciones = []
+    for i, nivel in enumerate(niveles):
+        minutos = 10 * i
+        bloque = minutos // 30      # la estación informa cada 30 min y el lector corre cada 10
+        lectura = f"{DIA}T{hm(30 * bloque)}:00-03:00"
+        publicaciones.append(pub(nivel, hm(minutos), prefectura=AYER, valor=altura[nivel] + 0.01 * bloque,
+                                 lectura=lectura))
+    return niveles, publicaciones
+
+
+def test_propiedades_con_secuencias_aleatorias():
+    import random
+    azar = random.Random(20261103)
+    urgentes = ("alerta", "evacuacion")
+    for _ in range(300):
+        niveles, publicaciones = _secuencia_aleatoria(azar)
+        historia, salidas = [], []
+        for p in publicaciones:
+            salidas.append(avisos.decidir(p, historia)["urgente"])
+            historia.insert(0, p)
+        # 1) Nunca callar: una racha continua en alerta o más de 80 min o más avisa algo.
+        i = 0
+        while i < len(niveles):
+            if niveles[i] in urgentes and niveles[i - 1] not in urgentes:
+                j = i
+                while j + 1 < len(niveles) and niveles[j + 1] in urgentes:
+                    j += 1
+                if (j - i) * 10 >= 80:
+                    assert any(salidas[i:j + 1]), (niveles, salidas)
+                i = j + 1
+            else:
+                i += 1
+        # 2) Ningún nivel avisa dos veces dentro de la misma subida continua (racha de ese nivel o más).
+        for nivel in urgentes:
+            racha = 0
+            for k, n in enumerate(niveles):
+                if n in urgentes and (nivel == "alerta" or n == "evacuacion"):
+                    racha += salidas[k] == nivel
+                else:
+                    racha = 0
+                assert racha <= 1, (nivel, niveles, salidas)
+        # 3) Solo avisa un nivel que tiene la publicación.
+        assert all(s is None or s == n for s, n in zip(salidas, niveles))
