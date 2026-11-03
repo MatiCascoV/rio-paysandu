@@ -359,6 +359,8 @@ class _PantallaAjustesState extends State<PantallaAjustes> with WidgetsBindingOb
           'un identificador anónimo; no recibimos tu nombre, tu ubicación ni tus contactos.',
           style: apoyo,
         ),
+        const SizedBox(height: 8),
+        const EnlacePrivacidad(),
       ],
     );
   }
