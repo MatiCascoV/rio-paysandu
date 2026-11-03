@@ -196,7 +196,8 @@ def test_cambio_confirmado_por_la_lectura_siguiente_si_cambia_el_nivel():
     anterior = armar(registro_real())
     anterior["altura_actual"]["valor_m"] = 6.80
     a = armar(r, anterior)
-    assert a["avisos"] == []
+    # M-1: la primera lectura de la subida a evacuación sale "a verificar".
+    assert a["avisos"] == ["dato_a_verificar"]
     assert a["nivel"] == "evacuacion"
 
 
