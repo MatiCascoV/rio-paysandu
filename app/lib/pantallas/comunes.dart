@@ -20,6 +20,37 @@ Future<void> abrirEnlace(BuildContext context, String url) async {
   }
 }
 
+/// Dónde se publica la política de privacidad. Es fija (no sale de ningún JSON),
+/// por eso se abre sin pasar por la lista de sitios permitidos.
+final Uri urlPoliticaPrivacidad =
+    Uri.parse('https://github.com/MatiCascoV/rio-paysandu/blob/main/docs/play/03-politica-de-privacidad.md');
+
+/// Enlace a la política de privacidad (Google Play lo exige dentro de la app).
+class EnlacePrivacidad extends StatelessWidget {
+  const EnlacePrivacidad({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: TextButton(
+        style: TextButton.styleFrom(minimumSize: const Size(48, 48), padding: EdgeInsets.zero),
+        onPressed: () async {
+          final mensajes = ScaffoldMessenger.of(context);
+          var abierto = false;
+          try {
+            abierto = await launchUrl(urlPoliticaPrivacidad, mode: LaunchMode.externalApplication);
+          } catch (_) {}
+          if (!abierto) {
+            mensajes.showSnackBar(const SnackBar(content: Text('No se pudo abrir el enlace desde este teléfono.')));
+          }
+        },
+        child: const Text('Política de privacidad'),
+      ),
+    );
+  }
+}
+
 /// Línea fina que separa bloques sueltos, con aire arriba y abajo.
 class Separador extends StatelessWidget {
   final double arriba;

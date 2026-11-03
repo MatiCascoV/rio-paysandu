@@ -90,6 +90,7 @@ void main() {
     expect(find.textContaining('no reemplazan la alerta oficial: la dan el Sinae y el Cecoed'), findsOneWidget);
     expect(find.textContaining('Firebase Cloud Messaging'), findsOneWidget);
     expect(find.textContaining('identificador anónimo'), findsOneWidget);
+    expect(find.text('Política de privacidad'), findsOneWidget);
     expect(find.textContaining(bloqueadas), findsNothing);
     expect(t.takeException(), isNull);
   });
