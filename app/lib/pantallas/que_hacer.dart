@@ -83,6 +83,8 @@ class PantallaQueHacer extends StatelessWidget {
         Semantics(header: true, child: Text('Sobre esta app', style: tema.titleMedium)),
         const SizedBox(height: 8),
         Text(textoDeslinde, style: tema.bodyLarge),
+        const SizedBox(height: 8),
+        const EnlacePrivacidad(),
 
         for (final (titulo, items) in _recomendaciones) ...[
           const SizedBox(height: 32),

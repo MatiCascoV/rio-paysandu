@@ -25,11 +25,23 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+      # Sin subosito/flutter-action: es una acción compuesta que referencia actions/cache@v5 sin SHA y
+      # GitHub la rechaza al cargarla (sha_pinning_required) aunque el caché esté desactivado.
+      # Flutter 3.47.7 = commit abaf9c523780a608bd46686fd5e53740a07077f8 (tag 3.47.7 de flutter/flutter).
+      - name: Instalar Flutter 3.47.7
+        working-directory: ${{ runner.temp }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch 3.47.7 https://github.com/flutter/flutter.git flutter
+          test "$(git -C flutter rev-parse HEAD)" = abaf9c523780a608bd46686fd5e53740a07077f8
+          echo "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/flutter/bin/flutter" --version
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
-          channel: stable
-          flutter-version: 3.47.7
-          cache: true
+          path: ~/.pub-cache
+          key: pub-${{ runner.os }}-${{ hashFiles('app/pubspec.lock') }}
+          restore-keys: pub-${{ runner.os }}-
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test
@@ -49,11 +61,23 @@ jobs:
           cache-dependency-path: |
             app/android/**/*.gradle*
             app/android/gradle/wrapper/gradle-wrapper.properties
-      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+      # Sin subosito/flutter-action: es una acción compuesta que referencia actions/cache@v5 sin SHA y
+      # GitHub la rechaza al cargarla (sha_pinning_required) aunque el caché esté desactivado.
+      # Flutter 3.47.7 = commit abaf9c523780a608bd46686fd5e53740a07077f8 (tag 3.47.7 de flutter/flutter).
+      - name: Instalar Flutter 3.47.7
+        working-directory: ${{ runner.temp }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch 3.47.7 https://github.com/flutter/flutter.git flutter
+          test "$(git -C flutter rev-parse HEAD)" = abaf9c523780a608bd46686fd5e53740a07077f8
+          echo "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/flutter/bin/flutter" --version
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
-          channel: stable
-          flutter-version: 3.47.7
-          cache: true
+          path: ~/.pub-cache
+          key: pub-${{ runner.os }}-${{ hashFiles('app/pubspec.lock') }}
+          restore-keys: pub-${{ runner.os }}-
       - run: flutter pub get
       # google-services.json no está en el repositorio: se guarda como secreto (también como secreto de
       # Dependabot, para que compilen sus PR) y el plugin de Google Services lo necesita para compilar.
