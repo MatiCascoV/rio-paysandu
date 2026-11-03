@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -16,6 +17,7 @@ import 'pantallas/ajustes.dart';
 import 'pantallas/crecidas.dart';
 import 'pantallas/grafico.dart';
 import 'pantallas/inicio.dart';
+import 'pantallas/primer_arranque.dart';
 import 'pantallas/que_hacer.dart';
 import 'push.dart';
 import 'tema.dart';
@@ -29,6 +31,10 @@ Future<void> main() async {
   // Con ellos no se preparan los avisos ni se toca la copia guardada.
   final ejemplo = nivelDeEjemplo();
   if (ejemplo == null) {
+    // Antes de preparar los avisos: decide si esta instalación es nueva (ver prepararPrimerArranque).
+    try {
+      if (!kIsWeb) await prepararPrimerArranque(prefs);
+    } catch (_) {}
     try {
       await Notificaciones.iniciar(config, prefs);
     } catch (_) {
@@ -70,8 +76,16 @@ class RioPaysanduApp extends StatefulWidget {
   /// Datos de la pestaña Crecidas. Si no se pasa, se leen de assets/crecidas/.
   final RepositorioCrecidas? repositorioCrecidas;
 
+  /// Lo que la pantalla de primer arranque necesita del teléfono. En las pruebas se cambia por uno falso.
+  final ControlAvisos control;
+
   const RioPaysanduApp(
-      {super.key, required this.config, required this.prefs, required this.repositorio, this.repositorioCrecidas});
+      {super.key,
+      required this.config,
+      required this.prefs,
+      required this.repositorio,
+      this.repositorioCrecidas,
+      this.control = const ControlAvisosDelTelefono()});
 
   @override
   State<RioPaysanduApp> createState() => _RioPaysanduAppState();
@@ -86,6 +100,9 @@ class _RioPaysanduAppState extends State<RioPaysanduApp> with WidgetsBindingObse
   /// pero lo ya leído queda en memoria.
   late final RepositorioCrecidas _repositorioCrecidas =
       widget.repositorioCrecidas ?? RepositorioCrecidas(const FuenteAssets());
+
+  /// La pantalla de primer arranque, hasta que la persona elige (una sola vez por instalación).
+  late bool _primerArranque = !kIsWeb && debeMostrarPrimerArranque(prefs);
 
   @override
   void initState() {
@@ -127,13 +144,19 @@ class _RioPaysanduAppState extends State<RioPaysanduApp> with WidgetsBindingObse
       // La clave hace que toda la pantalla se vuelva a dibujar al cambiar de modo.
       home: KeyedSubtree(
         key: ValueKey(_oscuro),
-        child: PaginaPrincipal(
-            config: config,
-            prefs: prefs,
-            repositorio: repositorio,
-            repositorioCrecidas: _repositorioCrecidas,
-            oscuro: _oscuro,
-            alCambiarTema: _cambiarTema),
+        child: _primerArranque
+            ? PantallaPrimerArranque(
+                prefs: prefs,
+                control: widget.control,
+                alTerminar: () => setState(() => _primerArranque = false),
+              )
+            : PaginaPrincipal(
+                config: config,
+                prefs: prefs,
+                repositorio: repositorio,
+                repositorioCrecidas: _repositorioCrecidas,
+                oscuro: _oscuro,
+                alCambiarTema: _cambiarTema),
       ),
     );
   }

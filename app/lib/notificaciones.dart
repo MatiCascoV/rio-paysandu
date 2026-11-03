@@ -139,8 +139,9 @@ class Notificaciones {
     return await _android?.requestNotificationsPermission() ?? true;
   }
 
-  /// Al abrir la app por primera vez después de instalar o actualizar: como el
-  /// resumen viene prendido, se pide el permiso una sola vez. Si se niega, la
+  /// Al abrir la app por primera vez después de instalar o actualizar: si hay
+  /// algún aviso prendido (en una instalación nueva no: ahí pregunta la pantalla
+  /// de primer arranque), se pide el permiso una sola vez. Si se niega, la
   /// pestaña Avisos lo muestra y explica cómo arreglarlo; no se vuelve a pedir solo.
   static Future<void> pedirPermisoInicial(SharedPreferences prefs) async {
     if (kIsWeb || (prefs.getInt(clavePermisoPedido) ?? 0) >= _versionPermiso) return;
