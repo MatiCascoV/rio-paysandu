@@ -131,6 +131,11 @@ un "subió a EVACUACIÓN" a todos los suscritos, el urgente espera una segunda l
   publicaciones nuevas" que avise o fuerce el urgente pasado el plazo.
 - La confirmación exige la misma fuente: una primera lectura de Prefectura solo se confirma con otra de
   Prefectura (que llega una vez por día) o a los 60 minutos del tope.
+- Borde con niveles mezclados y huecos de publicación de más de 60 minutos (por ejemplo, alerta a los 180
+  min, evacuación a los 250 y normal a los 260): un urgente en espera puede no salir si el nivel baja antes
+  de la siguiente publicación, porque la decisión solo se toma al publicar. Es un caso más del límite anterior
+  y lo cubriría la misma mejora futura (chequeo de "urgente en espera sin publicaciones nuevas"); no se
+  cambió la lógica por esto.
 - En el modo de dos archivos (`avisos.py ANTERIOR.json NUEVO.json`, solo para pruebas manuales) no hay
   historial: el urgente nunca sale. El workflow usa `--commit`.
 

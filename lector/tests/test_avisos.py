@@ -5,7 +5,7 @@ import os
 import shutil
 import subprocess
 import sys
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -1083,3 +1083,56 @@ def test_propiedades_con_secuencias_aleatorias():
                 assert racha <= 1, (nivel, niveles, salidas)
         # 3) Solo avisa un nivel que tiene la publicación.
         assert all(s is None or s == n for s, n in zip(salidas, niveles))
+
+
+def test_propiedades_con_saltos_de_tiempo_aleatorios():
+    """Como la anterior pero con huecos de publicación (el lector parado) y los
+    cuatro niveles. Detecta, por ejemplo, un corte de historia que descarte la
+    publicación nueva tras un hueco."""
+    import random
+    azar = random.Random(7)
+    base = datetime(2026, 10, 17, tzinfo=avisos.ZONA_LOCAL)
+    altura = {"normal": 4.0, "atencion": 5.0, "alerta": 5.9, "evacuacion": 6.8}
+    urgentes = ("alerta", "evacuacion")
+    for _ in range(400):
+        niveles, tiempos = ["atencion"], [0]
+        for _ in range(azar.randint(8, 30)):
+            niveles.append(niveles[-1] if azar.random() < 0.75
+                           else azar.choice(["normal", "atencion", "alerta", "evacuacion"]))
+            tiempos.append(tiempos[-1] + azar.choice([10, 10, 10, 10, 20, 30, 70, 130, 200]))
+        publicaciones = []
+        for nivel, t in zip(niveles, tiempos):
+            publicaciones.append(pub(
+                nivel, prefectura=AYER, valor=altura[nivel] + 0.01 * (t // 30),
+                generado=(base + timedelta(minutes=t)).isoformat(),
+                lectura=(base + timedelta(minutes=30 * (t // 30))).isoformat()))
+        historia, salidas = [], []
+        for p in publicaciones:
+            d = avisos.decidir(p, iter(historia))
+            # (c) re-correr con una copia da lo mismo
+            assert d == avisos.decidir(copy.deepcopy(p), iter(copy.deepcopy(historia)))
+            salidas.append(d["urgente"])
+            historia.insert(0, p)
+        # (a) toda subida continua de 60 min o más avisa algo: con huecos de hasta 69 min en cualquier
+        # mezcla de niveles, y con cualquier hueco si la racha es de un solo nivel.
+        i = 0
+        while i < len(niveles):
+            if niveles[i] in urgentes and niveles[i - 1] not in urgentes:
+                j = i
+                while j + 1 < len(niveles) and niveles[j + 1] in urgentes:
+                    j += 1
+                huecos = [tiempos[k + 1] - tiempos[k] for k in range(i, j)] or [0]
+                if tiempos[j] - tiempos[i] >= 60 and (max(huecos) <= 69 or len(set(niveles[i:j + 1])) == 1):
+                    assert any(salidas[i:j + 1]), (list(zip(niveles, tiempos)), salidas)
+                i = j + 1
+            else:
+                i += 1
+        # (b) ningún nivel avisa dos veces dentro de la misma subida continua
+        for nivel in urgentes:
+            cuenta = 0
+            for k, n in enumerate(niveles):
+                if n in urgentes and (nivel == "alerta" or n == "evacuacion"):
+                    cuenta += salidas[k] == nivel
+                else:
+                    cuenta = 0
+                assert cuenta <= 1, (nivel, list(zip(niveles, tiempos)), salidas)
