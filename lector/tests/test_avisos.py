@@ -5,6 +5,7 @@ import os
 import shutil
 import subprocess
 import sys
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
@@ -27,14 +28,22 @@ DIA = "2026-10-17"
 AYER = "2026-10-16"
 
 
-def pub(nivel="alerta", hora="12:00", dia=DIA, prefectura=DIA, generado=None):
+def pub(nivel="alerta", hora="12:00", dia=DIA, prefectura=DIA, generado=None, lectura=None, avisos_=None):
     """Publicación realista a partir del fixture, cambiando solo lo que importa.
 
     `hora`/`dia` arman `generado` en UTC-3 (o se pasa `generado` entero).
-    `prefectura` es el día de la lectura de Prefectura de las 06:00 (None = sin lectura)."""
+    `prefectura` es el día de la lectura de Prefectura de las 06:00 (None = sin lectura).
+    `lectura` es la fecha de la lectura de altura (por defecto, 5 min antes de `generado`:
+    cada publicación trae una lectura nueva); `avisos_` reemplaza la lista de avisos."""
     p = copy.deepcopy(BASE)
     p["nivel"] = nivel
     p["generado"] = generado if generado is not None else f"{dia}T{hora}:00-03:00"
+    if lectura is None:
+        momento = avisos._hora_local(p["generado"])
+        lectura = (momento - timedelta(minutes=5)).isoformat() if momento else p["altura_actual"]["fecha"]
+    p["altura_actual"]["fecha"] = lectura
+    if avisos_ is not None:
+        p["avisos"] = avisos_
     if prefectura is None:
         p["lectura_prefectura"] = None
     else:
@@ -62,16 +71,170 @@ CLAVES = {"avisar", "urgente", "resumen", "fuente", "motivo"}
                                          ("alerta", "evacuacion"), ("atencion", "evacuacion"),
                                          ("normal", "evacuacion")])
 def test_subida_a_alerta_o_evacuacion_es_urgente(antes, ahora):
-    # Antes de las 10 y sin Prefectura del día: solo el urgente.
-    d = decidir(pub(ahora, "08:30", prefectura=AYER), pub(antes, "08:00", prefectura=AYER))
+    # Antes de las 10 y sin Prefectura del día: solo el urgente, a la segunda lectura.
+    d = decidir(pub(ahora, "09:00", prefectura=AYER),
+                pub(ahora, "08:30", prefectura=AYER), pub(antes, "08:00", prefectura=AYER))
     assert d["urgente"] == ahora and d["avisar"] is True
     assert d["resumen"] is False and d["fuente"] is None
 
 
-def test_normal_a_evacuacion_de_una():
-    d = decidir(pub("evacuacion", "08:30", prefectura=AYER), pub("normal", "08:00", prefectura=AYER))
+def test_normal_a_evacuacion_se_confirma_con_la_segunda_lectura():
+    d = decidir(pub("evacuacion", "09:00", prefectura=AYER),
+                pub("evacuacion", "08:30", prefectura=AYER), pub("normal", "08:00", prefectura=AYER))
     assert d == {"avisar": True, "urgente": "evacuacion", "resumen": False, "fuente": None,
                  "motivo": "El nivel subió de normal a evacuación."}
+
+
+# ---------- M-1: segunda lectura antes del urgente ----------
+
+@pytest.mark.parametrize("antes,ahora", [("atencion", "alerta"), ("normal", "evacuacion"),
+                                         ("alerta", "evacuacion")])
+def test_primera_lectura_de_la_subida_no_avisa(antes, ahora):
+    d = decidir(pub(ahora, "08:30", prefectura=AYER), pub(antes, "08:00", prefectura=AYER))
+    assert d["urgente"] is None and d["avisar"] is False
+    assert "Urgente en espera" in d["motivo"] and "60 min" in d["motivo"]
+
+
+def test_segunda_lectura_con_otra_fecha_confirma():
+    d = decidir(pub("alerta", "09:00", prefectura=AYER),
+                pub("alerta", "08:30", prefectura=AYER), pub("atencion", "08:00", prefectura=AYER))
+    assert d["urgente"] == "alerta" and d["avisar"] is True
+
+
+def test_misma_lectura_repetida_no_confirma():
+    # La estación no informó nada nuevo: las dos publicaciones traen la misma lectura.
+    lectura = "2026-10-17T08:25:00-03:00"
+    d = decidir(pub("alerta", "09:00", prefectura=AYER, lectura=lectura),
+                pub("alerta", "08:30", prefectura=AYER, lectura=lectura),
+                pub("atencion", "08:00", prefectura=AYER))
+    assert d["urgente"] is None and "Urgente en espera" in d["motivo"]
+
+
+def test_lectura_sin_fecha_valida_no_confirma_y_espera_el_plazo():
+    primera = pub("alerta", "08:30", prefectura=AYER)
+    segunda = pub("alerta", "09:00", prefectura=AYER)
+    segunda["altura_actual"]["fecha"] = "ayer"
+    antes = pub("atencion", "08:00", prefectura=AYER)
+    assert decidir(segunda, primera, antes)["urgente"] is None
+    assert decidir(pub("alerta", "09:30", prefectura=AYER, lectura="roto"),
+                   segunda, primera, antes)["urgente"] == "alerta"
+
+
+def test_el_plazo_de_60_min_publica_igual():
+    lectura = "2026-10-17T08:25:00-03:00"
+    kw = dict(prefectura=AYER, lectura=lectura)
+    antes = pub("atencion", "08:00", prefectura=AYER)
+    primera = pub("alerta", "08:30", **kw)
+    # 59 min después de la primera: todavía no.
+    d = decidir(pub("alerta", "09:29", **kw), pub("alerta", "09:00", **kw), primera, antes)
+    assert d["urgente"] is None
+    # 60 min: sale, aunque la estación siga con la misma lectura.
+    d = decidir(pub("alerta", "09:30", **kw), pub("alerta", "09:00", **kw), primera, antes)
+    assert d["urgente"] == "alerta" and d["avisar"] is True and "sale igual" in d["motivo"]
+
+
+def test_despues_del_plazo_no_se_repite():
+    lectura = "2026-10-17T08:25:00-03:00"
+    kw = dict(prefectura=AYER, lectura=lectura)
+    antes = pub("atencion", "08:00", prefectura=AYER)
+    historia = [pub("alerta", "09:30", **kw), pub("alerta", "09:00", **kw),
+                pub("alerta", "08:30", **kw), antes]
+    d = decidir(pub("alerta", "10:00", **kw), *historia)
+    assert d["urgente"] is None
+
+
+def test_sin_duplicados_tras_la_confirmacion():
+    antes = pub("atencion", "08:00", prefectura=AYER)
+    historia = [pub("alerta", "08:30", prefectura=AYER), antes]
+    salidas = []
+    for hora in ("09:00", "09:30", "10:00", "10:30", "11:00", "13:00"):
+        nueva = pub("alerta", hora, prefectura=AYER)
+        salidas.append(decidir(nueva, *historia)["urgente"])
+        historia.insert(0, nueva)
+    assert salidas == ["alerta", None, None, None, None, None]
+
+
+def test_idempotente_sobre_el_mismo_commit():
+    historia = [pub("alerta", "08:30", prefectura=AYER), pub("atencion", "08:00", prefectura=AYER)]
+    nueva = pub("alerta", "09:00", prefectura=AYER)
+    assert decidir(nueva, *historia) == decidir(copy.deepcopy(nueva), *copy.deepcopy(historia))
+
+
+def test_subida_real_gradual_sale_a_la_segunda_lectura_de_cada_nivel():
+    # atención -> alerta -> evacuación: cada nivel avisa una sola vez, a su segunda lectura.
+    niveles = ["atencion", "atencion", "alerta", "alerta", "alerta", "evacuacion", "evacuacion", "evacuacion"]
+    historia, salidas = [], []
+    for i, nivel in enumerate(niveles):
+        nueva = pub(nivel, f"{8 + i // 2:02d}:{30 * (i % 2):02d}", prefectura=AYER)
+        salidas.append(decidir(nueva, *historia)["urgente"])
+        historia.insert(0, nueva)
+    assert salidas == [None, None, None, "alerta", None, None, "evacuacion", None]
+
+
+def test_una_baja_entre_medio_reinicia_la_confirmacion():
+    # Un pico falso de una sola lectura que vuelve a bajar nunca avisa.
+    historia = [pub("atencion", "08:30", prefectura=AYER), pub("alerta", "08:00", prefectura=AYER),
+                pub("atencion", "07:30", prefectura=AYER)]
+    assert decidir(pub("atencion", "09:00", prefectura=AYER), *historia)["avisar"] is False
+    # Y si vuelve a subir, empieza otra confirmación.
+    historia.insert(0, pub("atencion", "09:00", prefectura=AYER))
+    d = decidir(pub("alerta", "09:30", prefectura=AYER), *historia)
+    assert d["urgente"] is None and "Urgente en espera" in d["motivo"]
+
+
+def test_sin_dato_en_el_medio_no_corta_la_confirmacion():
+    d = decidir(pub("alerta", "09:30", prefectura=AYER), sin_dato("09:00"),
+                pub("alerta", "08:30", prefectura=AYER), pub("atencion", "08:00", prefectura=AYER))
+    assert d["urgente"] == "alerta"
+
+
+def test_retencion_del_lector_liberada_ya_viene_confirmada():
+    # El lector retuvo el nivel hasta ver una lectura más nueva: no se espera otra vez.
+    retenida = pub("atencion", "08:30", prefectura=AYER, avisos_=["dato_a_verificar"])
+    retenida["nivel_retenido"] = {"fecha_lectura": "2026-10-17T08:25:00-03:00",
+                                  "desde": "2026-10-17T08:30:00-03:00"}
+    liberada = pub("alerta", "09:00", prefectura=AYER, avisos_=["dato_a_verificar"])
+    d = decidir(liberada, retenida, pub("atencion", "08:00", prefectura=AYER))
+    assert d["urgente"] == "alerta"
+    # La siguiente publicación no repite el aviso.
+    assert decidir(pub("alerta", "09:30", prefectura=AYER), liberada, retenida)["urgente"] is None
+
+
+# ---------- dato_a_verificar ----------
+
+def test_dato_a_verificar_retiene_el_urgente_y_no_confirma():
+    # Bug: antes salía "subió a EVACUACIÓN" aunque el dato estuviera marcado.
+    marcado = ["dato_a_verificar"]
+    antes = pub("atencion", "08:00", prefectura=AYER)
+    primera = pub("evacuacion", "08:30", prefectura=AYER, avisos_=marcado)
+    assert decidir(primera, antes)["urgente"] is None
+    # Una segunda lectura nueva pero todavía marcada tampoco confirma.
+    segunda = pub("evacuacion", "09:00", prefectura=AYER, avisos_=marcado)
+    d = decidir(segunda, primera, antes)
+    assert d["urgente"] is None and d["avisar"] is False
+    # La primera segunda lectura sin marca confirma.
+    tercera = pub("evacuacion", "09:30", prefectura=AYER)
+    assert decidir(tercera, segunda, primera, antes)["urgente"] == "evacuacion"
+
+
+def test_dato_a_verificar_persistente_sale_a_los_60_min():
+    marcado = ["dato_a_verificar"]
+    antes = pub("atencion", "08:00", prefectura=AYER)
+    historia = [pub("alerta", "08:30", prefectura=AYER, avisos_=marcado), antes]
+    salidas = []
+    for hora in ("09:00", "09:30", "10:00"):
+        nueva = pub("alerta", hora, prefectura=AYER, avisos_=marcado)
+        salidas.append(decidir(nueva, *historia)["urgente"])
+        historia.insert(0, nueva)
+    assert salidas == [None, "alerta", None]      # nunca callar: sale a los 60 min
+
+
+def test_avisos_mal_formados_no_rompen_la_confirmacion():
+    for raro in (None, "dato_a_verificar", {"dato_a_verificar": 1}, 5):
+        segunda = pub("alerta", "09:00", prefectura=AYER)
+        segunda["avisos"] = raro
+        d = decidir(segunda, pub("alerta", "08:30", prefectura=AYER), pub("atencion", "08:00", prefectura=AYER))
+        assert d["urgente"] == "alerta"
 
 
 def test_subida_a_atencion_no_es_urgente():
@@ -108,7 +271,7 @@ def test_sin_anterior_no_es_urgente():
 
 
 def test_busqueda_hacia_atras_saltea_sin_dato():
-    d = decidir(pub("alerta", "09:00", prefectura=AYER),
+    d = decidir(pub("alerta", "09:30", prefectura=AYER), pub("alerta", "09:00", prefectura=AYER),
                 sin_dato("08:30"), sin_dato("08:00"), pub("atencion", "07:30", prefectura=AYER))
     assert d["urgente"] == "alerta"
     assert d["motivo"] == "El nivel subió de atención a alerta."
@@ -126,7 +289,7 @@ def test_nivel_desconocido_no_avisa(raro):
     # Como anterior, se saltea: se compara contra el anterior con dato.
     otro = pub(hora="14:30")
     otro["nivel"] = raro
-    assert decidir(pub("alerta", "09:00", prefectura=AYER), otro,
+    assert decidir(pub("alerta", "09:30", prefectura=AYER), otro, pub("alerta", "09:00", prefectura=AYER),
                    pub("atencion", "08:00", prefectura=AYER))["urgente"] == "alerta"
 
 
@@ -236,7 +399,9 @@ def test_generado_invalido_no_hay_resumen(generado):
     assert avisos.resumen_listo(nuevo) is None
     d = decidir(nuevo, pub("atencion", "07:00", prefectura=AYER))
     assert d["resumen"] is False and d["fuente"] is None
-    assert d["urgente"] == "alerta"         # el urgente no depende de la fecha
+    assert d["urgente"] is None             # primera lectura de la subida: en espera
+    # Sin poder medir el tiempo se prefiere avisar a callar.
+    assert decidir(nuevo, pub("alerta", "07:00", prefectura=AYER), pub("atencion", "06:30", prefectura=AYER))["urgente"] == "alerta"
     d = decidir(nuevo, pub("alerta", "07:00", prefectura=AYER))
     assert d["motivo"] == ("Sin aviso: el nivel no subió y la fecha de la publicación "
                            "no es válida.")
@@ -280,26 +445,44 @@ def test_anteriores_sin_fecha_o_posteriores_no_cuentan_para_el_dia():
 
 
 def test_urgente_y_resumen_en_la_misma_pasada():
-    d = decidir(pub("evacuacion", "10:05", prefectura=AYER), pub("alerta", "09:35", prefectura=AYER))
+    d = decidir(pub("evacuacion", "10:05", prefectura=AYER),
+                pub("evacuacion", "09:35", prefectura=AYER), pub("alerta", "09:05", prefectura=AYER))
     assert d == {"avisar": True, "urgente": "evacuacion", "resumen": True, "fuente": "estacion",
                  "motivo": "El nivel subió de alerta a evacuación. Resumen del día con la "
                            "estación automática (no llegó la lectura de Prefectura antes de las 10)."}
-    d = decidir(MANANA | {"nivel": "alerta"}, pub("atencion", "07:10", prefectura=AYER))
+    d = decidir(MANANA | {"nivel": "alerta"}, pub("alerta", "07:10", prefectura=AYER),
+                pub("atencion", "06:40", prefectura=AYER))
     assert d["urgente"] == "alerta" and d["fuente"] == "prefectura"
+    # La primera lectura de la subida no manda el urgente, pero el resumen sí sale.
+    d = decidir(MANANA | {"nivel": "alerta"}, pub("atencion", "07:10", prefectura=AYER))
+    assert d["urgente"] is None and d["resumen"] is True and "Urgente en espera" in d["motivo"]
 
 
 def test_urgente_despues_del_resumen_sale_igual():
-    d = decidir(pub("alerta", "15:00"), pub("atencion", "14:30"), pub("atencion", "07:40"))
+    d = decidir(pub("alerta", "15:00"), pub("alerta", "14:30"), pub("atencion", "14:00"), pub("atencion", "07:40"))
     assert d["urgente"] == "alerta" and d["resumen"] is False and d["avisar"] is True
 
 
 def test_lee_solo_las_anteriores_necesarias():
     def historia():
-        yield pub("alerta", "09:00", prefectura=AYER)
+        yield pub("evacuacion", "10:30", prefectura=AYER)
+        yield pub("alerta", "10:00", prefectura=AYER)
         yield pub("normal", "08:00", dia=AYER, prefectura=AYER)
         raise AssertionError("no tenía que seguir leyendo")
     d = avisos.decidir(pub("evacuacion", "11:00", prefectura=AYER), historia())
-    assert d["urgente"] == "evacuacion" and d["resumen"] is True
+    assert d["urgente"] == "evacuacion" and d["resumen"] is False
+
+
+def test_no_lee_la_racha_entera_de_un_nivel_estable():
+    leidas = []
+
+    def historia():
+        for i in range(500):
+            leidas.append(i)
+            yield pub("alerta", f"{(23 - i // 2):02d}:{30 * (1 - i % 2):02d}", prefectura=AYER)
+    d = avisos.decidir(pub("alerta", "23:59", prefectura=AYER), historia())
+    assert d["urgente"] is None
+    assert len(leidas) <= 4      # el plazo de 60 min corta la lectura de la historia
 
 
 # ---------- datos mal formados ----------
@@ -350,7 +533,7 @@ def escribir(ruta, datos):
     return ruta
 
 
-def test_cli_archivos_urgente_y_resumen_escribe_github_output(tmp_path):
+def test_cli_archivos_resumen_escribe_github_output(tmp_path):
     anterior = escribir(tmp_path / "a.json", pub("alerta", "09:35", prefectura=AYER))
     nuevo = escribir(tmp_path / "n.json", pub("evacuacion", "10:05", prefectura=AYER))
     salida = tmp_path / "github_output"
@@ -358,10 +541,12 @@ def test_cli_archivos_urgente_y_resumen_escribe_github_output(tmp_path):
     r = correr([str(anterior), str(nuevo)], tmp_path, salida)
     assert r.returncode == 0, r.stderr
     d = json.loads(r.stdout)
-    assert (d["avisar"], d["urgente"], d["resumen"], d["fuente"]) == (True, "evacuacion", True, "estacion")
+    # Con dos archivos no hay historial para la segunda lectura (M-1): el urgente queda en espera.
+    assert (d["avisar"], d["urgente"], d["resumen"], d["fuente"]) == (True, None, True, "estacion")
+    assert "Urgente en espera" in d["motivo"]
     assert r.stdout.count("\n") == 1
     assert salida.read_text(encoding="utf-8") == (
-        "previo=1\navisar=true\nurgente=evacuacion\nresumen=true\nfuente=estacion\n")
+        "previo=1\navisar=true\nurgente=ninguno\nresumen=true\nfuente=estacion\n")
 
 
 def test_cli_archivos_sin_aviso_y_solo_resumen(tmp_path):
@@ -384,7 +569,7 @@ def test_cli_archivos_sin_aviso_y_solo_resumen(tmp_path):
         "avisar=false\nurgente=ninguno\nresumen=false\nfuente=ninguna\n"
         "avisar=true\nurgente=ninguno\nresumen=true\nfuente=prefectura\n"
         "avisar=false\nurgente=ninguno\nresumen=false\nfuente=ninguna\n"
-        "avisar=true\nurgente=alerta\nresumen=false\nfuente=ninguna\n")
+        "avisar=false\nurgente=ninguno\nresumen=false\nfuente=ninguna\n")
 
 
 def test_cli_archivos_segunda_publicacion_no_repite_resumen(tmp_path):
@@ -483,14 +668,19 @@ def decision_git(repo, revision="HEAD", salida=None):
 
 def test_git_subida_de_nivel(repo):
     repo.commit(pub("atencion", "08:00", prefectura=AYER))
-    c = repo.commit(pub("alerta", "08:30", prefectura=AYER))
+    primera = repo.commit(pub("alerta", "08:30", prefectura=AYER))
+    assert decision_git(repo, primera)["urgente"] is None     # M-1: falta la segunda lectura
+    c = repo.commit(pub("alerta", "09:00", prefectura=AYER))
     salida = repo.ruta / "out"
     d = decision_git(repo, c, salida)
     assert d["urgente"] == "alerta" and d["resumen"] is False
     assert salida.read_text(encoding="utf-8") == (
         "avisar=true\nurgente=alerta\nresumen=false\nfuente=ninguna\n")
-    # También acepta revisiones relativas.
+    # También acepta revisiones relativas, y volver a correr el mismo commit da lo mismo.
     assert decision_git(repo, "HEAD~1")["avisar"] is False
+    assert decision_git(repo, c) == d
+    # Las publicaciones siguientes no repiten el aviso.
+    assert decision_git(repo, repo.commit(pub("alerta", "09:30", prefectura=AYER)))["avisar"] is False
 
 
 def test_git_busca_hacia_atras_saltando_sin_dato(repo):
@@ -499,7 +689,8 @@ def test_git_busca_hacia_atras_saltando_sin_dato(repo):
     repo.commit(sin_dato("08:00"), "caída")
     repo.commit(mensaje="commit que no toca actual.json")
     repo.commit(sin_dato("08:30"), "sigue la caída")
-    vuelta = repo.commit(pub("alerta", "09:00", prefectura=AYER), "vuelve")
+    repo.commit(pub("alerta", "09:00", prefectura=AYER), "vuelve")
+    vuelta = repo.commit(pub("alerta", "09:30", prefectura=AYER), "segunda lectura")
     d = decision_git(repo, vuelta)
     assert d == {"avisar": True, "urgente": "alerta", "resumen": False, "fuente": None,
                  "motivo": "El nivel subió de atención a alerta."}
@@ -533,7 +724,8 @@ def test_git_un_dia_entero(repo):
         (pub("alerta", "10:05", prefectura=AYER), (None, "estacion")),
         (pub("alerta", "10:35", prefectura=AYER), (None, None)),
         (pub("alerta", "13:00", prefectura=DIA), (None, None)),       # Prefectura llega tarde
-        (pub("evacuacion", "15:00", prefectura=DIA), ("evacuacion", None)),
+        (pub("evacuacion", "15:00", prefectura=DIA), (None, None)),   # M-1: primera lectura
+        (pub("evacuacion", "15:30", prefectura=DIA), ("evacuacion", None)),
         (pub("alerta", "18:00", prefectura=DIA), (None, None)),
         (pub("alerta", "00:10", dia="2026-10-18", prefectura=DIA), (None, None)),
         (pub("alerta", "08:00", dia="2026-10-18", prefectura="2026-10-18"), (None, "prefectura")),
@@ -559,9 +751,10 @@ def test_git_commit_que_no_toca_actual_json_no_repite_avisos(repo):
     # Revisión del 17/10: antes decidía como el commit que publicó actual.json y
     # repetía el urgente y el resumen (el lector hace `git add data`).
     repo.commit(pub("atencion", "09:35", prefectura=AYER))
-    c = repo.commit(pub("alerta", "10:05", prefectura=AYER))
+    repo.commit(pub("alerta", "10:05", prefectura=AYER))
+    c = repo.commit(pub("alerta", "10:35", prefectura=AYER))
     d = decision_git(repo, c)
-    assert d["urgente"] == "alerta" and d["resumen"] is True
+    assert d["urgente"] == "alerta" and d["resumen"] is False
     otro = repo.commit(mensaje="solo historial.json")
     salida = repo.ruta / "out"
     assert decision_git(repo, otro, salida) == {
@@ -573,7 +766,8 @@ def test_git_commit_que_no_toca_actual_json_no_repite_avisos(repo):
 
 def test_git_desde_un_subdirectorio(repo):
     repo.commit(pub("atencion", "08:00", prefectura=AYER))
-    c = repo.commit(pub("alerta", "08:30", prefectura=AYER))
+    repo.commit(pub("alerta", "08:30", prefectura=AYER))
+    c = repo.commit(pub("alerta", "09:00", prefectura=AYER))
     r = correr(["--commit", c], repo.ruta / "data")
     assert r.returncode == 0 and json.loads(r.stdout)["urgente"] == "alerta"
 
@@ -590,14 +784,15 @@ def test_git_historia_poco_profunda_que_no_alcanza_sale_con_2(repo, tmp_path_fac
     repo.commit(pub("atencion", "07:00", prefectura=AYER))
     repo.commit(sin_dato("08:00"))
     repo.commit(sin_dato("08:30"))
-    c = repo.commit(pub("alerta", "09:00", prefectura=AYER))
+    repo.commit(pub("alerta", "09:00", prefectura=AYER))
+    c = repo.commit(pub("alerta", "09:30", prefectura=AYER))
     assert decision_git(repo, c)["urgente"] == "alerta"
-    corto = clonar_poco_profundo(repo, tmp_path_factory.mktemp("corto") / "r", 3)
+    corto = clonar_poco_profundo(repo, tmp_path_factory.mktemp("corto") / "r", 4)
     salida = corto / "out"
     r = correr(["--commit", c], corto, salida)
     assert r.returncode == 2 and "historia" in r.stderr and not salida.exists()
     # Si el recorrido termina antes del borde, decide igual.
-    largo = clonar_poco_profundo(repo, tmp_path_factory.mktemp("largo") / "r", 4)
+    largo = clonar_poco_profundo(repo, tmp_path_factory.mktemp("largo") / "r", 5)
     assert correr(["--commit", c], largo).returncode == 0
     assert json.loads(correr(["--commit", c], largo).stdout)["urgente"] == "alerta"
     # El commit es el borde: no se sabe si cambió actual.json ni qué hubo antes.
@@ -616,7 +811,8 @@ def test_git_historia_mas_larga_que_el_limite(repo, monkeypatch):
     repo.commit(pub("normal", "07:00", dia=AYER, prefectura=AYER))
     for minuto in range(4):
         repo.commit(sin_dato(f"08:0{minuto}"))
-    c = repo.commit(pub("evacuacion", "09:00", prefectura=AYER))
+    repo.commit(pub("evacuacion", "09:00", prefectura=AYER))
+    c = repo.commit(pub("evacuacion", "09:30", prefectura=AYER))
     assert decision_git(repo, c)["urgente"] == "evacuacion"
     monkeypatch.chdir(repo.ruta)
     monkeypatch.setattr(avisos, "MAX_HISTORIA", 3)
@@ -628,7 +824,8 @@ def test_git_versiones_rotas_se_saltean(repo):
     repo.commit(pub("atencion", "08:00", prefectura=AYER))
     repo.commit("{roto")
     repo.commit("[1, 2]")
-    assert decision_git(repo, repo.commit(pub("alerta", "09:00", prefectura=AYER)))["urgente"] == "alerta"
+    repo.commit(pub("alerta", "09:00", prefectura=AYER))
+    assert decision_git(repo, repo.commit(pub("alerta", "09:30", prefectura=AYER)))["urgente"] == "alerta"
 
 
 def test_git_nuevo_sin_actual_json_o_roto_sale_con_2(repo):
