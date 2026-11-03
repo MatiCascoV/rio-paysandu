@@ -53,7 +53,7 @@ Verificar el día de cargar contra la guía de Firebase para FCM:
 | Información y rendimiento de la app (fallos, diagnósticos) | No recoge (sin Crashlytics ni Analytics) | `pubspec.yaml`, `AndroidManifest.xml` (`<meta-data>` de Firebase Analytics) |
 | **Identificadores de dispositivo u otros (Device or other IDs)** | **Sí: se recoge** | ID de instalación de Firebase y token de FCM |
 | ¿Se **comparte** con terceros? | **No** (sugerido): Google trata el ID como proveedor de servicios en nombre del desarrollador. **PENDIENTE de verificar** con la guía de Firebase | |
-| ¿Es opcional o requerido? | **Requerido** (sugerido): Firebase arranca siempre (`Push.iniciar`, llamado desde `lib/main.dart`) y el usuario no puede apagar el ID, solo los temas | |
+| ¿Es opcional o requerido? | **Requerido** (sugerido): Firebase arranca siempre (`Push.iniciar`, llamado desde `lib/main.dart`) y el usuario no puede apagar el ID, solo los temas (que solo se suscriben si elige «Activar avisos» en el primer arranque o en Avisos) | |
 | ¿Se procesa de forma efímera? | No | |
 | Propósito | **Funcionalidad de la app** (entregar los avisos). No Analytics, no publicidad, no personalización | `lib/push.dart` (comentario de cabecera) |
 

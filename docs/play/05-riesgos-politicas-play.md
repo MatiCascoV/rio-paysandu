@@ -59,14 +59,16 @@ páginas en el Centro de políticas: <https://play.google/developer-content-poli
 | Datos de referencia sin validar | «Los niveles son de referencia; el Cecoed todavía los está revisando.» | `lib/pantallas/inicio.dart:194-195` |
 
 **Brechas encontradas (no corregidas acá; esta tarea es solo documentación):**
-1. **Sin pantalla de bienvenida** que muestre el aviso la primera vez: el deslinde corto está en la pantalla principal,
+1. **RESUELTO (P-04):** hay una pantalla de primer arranque donde se elige si activar los avisos. Antes: sin pantalla de bienvenida que muestre el aviso la primera vez: el deslinde corto está en la pantalla principal,
    pero no hay un «aceptar y seguir». Sugerencia: no hace falta aceptar, pero el aviso corto ya está a la vista; alcanza.
 2. **RESUELTO en esta rama (commit d5d1b03, aún sin mergear a main):** la app ya enlaza la política desde Ajustes y «Qué hacer» (`lib/pantallas/comunes.dart`, `urlPoliticaPrivacidad`). Texto original de la brecha: **No hay enlace a la política de privacidad dentro de la app.** Play lo exige «fácil de encontrar en la app y en
    la ficha» (ayuda de Play, apps que comunican información del gobierno). Agregar un enlace en la pestaña Avisos
    o en «Sobre esta app».
 3. **RESUELTO (#35).** La app decía «no recolecta datos personales»; ahora `lib/pantallas/ajustes.dart` (texto al pie de la
-   pestaña Avisos) dice: «Esta app no pide registro ni tiene publicidad. Para los avisos, Firebase le asigna a tu
-   instalación un identificador anónimo; no recibimos tu nombre, tu ubicación ni tus contactos.». Coincide con la
+   pestaña Avisos) dice: «Esta app no pide registro ni tiene publicidad. Firebase [...] le asigna a tu instalación un
+   identificador anónimo desde que se abre la app, aunque tengas todos los avisos apagados. Apagar los avisos quita
+   las suscripciones, pero el identificador sigue hasta que desinstales la app. No recibimos tu nombre, tu ubicación
+   ni tus contactos.». Coincide con la
    política y con la ficha. No requiere más cambios de código.
 4. El «Qué hacer» y los umbrales están «Pendiente: que el Cecoed las revise» (`lib/pantallas/que_hacer.dart:8`):
    mantener el aviso de «referencia» y no usar «validado por el Cecoed» en la ficha.
@@ -104,10 +106,10 @@ ni lenguaje alarmista («¡peligro!», «catástrofe») en el título o las capt
 - **Notificaciones**: una notificación de «evacuación» enviada por error sería un incidente serio. Mantener la
   semana de prueba en los temas `prueba-` y la regla de que el texto sale de `actual.json` y no del mensaje
   (`docs/fase-4-avisos-push.md`). La política de Spam/notificaciones de Play pide que no sean engañosas: la app
-  muestra solo dos tipos, ambos pedidos por el usuario (el resumen viene prendido por defecto:
-  `lib/avisos.dart:67`; el permiso se pide una vez, `lib/notificaciones.dart:145-149`).
-- **Resumen prendido por defecto y permiso al abrir**: aceptable, pero si el revisor lo toma como notificación no
-  solicitada, la respuesta es que la pestaña Avisos permite apagarlo y que no se vuelve a pedir el permiso solo.
+  muestra solo dos tipos, ambos pedidos por el usuario (desde la pantalla de primer arranque, `lib/pantallas/primer_arranque.dart`, todo viene apagado hasta que la persona
+  elige; el permiso se pide recién al elegir «Activar avisos»).
+- **Permiso de notificaciones**: se pide solo cuando la persona toca «Activar avisos» en el primer arranque (o prende un
+  aviso en la pestaña Avisos); quien elige «Ahora no» no recibe ninguna notificación ni suscripción.
 - **Estabilidad**: revisar que la app abra sin servicios de Google (el código lo contempla: `lib/main.dart:35-38`,
   `lib/push.dart:106`) y sin conexión (copia local: `lib/datos.dart:171`).
 - **Datos desactualizados**: la app muestra fecha y hora del dato y avisa si es viejo (`lib/pantallas/inicio.dart:49`,

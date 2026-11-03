@@ -30,9 +30,9 @@ Rama `p04-primer-arranque` (base: `main`). Sin push ni PR.
 
 `flutter analyze`: sin problemas. `flutter test`: 236 pruebas, todas pasan.
 
-## Para reconciliar con `ficha-play-rebase`
+## Rebase sobre main (PR #37)
 
-En `main` no existían `EnlacePrivacidad` ni `urlPoliticaPrivacidad`. Los copié en `app/lib/pantallas/comunes.dart` idénticos línea por línea a los de esa rama (misma URL, mismo `launchUrl`), así que al mergear ambas ramas el bloque debería coincidir sin conflicto. Lo único que puede dar conflicto textual es `ajustes.dart`: esa rama agrega `const EnlacePrivacidad()` al final de la pestaña Avisos, justo después del párrafo que yo reescribí. Resolución: quedarse con mi párrafo y con su línea del enlace.
+Rebasado sobre origin/main (2961f79) sin conflictos: la pantalla usa `EnlacePrivacidad` de main (no hay copia propia) y Avisos tiene mi párrafo de P-03 seguido de `const EnlacePrivacidad()`. Se actualizaron `docs/play/01`, `03`, `04` y `05` para decir lo mismo que la app (identificador anónimo desde que se abre la app, apagar quita suscripciones pero no el identificador, elección en el primer arranque con todo apagado hasta elegir). Los campos PENDIENTE del dueño quedaron intactos.
 
 ## Bugs en `avisos.dart` / `ajustes.dart`
 

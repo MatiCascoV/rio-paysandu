@@ -48,7 +48,7 @@ QUÉ PODÉS HACER
 - Gráfico: cómo vino cambiando la altura en los últimos 7, 30 o 90 días, con las líneas de los niveles.
 - Pronóstico de CARU: cuando CARU publica un informe de crecida, la app muestra la altura máxima que CARU espera y la fecha del informe.
 - Qué hacer: teléfonos útiles para llamar con un toque y recomendaciones generales para antes, durante y después de una crecida.
-- Avisos: elegís si querés recibir un aviso urgente (desde alerta, o solo desde evacuación) y un resumen del día.
+- Avisos: la primera vez que abrís la app elegís si querés avisos (todo queda apagado hasta que elegís) y lo podés cambiar cuando quieras. Podés recibir un aviso urgente (desde alerta, o solo desde evacuación) y un resumen del día.
 
 LOS AVISOS
 - Aviso urgente: llega cuando el nivel sube a alerta o a evacuación. No avisa cuando el río baja.
@@ -56,7 +56,7 @@ LOS AVISOS
 - Los avisos dependen de que CARU publique el dato, de la conexión del teléfono y del ahorro de batería. En algunos teléfonos (por ejemplo Xiaomi, Redmi o POCO) hay que permitir la app en segundo plano. Pueden llegar con demora o no llegar. No uses esta app como única fuente de información.
 
 PRIVACIDAD
-No pide cuenta ni registro, no tiene publicidad y Analytics está desactivado. Para entregar los avisos, Firebase Cloud Messaging (el servicio de Google para notificaciones) le asigna a tu instalación un identificador anónimo; no recibimos tu nombre, tu ubicación ni tus contactos.
+No pide cuenta ni registro, no tiene publicidad y Analytics está desactivado. Para entregar los avisos, Firebase Cloud Messaging (el servicio de Google para notificaciones) le asigna a tu instalación un identificador anónimo desde que abrís la app, aunque no actives ningún aviso. Apagar los avisos quita las suscripciones, pero el identificador sigue hasta que desinstales la app. No recibimos tu nombre, tu ubicación ni tus contactos.
 
 NIVELES DE REFERENCIA
 Los niveles de atención, alerta y evacuación son de referencia y todavía se están revisando con las autoridades locales. Pueden cambiar.
