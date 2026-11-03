@@ -72,15 +72,25 @@ un "subió a EVACUACIÓN" a todos los suscritos, el urgente espera una segunda l
 
 - La primera publicación con el nivel nuevo **no avisa**. Queda en espera (el motivo dice "Urgente en
   espera").
-- Sale en la **primera publicación posterior** que trae otra lectura de la estación
-  (`altura_actual.fecha` distinta), mantiene el nivel (o más) y **no** trae `dato_a_verificar`.
-- **Tope de 60 minutos**: si no llega esa segunda lectura (la estación se atrasa, o el aviso
-  `dato_a_verificar` no se va), el urgente sale igual en la primera publicación que pasa de 60 minutos
-  desde la primera. Nunca se calla una crecida.
+- Sale en la **primera publicación posterior** que trae una segunda lectura de la estación: `altura_actual.fecha`
+  **mayor** que la de la primera (una fecha anterior no vale), de la **misma fuente**, que mantiene el nivel
+  (o más) y **sin salto brusco** contra la primera (hasta 1 m). Solo el salto brusco frena la confirmación:
+  la marca `dato_a_verificar` por contraste con el pronóstico o por diferencia entre fuentes se repite en
+  cada publicación mientras dura (por ejemplo, una crecida real más alta que el informe de CARU) y **no**
+  frena el aviso. Si no se pueden comparar las alturas, se exige que la lectura no traiga la marca.
+- **Tope de 60 minutos**: si no llega esa segunda lectura (la estación se atrasa, o hay un salto brusco
+  sostenido), el urgente sale igual en la **primera publicación con 60 minutos o más** desde la primera. Con la
+  latencia de Pages y del lanzamiento puede llegar hasta ~70 minutos después. Nunca se calla una crecida.
 - Si el lector acaba de soltar una retención por salto brusco (`nivel_retenido`), el lector ya esperó una
-  lectura más nueva: la subida sale de una, sin esperar otra.
+  lectura más nueva: la subida sale de una, **solo si** el nivel que se suelta es el mismo que guardó la
+  retención (`nivel_retenido.nivel`, el calculado de la lectura retenida). Si se retuvo "alerta" y se suelta
+  "evacuación", hay una sola lectura alta y se espera otra; lo mismo con retenciones viejas sin ese campo.
 - Si entre medio el nivel baja, la confirmación se reinicia (un pico de una sola lectura no avisa nunca).
-  Las publicaciones `sin_dato` en el medio se saltean, como siempre.
+  Las publicaciones `sin_dato` en el medio se saltean, como siempre. Si la alerta estaba en espera y el nivel
+  sube a evacuación, la alerta no sale: queda en espera la evacuación, que sale a su segunda lectura.
+- Oscilación alerta ↔ atención (M-3): cada baja publicada reinicia la espera, así que un río que oscila en el
+  umbral manda el urgente solo cuando se queda dos lecturas seguidas arriba (el margen al bajar del lector
+  ya amortigua esas oscilaciones).
 - Sigue sin guardar estado: la decisión se reconstruye del historial de `data/actual.json` (se leen solo las
   publicaciones del último plazo, no toda una racha larga), así que es la misma al re-correr un commit y
   nunca sale dos veces.
@@ -90,8 +100,8 @@ un "subió a EVACUACIÓN" a todos los suscritos, el urgente espera una segunda l
 - Costo: el urgente llega unos 30 minutos más tarde (la estación informa cada 30 min), hasta 60 como tope. Una
   crecida del río Uruguay sube de a centímetros por hora, así que no cambia mucho el tiempo para reaccionar
   (criterio, no medido).
-- Con `dato_a_verificar` ya no sale el "subió a …" en el primer push (era un error: `avisos.py` lo
-  ignoraba).
+- Con un salto brusco marcado ya no sale el "subió a …" en el primer push (era un error: `avisos.py` ignoraba
+  `dato_a_verificar`).
 
 **Límites que quedan** (la mitigación reduce el riesgo, no lo elimina):
 
@@ -101,8 +111,10 @@ un "subió a EVACUACIÓN" a todos los suscritos, el urgente espera una segunda l
   espera**: un teléfono con la app abierta o con el respaldo corriendo puede mostrar el urgente en la primera
   lectura (con el texto "Dato a verificar por CARU."). Cerrarlo requiere un cambio en `app/` (que el respaldo
   trate `dato_a_verificar` como "esperar" con el mismo tope de 60 minutos). Queda pendiente, sin hacer.
-- Con `dato_a_verificar` por otras causas (por ejemplo, el informe de crecida contradice la altura) el urgente
-  espera hasta los 60 minutos.
+- **Si el lector se corta después de la primera lectura**, el urgente queda en espera hasta que vuelva a
+  publicar: la decisión se toma al publicar, no hay un reloj aparte. Lo mitigan el respaldo local de la app y
+  el issue automático `avisos-falla`. **Mejora futura (no implementada):** un chequeo de "urgente en espera sin
+  publicaciones nuevas" que avise o fuerce el urgente pasado el plazo.
 - En el modo de dos archivos (`avisos.py ANTERIOR.json NUEVO.json`, solo para pruebas manuales) no hay
   historial: el urgente nunca sale. El workflow usa `--commit`.
 

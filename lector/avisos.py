@@ -52,6 +52,9 @@ HORA_RESPALDO = 10
 # segunda lectura (otra fecha, sin dato_a_verificar) que mantenga el nivel. Si no
 # llega en este plazo desde la primera publicación con el nivel, sale igual: nunca callar.
 VENTANA_CONFIRMACION = timedelta(minutes=60)
+# Salto máximo (m) entre la primera lectura y la que la confirma; el mismo que usa
+# el lector para retener un salto brusco (validar.SALTO_MAX_M).
+SALTO_MAX_M = 1.0
 
 RUTA_ACTUAL = "data/actual.json"
 REVISION_VALIDA = re.compile(r"[0-9A-Za-z_./~^-]+")
@@ -112,11 +115,43 @@ def _a_verificar(publicacion):
     return isinstance(avisos, list) and "dato_a_verificar" in avisos
 
 
-def _retencion_activa(publicacion):
+def _retencion_confirma(publicacion, nivel):
     """True si la publicación (la última con dato antes de una subida) estaba
-    reteniendo el nivel: el lector ya esperó una lectura más nueva para soltarlo,
-    así que la subida que sigue ya viene confirmada."""
-    return isinstance(publicacion, dict) and isinstance(publicacion.get("nivel_retenido"), dict)
+    reteniendo un nivel calculado igual a `nivel`: el lector ya esperó una lectura
+    más nueva para soltarlo y esa lectura mantiene el mismo nivel, así que la
+    subida que sigue ya viene confirmada. Si la retenida era de otro nivel (o la
+    retención no guarda el nivel), no confirma."""
+    retenido = publicacion.get("nivel_retenido") if isinstance(publicacion, dict) else None
+    return isinstance(retenido, dict) and retenido.get("nivel") == nivel
+
+
+def _valor_lectura(publicacion):
+    altura = publicacion.get("altura_actual") if isinstance(publicacion, dict) else None
+    valor = altura.get("valor_m") if isinstance(altura, dict) else None
+    return float(valor) if type(valor) in (int, float) else None
+
+
+def _fuente_lectura(publicacion):
+    altura = publicacion.get("altura_actual") if isinstance(publicacion, dict) else None
+    return altura.get("fuente") if isinstance(altura, dict) else None
+
+
+def _confirma(primera, otra):
+    """True si `otra` es una segunda lectura que confirma a `primera`: fecha
+    posterior, misma fuente, y sin salto brusco contra la primera. Solo el salto
+    brusco bloquea; la marca dato_a_verificar por contraste con el pronóstico o por
+    diferencia entre fuentes se repite en cada publicación mientras dura (una
+    crecida real más alta que el informe de CARU) y no debe frenar el aviso.
+    Si no se pueden comparar las alturas, se exige que no traiga la marca."""
+    f0, f1 = _fecha_lectura(primera), _fecha_lectura(otra)
+    if f0 is None or f1 is None or f1 <= f0:
+        return False
+    if _fuente_lectura(primera) != _fuente_lectura(otra):
+        return False
+    v0, v1 = _valor_lectura(primera), _valor_lectura(otra)
+    if v0 is None or v1 is None:
+        return not _a_verificar(otra)
+    return abs(v1 - v0) <= SALTO_MAX_M
 
 
 def _fecha_prefectura(publicacion):
@@ -170,13 +205,13 @@ def _evaluar_urgente(nuevo, racha, pub_antes):
     correr dos veces sobre el mismo commit da lo mismo y nunca sale dos veces."""
     cadena = racha + [nuevo]
     ultimo = len(cadena) - 1
-    if _retencion_activa(pub_antes):
+    if _retencion_confirma(pub_antes, _nivel(cadena[0])):
         return (ultimo == 0), ("confirmada" if ultimo == 0 else "")
-    fecha0, gen0 = _fecha_lectura(cadena[0]), _generado(cadena[0])
+    gen0 = _generado(cadena[0])
     for i in range(1, len(cadena)):
         p = cadena[i]
-        fecha, gen = _fecha_lectura(p), _generado(p)
-        if fecha0 is not None and fecha is not None and fecha != fecha0 and not _a_verificar(p):
+        gen = _generado(p)
+        if _confirma(cadena[0], p):
             return (i == ultimo), ("confirmada" if i == ultimo else "")
         # Si no se puede medir el tiempo se prefiere avisar a callar.
         if gen0 is None or gen is None or gen - gen0 >= VENTANA_CONFIRMACION:
@@ -195,9 +230,11 @@ def decidir(nuevo, anteriores):
       caída de la fuente no hace perder una subida real). Bajar, quedarse igual
       o entrar/salir de sin_dato no avisa. Sin anterior con dato no avisa.
       M-1: la primera publicación con el nivel nuevo no avisa. Sale en la primera
-      que trae otra lectura (altura_actual.fecha distinta) sin dato_a_verificar, o
+      que trae otra lectura (altura_actual.fecha posterior, misma fuente, sin salto
+      brusco contra la primera; la marca dato_a_verificar sola no bloquea), o
       en la primera que llega 60 min después de aquella, lo que pase antes. Si el
-      lector acababa de soltar una retención (nivel_retenido) ya hubo segunda lectura.
+      lector acababa de soltar una retención del mismo nivel (nivel_retenido.nivel) ya hubo
+      segunda lectura.
       El nivel publicado ya trae la retención y el margen al bajar del lector,
       así que no se recalcula desde la altura.
     - Resumen: `resumen_listo(nuevo)` no es None y ninguna publicación anterior

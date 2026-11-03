@@ -222,3 +222,34 @@ def test_m1_no_marca_bajadas_ni_el_mismo_nivel_ni_atencion():
               "altura_actual": {"valor_m": 4.9, "fecha": (t0 - timedelta(minutes=30)).isoformat()}}
     atencion = pasada(registro(5.10, t0, 4.9, *pre), previo, t0 + timedelta(minutes=5))
     assert atencion["nivel"] == "atencion" and "dato_a_verificar" not in atencion["avisos"]
+
+
+def test_m1_retencion_guarda_el_nivel_calculado_de_la_lectura_retenida():
+    t0 = datetime(2026, 10, 9, 7, 0, tzinfo=TZ_UY)
+    anterior = pasada(registro(6.10, t0, 6.10, 6.05, t0 - timedelta(hours=1)), None, t0 + timedelta(minutes=5))
+    t1 = t0 + timedelta(minutes=30)
+    a = pasada(registro(7.50, t1, 6.10, 6.05, t0 - timedelta(hours=1)), anterior, t1 + timedelta(minutes=5))
+    assert a["nivel"] == "alerta" and a["nivel_retenido"]["nivel"] == "evacuacion"
+
+
+def test_m1_retencion_solo_confirma_si_se_suelta_al_mismo_nivel():
+    t0 = datetime(2026, 10, 9, 8, 0, tzinfo=TZ_UY)
+    pre = (6.5, t0 - timedelta(hours=1))
+
+    def previo(nivel_retenido):
+        return {"nivel": "atencion", "avisos": [],
+                "altura_actual": {"valor_m": 6.5, "fecha": (t0 - timedelta(minutes=30)).isoformat()},
+                "nivel_retenido": {"fecha_lectura": (t0 - timedelta(minutes=30)).isoformat(),
+                                   "desde": (t0 - timedelta(minutes=25)).isoformat(),
+                                   "nivel": nivel_retenido}}
+    # Se retuvo "alerta" y la lectura nueva da "evacuacion": una sola lectura alta, se marca.
+    a = pasada(registro(6.95, t0, 6.5, *pre), previo("alerta"), t0 + timedelta(minutes=5))
+    assert a["nivel"] == "evacuacion" and "dato_a_verificar" in a["avisos"]
+    # Se retuvo "alerta" y se suelta "alerta": ya está confirmada, no se marca.
+    a = pasada(registro(6.60, t0, 6.5, *pre), previo("alerta"), t0 + timedelta(minutes=5))
+    assert a["nivel"] == "alerta" and "dato_a_verificar" not in a["avisos"]
+    # Retención de una versión vieja sin el nivel guardado: no confirma.
+    viejo = previo("alerta")
+    del viejo["nivel_retenido"]["nivel"]
+    a = pasada(registro(6.60, t0, 6.5, *pre), viejo, t0 + timedelta(minutes=5))
+    assert "dato_a_verificar" in a["avisos"]

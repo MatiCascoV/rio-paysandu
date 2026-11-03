@@ -199,7 +199,7 @@ def armar_actual(registro, pronostico, umbrales, anterior, ahora, cfg):
     # M-1: la primera lectura de una subida a alerta o evacuación se publica "a
     # verificar" (la app ya lo muestra) hasta que llegue una segunda lectura. El
     # aviso urgente lo espera (lector/avisos.py). Si una retención acaba de
-    # soltarse, la lectura nueva ya la confirmó y no se marca. La marca sigue
+    # soltarse con el mismo nivel, la lectura nueva ya la confirmó y no se marca. La marca sigue
     # mientras el lector vuelva a publicar la misma lectura (corre más seguido que
     # la estación) y se va con la primera lectura distinta.
     if nivel in NIVELES_URGENTES and anterior.get("nivel") in NIVELES_CON_DATO:
@@ -207,7 +207,9 @@ def armar_actual(registro, pronostico, umbrales, anterior, ahora, cfg):
         misma_lectura = (principal and nivel == anterior["nivel"]
                          and "dato_a_verificar" in (anterior.get("avisos") or [])
                          and altura.get("fecha") == (anterior.get("altura_actual") or {}).get("fecha"))
-        if (sube and not anterior.get("nivel_retenido")) or misma_lectura:
+        # La retención solo confirma si lo que retuvo es del mismo nivel que se suelta.
+        confirmada = (anterior.get("nivel_retenido") or {}).get("nivel") == nivel
+        if (sube and not confirmada) or misma_lectura:
             avisos.append("dato_a_verificar")
 
     # Contraste con el pronóstico de CARU (solo avisa, nunca retiene): un informe
@@ -257,7 +259,8 @@ def retener_nivel(calculado, fecha_lectura, anterior, ahora, cfg):
     if not desde or not fecha_retenida:
         # Primera vez que se ve este salto: se retiene una pasada.
         return anterior["nivel"], {"fecha_lectura": fecha_lectura.isoformat(),
-                                   "desde": ahora.replace(microsecond=0).isoformat()}
+                                   "desde": ahora.replace(microsecond=0).isoformat(),
+                                   "nivel": calculado}
     if fecha_lectura > fecha_retenida:
         return calculado, None  # una lectura nueva lo confirma
     if ahora - desde >= timedelta(minutes=cfg["retencion_max_min"]):

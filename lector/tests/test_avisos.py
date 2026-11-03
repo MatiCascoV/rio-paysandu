@@ -28,7 +28,7 @@ DIA = "2026-10-17"
 AYER = "2026-10-16"
 
 
-def pub(nivel="alerta", hora="12:00", dia=DIA, prefectura=DIA, generado=None, lectura=None, avisos_=None):
+def pub(nivel="alerta", hora="12:00", dia=DIA, prefectura=DIA, generado=None, lectura=None, avisos_=None, valor=None):
     """Publicación realista a partir del fixture, cambiando solo lo que importa.
 
     `hora`/`dia` arman `generado` en UTC-3 (o se pasa `generado` entero).
@@ -42,6 +42,8 @@ def pub(nivel="alerta", hora="12:00", dia=DIA, prefectura=DIA, generado=None, le
         momento = avisos._hora_local(p["generado"])
         lectura = (momento - timedelta(minutes=5)).isoformat() if momento else p["altura_actual"]["fecha"]
     p["altura_actual"]["fecha"] = lectura
+    if valor is not None:
+        p["altura_actual"]["valor_m"] = valor
     if avisos_ is not None:
         p["avisos"] = avisos_
     if prefectura is None:
@@ -192,7 +194,7 @@ def test_retencion_del_lector_liberada_ya_viene_confirmada():
     # El lector retuvo el nivel hasta ver una lectura más nueva: no se espera otra vez.
     retenida = pub("atencion", "08:30", prefectura=AYER, avisos_=["dato_a_verificar"])
     retenida["nivel_retenido"] = {"fecha_lectura": "2026-10-17T08:25:00-03:00",
-                                  "desde": "2026-10-17T08:30:00-03:00"}
+                                  "desde": "2026-10-17T08:30:00-03:00", "nivel": "alerta"}
     liberada = pub("alerta", "09:00", prefectura=AYER, avisos_=["dato_a_verificar"])
     d = decidir(liberada, retenida, pub("atencion", "08:00", prefectura=AYER))
     assert d["urgente"] == "alerta"
@@ -202,31 +204,94 @@ def test_retencion_del_lector_liberada_ya_viene_confirmada():
 
 # ---------- dato_a_verificar ----------
 
-def test_dato_a_verificar_retiene_el_urgente_y_no_confirma():
+def test_salto_brusco_entre_lecturas_no_confirma():
     # Bug: antes salía "subió a EVACUACIÓN" aunque el dato estuviera marcado.
     marcado = ["dato_a_verificar"]
-    antes = pub("atencion", "08:00", prefectura=AYER)
-    primera = pub("evacuacion", "08:30", prefectura=AYER, avisos_=marcado)
+    antes = pub("atencion", "08:00", prefectura=AYER, valor=5.0)
+    primera = pub("evacuacion", "08:30", prefectura=AYER, avisos_=marcado, valor=7.5)
     assert decidir(primera, antes)["urgente"] is None
-    # Una segunda lectura nueva pero todavía marcada tampoco confirma.
-    segunda = pub("evacuacion", "09:00", prefectura=AYER, avisos_=marcado)
+    # Una lectura nueva a más de 1 m de la primera no la confirma (el salto sigue siendo dudoso).
+    segunda = pub("evacuacion", "09:00", prefectura=AYER, avisos_=marcado, valor=9.0)
     d = decidir(segunda, primera, antes)
     assert d["urgente"] is None and d["avisar"] is False
-    # La primera segunda lectura sin marca confirma.
-    tercera = pub("evacuacion", "09:30", prefectura=AYER)
+    # Una lectura nueva a menos de 1 m de la primera sí confirma.
+    tercera = pub("evacuacion", "09:30", prefectura=AYER, valor=7.6)
     assert decidir(tercera, segunda, primera, antes)["urgente"] == "evacuacion"
 
 
-def test_dato_a_verificar_persistente_sale_a_los_60_min():
-    marcado = ["dato_a_verificar"]
-    antes = pub("atencion", "08:00", prefectura=AYER)
-    historia = [pub("alerta", "08:30", prefectura=AYER, avisos_=marcado), antes]
+def test_salto_brusco_persistente_sale_a_los_60_min():
+    antes = pub("atencion", "08:00", prefectura=AYER, valor=5.0)
+    historia = [pub("alerta", "08:30", prefectura=AYER, valor=6.0), antes]
     salidas = []
-    for hora in ("09:00", "09:30", "10:00"):
-        nueva = pub("alerta", hora, prefectura=AYER, avisos_=marcado)
+    for hora, valor in (("09:00", 8.0), ("09:30", 10.0), ("10:00", 12.0)):
+        nueva = pub("alerta", hora, prefectura=AYER, valor=valor)
         salidas.append(decidir(nueva, *historia)["urgente"])
         historia.insert(0, nueva)
     assert salidas == [None, "alerta", None]      # nunca callar: sale a los 60 min
+
+
+def test_marca_por_pronostico_o_discrepancia_persistente_no_frena_la_confirmacion():
+    # Una crecida real más alta que el informe de CARU: dato_a_verificar en cada publicación.
+    marcado = ["dato_a_verificar"]
+    antes = pub("atencion", "08:00", prefectura=AYER, valor=5.9)
+    historia = [pub("alerta", "08:30", prefectura=AYER, avisos_=marcado, valor=6.1), antes]
+    salidas = []
+    for hora, valor in (("09:00", 6.2), ("09:30", 6.3), ("10:00", 6.4)):
+        nueva = pub("alerta", hora, prefectura=AYER, avisos_=marcado, valor=valor)
+        salidas.append(decidir(nueva, *historia)["urgente"])
+        historia.insert(0, nueva)
+    assert salidas == ["alerta", None, None]      # sale a la segunda lectura, no a los 60 min
+
+
+def test_marca_sin_alturas_comparables_no_confirma():
+    marcado = ["dato_a_verificar"]
+    primera = pub("alerta", "08:30", prefectura=AYER)
+    segunda = pub("alerta", "09:00", prefectura=AYER, avisos_=marcado)
+    segunda["altura_actual"]["valor_m"] = None
+    assert decidir(segunda, primera, pub("atencion", "08:00", prefectura=AYER))["urgente"] is None
+
+
+def test_lectura_anterior_o_de_otra_fuente_no_confirma():
+    antes = pub("atencion", "08:00", prefectura=AYER)
+    primera = pub("alerta", "08:30", prefectura=AYER)
+    # Fecha anterior a la primera (la fuente retrocedió).
+    vieja = pub("alerta", "09:00", prefectura=AYER, lectura="2026-10-17T08:00:00-03:00")
+    assert decidir(vieja, primera, antes)["urgente"] is None
+    # Otra fuente (por ejemplo, cambió de estación a Prefectura).
+    otra = pub("alerta", "09:00", prefectura=AYER)
+    otra["altura_actual"]["fuente"] = "otra fuente"
+    assert decidir(otra, primera, antes)["urgente"] is None
+
+
+def test_alerta_pendiente_seguida_de_evacuacion():
+    atencion = pub("atencion", "08:00", prefectura=AYER)
+    alerta = pub("alerta", "08:30", prefectura=AYER)
+    evac1 = pub("evacuacion", "09:00", prefectura=AYER)
+    # La alerta nunca salió y la evacuación es una primera lectura: nada todavía.
+    assert decidir(alerta, atencion)["urgente"] is None
+    d = decidir(evac1, alerta, atencion)
+    assert d["urgente"] is None and "Urgente en espera" in d["motivo"]
+    # La segunda lectura de evacuación confirma la evacuación (una sola vez).
+    evac2 = pub("evacuacion", "09:30", prefectura=AYER)
+    assert decidir(evac2, evac1, alerta, atencion)["urgente"] == "evacuacion"
+    assert decidir(pub("evacuacion", "10:00", prefectura=AYER), evac2, evac1, alerta, atencion)["urgente"] is None
+
+
+def test_retencion_liberada_a_otro_nivel_no_confirma():
+    # El lector retuvo una lectura que daba "alerta" y la lectura nueva da "evacuacion":
+    # solo hay una lectura alta, hace falta otra.
+    retenida = pub("atencion", "08:30", prefectura=AYER, avisos_=["dato_a_verificar"])
+    retenida["nivel_retenido"] = {"fecha_lectura": "2026-10-17T08:25:00-03:00",
+                                  "desde": "2026-10-17T08:30:00-03:00", "nivel": "alerta"}
+    liberada = pub("evacuacion", "09:00", prefectura=AYER, avisos_=["dato_a_verificar"])
+    antes = pub("atencion", "08:00", prefectura=AYER)
+    assert decidir(liberada, retenida, antes)["urgente"] is None
+    # Una retención vieja sin el nivel guardado tampoco confirma.
+    del retenida["nivel_retenido"]["nivel"]
+    assert decidir(liberada, retenida, antes)["urgente"] is None
+    # Con una segunda lectura de evacuación sale.
+    siguiente = pub("evacuacion", "09:30", prefectura=AYER)
+    assert decidir(siguiente, liberada, retenida, antes)["urgente"] == "evacuacion"
 
 
 def test_avisos_mal_formados_no_rompen_la_confirmacion():
@@ -450,7 +515,7 @@ def test_urgente_y_resumen_en_la_misma_pasada():
     assert d == {"avisar": True, "urgente": "evacuacion", "resumen": True, "fuente": "estacion",
                  "motivo": "El nivel subió de alerta a evacuación. Resumen del día con la "
                            "estación automática (no llegó la lectura de Prefectura antes de las 10)."}
-    d = decidir(MANANA | {"nivel": "alerta"}, pub("alerta", "07:10", prefectura=AYER),
+    d = decidir(MANANA | {"nivel": "alerta"}, pub("alerta", "07:10", prefectura=AYER, valor=4.1),
                 pub("atencion", "06:40", prefectura=AYER))
     assert d["urgente"] == "alerta" and d["fuente"] == "prefectura"
     # La primera lectura de la subida no manda el urgente, pero el resumen sí sale.

@@ -54,8 +54,9 @@ jobs:
       github.event.workflow_run.head_branch == 'datos' &&
       github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
-    # Lista (hasta 3 min) + espera de Pages (hasta 4 min) + preparación.
-    timeout-minutes: 10
+    # Lista (hasta 8 min con los reintentos del fetch) + espera de Pages (hasta 4 min)
+    # + preparación.
+    timeout-minutes: 15
     permissions:
       actions: read # listar las corridas de pages-build-deployment
     outputs:
