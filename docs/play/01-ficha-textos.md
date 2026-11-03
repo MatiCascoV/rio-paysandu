@@ -56,7 +56,7 @@ LOS AVISOS
 - Los avisos dependen de que CARU publique el dato, de la conexión del teléfono y del ahorro de batería. En algunos teléfonos (por ejemplo Xiaomi, Redmi o POCO) hay que permitir la app en segundo plano. Pueden llegar con demora o no llegar. No uses esta app como única fuente de información.
 
 PRIVACIDAD
-No pide registro, no tiene publicidad y no recolecta datos personales. Los avisos usan Firebase Cloud Messaging, el servicio de Google para notificaciones.
+No pide cuenta ni registro, no tiene publicidad y Analytics está desactivado. Para entregar los avisos, Firebase Cloud Messaging (el servicio de Google para notificaciones) le asigna a tu instalación un identificador anónimo; no recibimos tu nombre, tu ubicación ni tus contactos.
 
 NIVELES DE REFERENCIA
 Los niveles de atención, alerta y evacuación son de referencia y todavía se están revisando con las autoridades locales. Pueden cambiar.
@@ -113,8 +113,8 @@ Todo esto es PENDIENTE: no pude verificar el texto vigente de las políticas de 
 - **Información sobre desastres o crisis:** si la consola pide una declaración, responder con honestidad:
   toma datos de CARU, no emite alertas propias y lo dice. Leer antes la política vigente de Play sobre
   situaciones de crisis.
-- **Seguridad de los datos:** la app no pide datos personales ni tiene publicidad; usa Firebase Cloud
-  Messaging (identificador de instalación para notificaciones). Contrastar con el Data Privacy Officer cómo
+- **Seguridad de los datos:** la app no pide cuenta ni registro, no tiene publicidad y tiene Analytics desactivado; usa Firebase Cloud
+  Messaging, que le asigna a la instalación un identificador anónimo para entregar los avisos. Contrastar con el Data Privacy Officer cómo
   se declara.
 - **Clasificación de contenido (IARC):** cuestionario sin violencia ni contenido sensible.
 - **Público objetivo:** adultos / público general, no dirigida a niños.

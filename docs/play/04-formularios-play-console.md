@@ -8,18 +8,18 @@ cambian: usar esto como guía y comparar con lo que muestre la consola el día d
 
 | Hecho | Evidencia |
 |---|---|
-| Permisos propios: solo `INTERNET` y `POST_NOTIFICATIONS` | `android/app/src/main/AndroidManifest.xml:3` y `:5` |
-| Sin copias de seguridad automáticas | `AndroidManifest.xml:9` (`allowBackup="false"`) |
-| Analytics apagado y sin ID de publicidad | `AndroidManifest.xml:39-44` (`firebase_analytics_collection_deactivated=true`, `google_analytics_adid_collection_enabled=false`); en el manifiesto empaquetado de la compilación local `release` no aparece `AD_ID` |
-| Sin Crashlytics ni Analytics en el código | `pubspec.yaml:45-46` solo declara `firebase_core` y `firebase_messaging`; `android/app/build.gradle.kts:5` aplica solo `google-services`; ningún `import` de analytics/crashlytics en `lib/` |
-| FCM por temas, sin cuentas | `lib/push.dart:1-7`, `:66` (`subscribeToTopic`), `:69` (`unsubscribeFromTopic`); inicializa `Firebase.initializeApp()` siempre al abrir (`lib/main.dart:37`, `lib/push.dart:118`) |
-| Los mensajes llevan solo datos, sin texto | `lib/push.dart:1-7`; `docs/fase-4-avisos-push.md` ("Contenido del push") |
-| Descarga solo de GitHub Pages por HTTPS | `assets/config.json:2` (`url_base`), `lib/datos.dart:128` (`GET`) |
-| Datos locales: preferencias y copia de los JSON | `lib/avisos.dart:28-44` (claves), `lib/datos.dart:171` (`cache_<archivo>`), `lib/main.dart:94` (tema) |
+| Permisos propios: solo `INTERNET` y `POST_NOTIFICATIONS` | `android/app/src/main/AndroidManifest.xml` (`<uses-permission>` de `INTERNET` y `POST_NOTIFICATIONS`) |
+| Sin copias de seguridad automáticas | `AndroidManifest.xml` (`android:allowBackup="false"` en `<application>`) |
+| Analytics apagado y sin ID de publicidad | `AndroidManifest.xml` (`<meta-data>` `firebase_analytics_collection_deactivated=true`, `google_analytics_adid_collection_enabled=false`); en el manifiesto empaquetado de la compilación local `release` no aparece `AD_ID` |
+| Sin Crashlytics ni Analytics en el código | `pubspec.yaml` (dependencias) solo declara `firebase_core` y `firebase_messaging`; `android/app/build.gradle.kts` (plugins) aplica solo `google-services`; ningún `import` de analytics/crashlytics en `lib/` |
+| FCM por temas, sin cuentas | `lib/push.dart` (comentario de cabecera; `_SuscriptorFcm.suscribir` → `subscribeToTopic`, `.desuscribir` → `unsubscribeFromTopic`); inicializa `Firebase.initializeApp()` siempre al abrir (`Push.iniciar` en `lib/push.dart`, llamado desde `lib/main.dart`) |
+| Los mensajes llevan solo datos, sin texto | `lib/push.dart` (comentario de cabecera); `docs/fase-4-avisos-push.md` ("Contenido del push") |
+| Descarga solo de GitHub Pages por HTTPS | `assets/config.json` (clave `url_base`), `lib/datos.dart` (el `GET` del cliente de datos, `http.AbortableRequest('GET', …)`) |
+| Datos locales: preferencias y copia de los JSON | `lib/avisos.dart` (constantes `clave…`), `lib/datos.dart` (`cache_<archivo>` en `SharedPreferences`), `lib/main.dart` (tema claro/oscuro) |
 | Sin ubicación, cámara, contactos, anuncios | Ningún permiso ni dependencia de eso en `AndroidManifest.xml` / `pubspec.yaml` |
-| Respaldo en segundo plano cada 30 min (WorkManager) | `lib/notificaciones.dart:106`, `:110-115` |
-| Teléfonos de emergencia se marcan con el marcador del sistema | `lib/enlaces.dart:56` (`tel:`), `assets/config.json:5-11`; `AndroidManifest.xml:61-64` (`<queries>` DIAL) |
-| Enlaces externos solo a orígenes permitidos | `lib/enlaces.dart:13-39`, `assets/config.json:4` |
+| Respaldo en segundo plano cada 30 min (WorkManager) | `lib/notificaciones.dart` (`Workmanager().registerPeriodicTask`, `frequency: Duration(minutes: 30)`) |
+| Teléfonos de emergencia se marcan con el marcador del sistema | `lib/enlaces.dart` (`llamar`, `launchUrl(Uri(scheme: 'tel', …))`), `assets/config.json` (clave `contactos`); `AndroidManifest.xml` (`<queries>` con `DIAL`/`tel`) |
+| Enlaces externos solo a orígenes permitidos | `lib/enlaces.dart` (`permitirOrigenes`, `uriPermitida`), `assets/config.json` (clave `enlaces_permitidos`) |
 
 **Hallazgo importante, manifiesto fusionado.** En el manifiesto empaquetado de la última compilación `release`
 local (`app/build/app/intermediates/packaged_manifests/release/processReleaseManifestForPackage/AndroidManifest.xml`
@@ -42,20 +42,20 @@ Verificar el día de cargar contra la guía de Firebase para FCM:
 
 | Campo | Respuesta sugerida | Evidencia / razón |
 |---|---|---|
-| ¿La app recoge o comparte alguno de los tipos de datos requeridos? | **Sí** | FCM genera un ID de instalación y un token: `lib/push.dart:118`, `:66` |
-| ¿Todos los datos del usuario se cifran en tránsito? | **Sí** | `assets/config.json:2` (https); FCM usa TLS. Los enlaces `http://` de `config.json:4` solo se abren en el navegador, no son tráfico de la app |
+| ¿La app recoge o comparte alguno de los tipos de datos requeridos? | **Sí** | FCM genera un ID de instalación y un token: `lib/push.dart` (`Push.iniciar`, `_SuscriptorFcm.suscribir`) |
+| ¿Todos los datos del usuario se cifran en tránsito? | **Sí** | `assets/config.json` (`url_base` es https); FCM usa TLS. El enlace `http://` de `enlaces_permitidos` (página de alturas de CARU) solo se abre en el navegador, no es tráfico de la app, y la pantalla Inicio avisa que no está cifrado (`enlaceSinCifrar` en `lib/enlaces.dart`, usado en `lib/pantallas/inicio.dart`) |
 | ¿Ofrecés una forma de pedir que se borren los datos? | **Sí** (sugerido), con la URL de la política, sección «Tus derechos». **PENDIENTE:** decide el dueño; la alternativa es «No», pero la política ofrece un correo y desinstalar borra todo lo local | Política `03` |
 | Ubicación (aproximada / precisa) | No recoge | Sin permiso ni plugin de ubicación |
 | Información personal (nombre, correo, dirección, teléfono, etc.) | No recoge | Sin cuentas ni formularios |
 | Información financiera, salud y estado físico | No recoge | |
 | Mensajes, fotos, videos, audio, archivos, calendario, contactos | No recoge | |
-| Actividad en la app / historial / búsquedas | No recoge. Las preferencias de avisos viven en el teléfono (`lib/avisos.dart:28-44`); lo único de preferencia que sale son los **temas** FCM (ver notas) | |
-| Información y rendimiento de la app (fallos, diagnósticos) | No recoge (sin Crashlytics ni Analytics) | `pubspec.yaml:45-46`, `AndroidManifest.xml:39-41` |
+| Actividad en la app / historial / búsquedas | No recoge. Las preferencias de avisos viven en el teléfono (`lib/avisos.dart`, constantes `clave…`); lo único de preferencia que sale son los **temas** FCM (ver notas) | |
+| Información y rendimiento de la app (fallos, diagnósticos) | No recoge (sin Crashlytics ni Analytics) | `pubspec.yaml`, `AndroidManifest.xml` (`<meta-data>` de Firebase Analytics) |
 | **Identificadores de dispositivo u otros (Device or other IDs)** | **Sí: se recoge** | ID de instalación de Firebase y token de FCM |
 | ¿Se **comparte** con terceros? | **No** (sugerido): Google trata el ID como proveedor de servicios en nombre del desarrollador. **PENDIENTE de verificar** con la guía de Firebase | |
-| ¿Es opcional o requerido? | **Requerido** (sugerido): Firebase arranca siempre (`lib/main.dart:37`) y el usuario no puede apagar el ID, solo los temas | |
+| ¿Es opcional o requerido? | **Requerido** (sugerido): Firebase arranca siempre (`Push.iniciar`, llamado desde `lib/main.dart`) y el usuario no puede apagar el ID, solo los temas | |
 | ¿Se procesa de forma efímera? | No | |
-| Propósito | **Funcionalidad de la app** (entregar los avisos). No Analytics, no publicidad, no personalización | `lib/push.dart:1-7` |
+| Propósito | **Funcionalidad de la app** (entregar los avisos). No Analytics, no publicidad, no personalización | `lib/push.dart` (comentario de cabecera) |
 
 **Notas:**
 - Dirección IP: la ven GitHub Pages (descarga de datos) y Google (FCM) como parte de cualquier conexión. El
@@ -87,15 +87,14 @@ Verificar el día de cargar contra la guía de Firebase para FCM:
 
 ## 4. Anuncios
 
-- «¿Tu app contiene anuncios?»: **No**. Evidencia: sin SDK de anuncios en `pubspec.yaml`; `lib/pantallas/ajustes.dart:358`
-  («no tiene publicidad»).
+- «¿Tu app contiene anuncios?»: **No**. Evidencia: sin SDK de anuncios en `pubspec.yaml`; `lib/pantallas/ajustes.dart` (texto «Esta app no pide registro ni tiene publicidad…» al pie de la pestaña Avisos).
 - **ID de publicidad (Advertising ID)**: **la app no lo usa**. Evidencia: ausencia de `AD_ID` en el manifiesto
-  fusionado y `AndroidManifest.xml:43-44`. Verificar de nuevo en el AAB final.
+  fusionado y `AndroidManifest.xml` (`google_analytics_adid_collection_enabled=false`). Verificar de nuevo en el AAB final.
 
 ## 5. Acceso a la app
 
 - «Todas las funciones están disponibles sin acceso restringido»: **Sí, sin inicio de sesión ni cuenta**.
-- No hay que dar credenciales de prueba. Evidencia: ningún flujo de login en `lib/`; `lib/push.dart:5-7`.
+- No hay que dar credenciales de prueba. Evidencia: ningún flujo de login en `lib/`; `lib/push.dart` (comentario de cabecera).
 - Nota para el revisor (campo de instrucciones): «La app no requiere cuenta. Pide el permiso de notificaciones de
   Android 13+ al abrir. Los avisos urgentes solo llegan cuando el nivel del río sube a alerta o evacuación, así
   que el revisor puede no ver ninguno; el resto de las pantallas funciona sin condiciones.»
@@ -104,8 +103,8 @@ Verificar el día de cargar contra la guía de Firebase para FCM:
 
 | Declaración / permiso | Respuesta | Evidencia |
 |---|---|---|
-| `INTERNET` | Normal, sin declaración | `AndroidManifest.xml:3` |
-| `POST_NOTIFICATIONS` | Normal; se pide en tiempo de ejecución con la app a la vista, una sola vez | `AndroidManifest.xml:5`, `lib/notificaciones.dart:145-149` |
+| `INTERNET` | Normal, sin declaración | `AndroidManifest.xml` (`<uses-permission>` `INTERNET`) |
+| `POST_NOTIFICATIONS` | Normal; se pide en tiempo de ejecución con la app a la vista, una sola vez | `AndroidManifest.xml` (`<uses-permission>` `POST_NOTIFICATIONS`), `lib/notificaciones.dart` (pedido del permiso) |
 | Ubicación, SMS, registro de llamadas, accesibilidad, todos los archivos, VPN, superposición | **No usa** | Manifiesto |
 | Permisos fusionados (`WAKE_LOCK`, `RECEIVE_BOOT_COMPLETED`, etc.) | Los agregan WorkManager y Firebase; no requieren formulario | Manifiesto empaquetado, líneas 46-69 |
 | Alarmas exactas, intención de pantalla completa, consulta de paquetes | **No usa** | Manifiesto |
@@ -135,7 +134,7 @@ Verificar el día de cargar contra la guía de Firebase para FCM:
 - El manifiesto fusionado trae `SystemForegroundService` con `foregroundServiceType="shortService"` y los permisos
   `FOREGROUND_SERVICE` / `FOREGROUND_SERVICE_SHORT_SERVICE`, aportados por WorkManager (`workmanager`,
   `pubspec.yaml:44`). La app no pide ejecutar en primer plano: la tarea periódica es de WorkManager común
-  (`lib/notificaciones.dart:110-115`).
+  (`lib/notificaciones.dart` (`registerPeriodicTask`)).
 - Si Play Console pregunta por el tipo de servicio en primer plano: **«servicio corto (short service)»**, como lo
   declara la dependencia, con la descripción «Revisión breve del nivel del río para mostrar un aviso cuando el
   teléfono no recibe el push». **PENDIENTE de verificar** en la consola: no confirmé que ese tipo exima de

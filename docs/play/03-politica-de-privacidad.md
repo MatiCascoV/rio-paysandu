@@ -26,7 +26,7 @@ Lo único que pasa fuera de tu teléfono es esto:
 | Dato | Para qué | Quién lo recibe |
 |---|---|---|
 | Un **identificador de instalación y un token de notificaciones** que genera Firebase Cloud Messaging (FCM) en tu teléfono | Que Google pueda entregarte los avisos de nivel del río en ese teléfono | Google (Firebase). Yo, como autor de la app, **no recibo ni guardo** ese identificador. |
-| Los **temas de avisos** a los que te suscribe la app según lo que elegiste en la pestaña Avisos (por ejemplo, «alerta-paysandu» o «resumen-paysandu») | Mandarte solo los avisos que pediste | Google (Firebase). Son temas generales: no dicen quién sos. |
+| Los **temas de avisos** a los que te suscribe la app según lo que elegiste en la pestaña Avisos («alerta-paysandu», «evacuacion-paysandu» y «resumen-paysandu»; según lo que elijas, la app te suscribe a uno de los dos temas urgentes y, si querés, al del resumen) | Mandarte solo los avisos que pediste | Google (Firebase). Son temas generales: no dicen quién sos. |
 | Tu **dirección IP** y datos técnicos habituales de cualquier conexión (modelo de navegador/cliente, hora) | Descargar los datos del río, que están publicados en GitHub Pages (`maticascov.github.io`) | GitHub (Microsoft), que aloja los archivos. Yo no veo esos registros como un listado de usuarios. |
 
 Los datos del río (altura, nivel, pronóstico) son de **CARU** (Comisión Administradora del Río Uruguay) y se
@@ -93,7 +93,10 @@ hay cuentas, no sé la edad de quien la usa.
 
 ## Seguridad
 
-Los datos del río y los avisos viajan por conexiones cifradas (HTTPS). Los avisos solo llevan un tipo y un
+Los datos del río y los avisos viajan por conexiones cifradas (HTTPS). La única excepción es el enlace «Ver en la
+página de CARU», que lleva a la página de alturas de CARU (`http://190.0.152.194:8080`): CARU solo la publica sin
+cifrar. Ese enlace no es tráfico de la app, se abre en tu navegador y la app lo avisa en pantalla, junto al botón
+(«Esa página de CARU no usa conexión cifrada (http): no ingreses datos personales en ella»). Los avisos solo llevan un tipo y un
 nivel; el texto lo arma la app con los datos publicados, y el mensaje no contiene datos personales.
 
 ## Esta app no reemplaza la alerta oficial

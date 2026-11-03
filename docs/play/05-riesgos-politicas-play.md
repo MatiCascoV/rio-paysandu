@@ -18,7 +18,7 @@ páginas en el Centro de políticas: <https://play.google/developer-content-poli
 |---|---|---|---|
 | 1 | **Impersonation / afiliación falsa a una entidad pública** (nombre, icono, ficha) | Media | Muestra niveles de «evacuación» y teléfonos del Cecoed y del Sinae: un revisor puede leerla como app oficial si la ficha no lo aclara |
 | 2 | **Misleading Claims**: información de gobierno sin fuentes ni aclaración | Media | Google pide, para apps no afiliadas, fuentes visibles y aclarar que no representan al gobierno |
-| 3 | **Política de privacidad** ausente o que contradice la app | Alta si no se corrige | Hay que cargar la URL, y hoy la app dice «no recolecta datos personales» (`lib/pantallas/ajustes.dart:358`) aunque FCM genera un ID de instalación |
+| 3 | **Política de privacidad** ausente o que contradice la app | Alta si no se corrige | **Parcialmente resuelto.** La frase «no recolecta datos personales» de la app ya se corrigió en #35: `lib/pantallas/ajustes.dart` (pestaña Avisos) dice que Firebase le asigna a la instalación un identificador anónimo. Falta cargar la URL de la política en Play Console |
 | 4 | **Data safety** que no coincide con el SDK de Firebase | Media | Hay que declarar «Device or other IDs»; declararlo «no recoge nada» sería una discrepancia |
 | 5 | **Contenido de seguridad no validado** («Qué hacer», niveles) | Baja-media | Los umbrales aún los revisa el Cecoed (`lib/pantallas/inicio.dart:194-195`) y las recomendaciones están marcadas «Pendiente: que el Cecoed las revise» (`lib/pantallas/que_hacer.dart:8`) |
 | 6 | **Sensitive Events** (aprovechar o ser insensible ante un desastre) | Baja | No hay monetización ni anuncios; evitar lenguaje alarmista en la ficha |
@@ -53,7 +53,7 @@ páginas en el Centro de políticas: <https://play.google/developer-content-poli
 |---|---|---|
 | Pantalla principal, siempre a la vista | «App comunitaria, sin vínculo oficial. No reemplaza la alerta oficial» | `lib/pantallas/comunes.dart:70`, usado en `lib/pantallas/inicio.dart:661` |
 | «Qué hacer», sección «Sobre esta app» | Deslinde completo: sin vínculo con ningún organismo, no reemplaza la alerta oficial, ir al Cecoed o al Sinae | `lib/pantallas/comunes.dart:65-67`, usado en `lib/pantallas/que_hacer.dart:81-85` |
-| Pestaña Avisos | «Estos avisos no reemplazan la alerta oficial: la dan el Sinae y el Cecoed.» | `lib/pantallas/ajustes.dart:325-328` |
+| Pestaña Avisos | «Estos avisos no reemplazan la alerta oficial: la dan el Sinae y el Cecoed.» | `lib/pantallas/ajustes.dart` (pestaña Avisos) |
 | En cada notificación | «La alerta oficial la dan el Sinae y el Cecoed.» | `lib/avisos.dart:156`, `:174`, `:185` |
 | Fuente de cada dato | «Fuente: CARU…» junto a la altura | `lib/pantallas/inicio.dart:261`, `lib/textos.dart:331-336`, `lib/pantallas/grafico.dart:124-125` |
 | Datos de referencia sin validar | «Los niveles son de referencia; el Cecoed todavía los está revisando.» | `lib/pantallas/inicio.dart:194-195` |
@@ -61,13 +61,13 @@ páginas en el Centro de políticas: <https://play.google/developer-content-poli
 **Brechas encontradas (no corregidas acá; esta tarea es solo documentación):**
 1. **Sin pantalla de bienvenida** que muestre el aviso la primera vez: el deslinde corto está en la pantalla principal,
    pero no hay un «aceptar y seguir». Sugerencia: no hace falta aceptar, pero el aviso corto ya está a la vista; alcanza.
-2. **No hay enlace a la política de privacidad dentro de la app.** Play lo exige «fácil de encontrar en la app y en
+2. **RESUELTO en esta rama (commit d5d1b03, aún sin mergear a main):** la app ya enlaza la política desde Ajustes y «Qué hacer» (`lib/pantallas/comunes.dart`, `urlPoliticaPrivacidad`). Texto original de la brecha: **No hay enlace a la política de privacidad dentro de la app.** Play lo exige «fácil de encontrar en la app y en
    la ficha» (ayuda de Play, apps que comunican información del gobierno). Agregar un enlace en la pestaña Avisos
    o en «Sobre esta app».
-3. **`lib/pantallas/ajustes.dart:358`** dice «no recolecta datos personales». FCM genera un ID de instalación en el
-   teléfono. Sugerencia de texto: «no pide registro, no tiene publicidad y no guarda datos personales tuyos; Google
-   (Firebase) usa un identificador de instalación para entregar los avisos». Cambia código: **PENDIENTE** de que el
-   dueño lo autorice.
+3. **RESUELTO (#35).** La app decía «no recolecta datos personales»; ahora `lib/pantallas/ajustes.dart` (texto al pie de la
+   pestaña Avisos) dice: «Esta app no pide registro ni tiene publicidad. Para los avisos, Firebase le asigna a tu
+   instalación un identificador anónimo; no recibimos tu nombre, tu ubicación ni tus contactos.». Coincide con la
+   política y con la ficha. No requiere más cambios de código.
 4. El «Qué hacer» y los umbrales están «Pendiente: que el Cecoed las revise» (`lib/pantallas/que_hacer.dart:8`):
    mantener el aviso de «referencia» y no usar «validado por el Cecoed» en la ficha.
 5. Las notificaciones de **evacuación** (`lib/textos.dart:259`, `:316`) ya dicen que la orden la da el Cecoed y que
@@ -112,7 +112,7 @@ ni lenguaje alarmista («¡peligro!», «catástrofe») en el título o las capt
   `lib/push.dart:106`) y sin conexión (copia local: `lib/datos.dart:171`).
 - **Datos desactualizados**: la app muestra fecha y hora del dato y avisa si es viejo (`lib/pantallas/inicio.dart:49`,
   `:179`); mantenerlo, es una defensa frente a «Misleading claims».
-- **Teléfonos de la ficha/app**: el 911, el 150 1353 y los del Cecoed (`assets/config.json:5-11`) deben ser
+- **Teléfonos de la ficha/app**: el 911, el 150 1353 y los del Cecoed (`assets/config.json`, clave `contactos`) deben ser
   correctos; **PENDIENTE:** el dueño o el Cecoed los verifican antes de publicar.
 
 ## 5. Pruebas cerradas obligatorias para cuentas personales nuevas
@@ -146,7 +146,7 @@ con un enlace, contar los 14 días y llevar un registro simple de comentarios (f
 ## 6. Lista previa a enviar
 
 1. Política publicada en una URL y enlazada en la ficha **y** en la app (brecha 2).
-2. Frase de `ajustes.dart:358` corregida o aclarada (brecha 3).
+2. ~~Frase de `ajustes.dart` corregida o aclarada (brecha 3).~~ Resuelto en #35.
 3. Ficha con el texto de la sección 2 y sin logos ni palabras de organismos oficiales.
 4. Data safety y demás formularios como en `04`.
 5. Manifiesto fusionado del AAB final revisado (permisos y servicio en primer plano).
