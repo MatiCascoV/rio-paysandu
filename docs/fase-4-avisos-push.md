@@ -143,13 +143,16 @@ un "subió a EVACUACIÓN" a todos los suscritos, el urgente espera una segunda l
 
 - No frena a quien mantenga la mentira en el tiempo, ni a una fuente que repita el mismo error en dos lecturas.
   La solución de fondo es HTTPS o un feed firmado de CARU.
-- La revisión local de la app (`revisarNivel`, el respaldo) decide solo con `actual.json` y **no conoce esta
-  espera**: un teléfono con la app abierta o con el respaldo corriendo puede mostrar el urgente en la primera
-  lectura (con el texto "Dato a verificar por CARU."). Cerrarlo requiere un cambio en `app/` (que el respaldo
-  trate `dato_a_verificar` como "esperar" con el mismo tope de 60 minutos). Queda pendiente, sin hacer.
+- La revisión local de la app (`revisarNivel`: la app abierta y el respaldo de workmanager) **aplica la misma
+  espera** desde la rama `respaldo-m1` (`app/lib/confirmacion_urgente.dart`; detalle y prueba en el teléfono en
+  `docs/respaldo-m1.md`): guarda la candidata, avisa con la segunda lectura o a los 60 min (medidos con
+  `generado`, no con el reloj del teléfono) y un push urgente avisa de una porque el servidor ya confirmó.
+  Diferencia a propósito: si el teléfono pasó más de 60 min sin revisar y la lectura nueva contradice a la
+  candidata (salto de más de 1 m, otra fuente o fecha anterior), no avisa por tope y espera otra lectura.
 - **Si el lector se corta después de la primera lectura**, el urgente queda en espera hasta que vuelva a
-  publicar: la decisión se toma al publicar, no hay un reloj aparte. Lo mitigan el respaldo local de la app y
-  el issue automático `avisos-falla`. **Mejora futura (no implementada):** un chequeo de "urgente en espera sin
+  publicar: la decisión se toma al publicar, no hay un reloj aparte. Lo mitiga el issue automático
+  `avisos-falla`. El respaldo local de la app ya **no** lo mitiga: aplica la misma espera y también necesita
+  una publicación nueva (antes avisaba con la primera lectura). **Mejora futura (no implementada):** un chequeo de "urgente en espera sin
   publicaciones nuevas" que avise o fuerce el urgente pasado el plazo.
 - La confirmación exige la misma fuente: una primera lectura de Prefectura solo se confirma con otra de
   Prefectura (que llega una vez por día) o a los 60 minutos del tope.
@@ -163,6 +166,10 @@ un "subió a EVACUACIÓN" a todos los suscritos, el urgente espera una segunda l
   un nivel tiene dos publicaciones propias a 60 minutos o más dentro de la misma subida, el urgente sale. Lo
   que queda es este borde, con una sola publicación de cada nivel (una de alerta y la primera de evacuación,
   que todavía espera la suya): una publicación de evacuación no puede sacar una alerta.
+- Los dos bordes en los que `avisos.py` callaba una alerta sostenida (retención de alerta soltada en
+  evacuación; evacuación de una sola lectura tras un hueco de más de 2 h) los encontró la comparación con la
+  app (`lector/tests/casos_m1.py`) y se corrigieron en #46. Desde entonces la app y el servidor deciden lo
+  mismo en todos los casos de esa comparación (ver `docs/respaldo-m1.md`).
 - En el modo de dos archivos (`avisos.py ANTERIOR.json NUEVO.json`, solo para pruebas manuales) no hay
   historial: el urgente nunca sale. El workflow usa `--commit`.
 
