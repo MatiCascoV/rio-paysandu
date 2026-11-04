@@ -183,23 +183,27 @@ def _rango(nivel):
     return NIVELES_CON_DATO.index(nivel)
 
 
-def _racha_vencida(racha, nivel):
-    """True si ya se leyó historia de más: o bien una publicación del mismo nivel
-    pasó el plazo de confirmación contra la más vieja leída (el urgente de ese nivel
-    ya salió en ella o antes), o bien las publicaciones ANTERIORES abarcan más del
-    doble del plazo (una racha de nivel más alto ya tuvo su propio aviso). Se mide
-    contra la publicación anterior y no contra la nueva: tras un hueco de
-    publicaciones la nueva sigue evaluándose y sale por plazo. Con eso no se lee
-    más historia."""
+def _racha_vencida(racha):
+    """True si ya se leyó historia de más: una publicación ANTERIOR de algún nivel
+    L (el nuevo o uno más alto) pasó el plazo de confirmación contra la más vieja
+    leída, sin que el nivel baje de L entre las dos. Entonces el urgente de L ya
+    salió en ella o antes (por confirmación o por plazo): si L es el nivel nuevo,
+    ya avisó; si es más alto, la nueva es una bajada. En los dos casos la nueva no
+    avisa, así que no hace falta leer más historia.
+
+    Se mide contra publicaciones anteriores y no contra la nueva: tras un hueco
+    de publicaciones la nueva sigue evaluándose y sale por plazo. Un tramo largo
+    no alcanza para cortar: una evacuación de una sola lectura tras un hueco de
+    horas nunca avisó y la alerta que sigue tiene que poder salir."""
     vieja = _generado(racha[-1])
     if vieja is None:
         return False
-    reciente = _generado(racha[0])
-    if reciente is not None and reciente - vieja >= 2 * VENTANA_CONFIRMACION:
-        return True
-    for r in racha[:-1]:
+    piso = _rango(_nivel(racha[-1]))    # nivel mínimo desde r hasta la más vieja
+    for r in reversed(racha[:-1]):
+        rango = _rango(_nivel(r))
+        piso = min(piso, rango)
         g = _generado(r)
-        if _nivel(r) == nivel and g is not None and g - vieja >= VENTANA_CONFIRMACION:
+        if rango == piso and g is not None and g - vieja >= VENTANA_CONFIRMACION:
             return True
     return False
 
@@ -221,7 +225,11 @@ def _evento_en(cadena, j, pub_antes):
         s -= 1
     run = cadena[s:j + 1]
     if s == 0 and _retencion_confirma(pub_antes, nivel):
-        return (j == 0), ("confirmada" if j == 0 else "")
+        # Sale en la primera publicación DE ESE NIVEL: si la subida arranca en un
+        # nivel más alto (se retuvo alerta y se soltó evacuación), la alerta sale al
+        # volver a alerta y no queda muda.
+        primera = next(i for i, p in enumerate(run) if _nivel(p) == nivel)
+        return (primera == len(run) - 1), ("confirmada" if primera == len(run) - 1 else "")
     gen0 = _generado(run[0])
     for i in range(1, len(run)):
         p = run[i]
@@ -301,9 +309,10 @@ def decidir(nuevo, anteriores):
         if buscar_nivel and _nivel(anterior):
             if _rango(_nivel(anterior)) >= _rango(nivel_ahora):
                 racha.append(anterior)
-                if _racha_vencida(racha, nivel_ahora):
-                    # La publicación anterior ya había pasado el plazo: el urgente
-                    # (si correspondía) salió antes. No se lee más historia.
+                if _racha_vencida(racha):
+                    # Una publicación anterior del nivel nuevo o de uno más alto ya
+                    # había pasado el plazo: ese urgente salió antes y la nueva no
+                    # avisa. No se lee más historia.
                     buscar_nivel = False
                     racha = None
             else:
