@@ -146,9 +146,10 @@ un "subió a EVACUACIÓN" a todos los suscritos, el urgente espera una segunda l
 - La revisión local de la app (`revisarNivel`: la app abierta y el respaldo de workmanager) **aplica la misma
   espera** desde la rama `respaldo-m1` (`app/lib/confirmacion_urgente.dart`; detalle y prueba en el teléfono en
   `docs/respaldo-m1.md`): guarda la candidata, avisa con la segunda lectura o a los 60 min (medidos con
-  `generado`, no con el reloj del teléfono) y un push urgente avisa de una porque el servidor ya confirmó.
-  Diferencia a propósito: si el teléfono pasó más de 60 min sin revisar y la lectura nueva contradice a la
-  candidata (salto de más de 1 m, otra fuente o fecha anterior), no avisa por tope y espera otra lectura.
+  `generado` de las publicaciones, no con el reloj del teléfono; el tope sale aunque la lectura no confirme,
+  como acá) y un push urgente avisa de una porque el servidor ya confirmó (si el dato todavía no lo muestra o
+  no se pudo bajar, queda anotado para la revisión siguiente). Como el teléfono solo ve lo que baja, puede
+  avisar más tarde o más temprano que el servidor si se salteó publicaciones.
 - **Si el lector se corta después de la primera lectura**, el urgente queda en espera hasta que vuelva a
   publicar: la decisión se toma al publicar, no hay un reloj aparte. Lo mitiga el issue automático
   `avisos-falla`. El respaldo local de la app ya **no** lo mitiga: aplica la misma espera y también necesita

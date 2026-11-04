@@ -169,7 +169,7 @@ void main() {
       final urgente = avisos.singleWhere((a) => a.tipo == TipoAviso.urgente);
       expect(urgente.titulo, 'Río Uruguay: subió a ALERTA');
       expect(urgente.texto, contains('Dato a verificar por CARU.'));
-      expect(prefs.getString('ultimo_nivel'), 'alerta');
+      expect(nivelVisto(prefs), nivelDesdeTexto('alerta'));
       // Mismo nivel en la pasada siguiente: no se repite.
       expect(await decidirAvisos(dudoso, prefs, ahora), isEmpty);
     });
@@ -190,7 +190,7 @@ void main() {
       expect(primera.where((a) => a.tipo == TipoAviso.urgente), isEmpty);
       final avisos = await decidirAvisos(Actual.desdeJson(jsonDecode(actualReal))!, prefs, atrasado);
       expect(avisos.where((a) => a.tipo == TipoAviso.urgente), hasLength(1));
-      expect(prefs.getString('ultimo_nivel'), 'alerta');
+      expect(nivelVisto(prefs), nivelDesdeTexto('alerta'));
     });
   });
 

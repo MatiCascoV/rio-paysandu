@@ -101,10 +101,10 @@ void main() {
       // Altura de hace 3 días: el nivel vigente es "sin dato" y no se recuerda.
       final viejo = actualEn('2026-10-09T08:00', medido: '2026-10-06T08:00', prefectura: null);
       expect(await decidirAvisos(viejo, prefs, ahora), isEmpty);
-      expect(prefs.getString(claveUltimoNivel), 'atencion');
+      expect(nivelVisto(prefs), nivelDesdeTexto('atencion'));
       final sinNivel = actualEn('2026-10-09T08:00', nivel: 'sin_dato', prefectura: null);
       expect(await decidirAvisos(sinNivel, prefs, ahora), isEmpty);
-      expect(prefs.getString(claveUltimoNivel), 'atencion');
+      expect(nivelVisto(prefs), nivelDesdeTexto('atencion'));
       expect(await decidirAvisos(a('alerta', '08:00'), prefs, ahora), isEmpty);
       expect(tipos(await decidirAvisos(a('alerta', '08:30'), prefs, ahora)), [TipoAviso.urgente]);
 
@@ -124,7 +124,7 @@ void main() {
     test('apagado no avisa, pero igual recuerda el nivel', () async {
       final prefs = await prefsCon({...todoPrendido, claveUrgente: false, claveUltimoNivel: 'normal'});
       expect(await decidirAvisos(a('alerta'), prefs, ahora), isEmpty);
-      expect(prefs.getString(claveUltimoNivel), 'alerta');
+      expect(nivelVisto(prefs), nivelDesdeTexto('alerta'));
     });
   });
 
@@ -360,7 +360,7 @@ void main() {
       final avisos = await avisosDePush(urgente, prefs, sinRed, reloj: () => ahora);
       expect(avisos.single.titulo, 'Río Uruguay: hay novedades');
       expect(avisos.single.texto, isNot(contains(' m ')));
-      expect(prefs.getString(claveUltimoNivel), 'atencion'); // no cuenta como visto
+      expect(nivelVisto(prefs), nivelDesdeTexto('atencion')); // no cuenta como visto
       expect(
           await avisosDePush({'tipo': 'resumen', 'fuente': 'prefectura', 'ciudad': 'paysandu'}, prefs, sinRed,
               reloj: () => ahora),
@@ -399,7 +399,7 @@ void main() {
       }, reloj: () => ahora);
       expect(bajadas, 2);
       expect(avisos, [avisoUrgenteSinDato]);
-      expect(prefs.getString(claveUltimoNivel), 'atencion');
+      expect(nivelVisto(prefs), nivelDesdeTexto('atencion'));
       expect(tipos(await decidirAvisos(alerta, prefs, ahora)), [TipoAviso.urgente]);
     });
 

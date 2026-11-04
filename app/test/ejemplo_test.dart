@@ -60,9 +60,9 @@ void main() {
     // con el río ya en alerta) la había visto una revisión anterior.
     final antes = DateTime.now().toUtc().subtract(const Duration(minutes: 60));
     final claves = await abrirApp(t, Repositorio(config.urlBase, cliente: clienteDeEjemplo('alerta')), mas: {
-      'ultimo_nivel': 'alerta',
-      'ultimo_nivel_generado': antes.toIso8601String(),
       'urgente_confirmacion': jsonEncode({
+        'nivel': 'alerta',
+        'visto': antes.toIso8601String(),
         'alerta': {
           'inicio': {
             'generado': antes.toIso8601String(),
@@ -74,7 +74,7 @@ void main() {
         },
       }),
     });
-    expect(claves.keys, containsAll(['cache_actual', 'cache_umbrales', 'cache_historial', 'ultimo_nivel']));
+    expect(claves.keys, containsAll(['cache_actual', 'cache_umbrales', 'cache_historial', 'urgente_confirmacion']));
     expect(llamadas, contains('show'));
   });
 

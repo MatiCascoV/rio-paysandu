@@ -38,17 +38,15 @@ class Pub {
 
 /// Lo que el teléfono recuerda entre revisiones, como en _decidir de avisos.dart.
 class Telefono {
-  Nivel? anterior;
-  DateTime? visto;
-  EstadoM1 estado = const EstadoM1();
+  EstadoM1 estado;
   String ultimoComo = '';
 
-  Telefono([this.anterior]);
+  /// [anterior]: como si viniera de la versión anterior con `ultimo_nivel` guardado.
+  Telefono([Nivel? anterior]) : estado = EstadoM1(nivel: anterior);
 
   Nivel? ve(Pub p, {Nivel? push, DateTime? enviado}) {
     final paso = pasoM1(estado,
-        anterior: push != null && anterior == null ? Nivel.normal : anterior,
-        vistoAntes: visto,
+        anterior: estado.nivel,
         nivel: p.nivel,
         lectura: p.lecturaM1,
         retenidoAhora: p.retenido,
@@ -56,8 +54,6 @@ class Telefono {
         enviado: enviado,
         ahora: min(p.minuto));
     estado = EstadoM1.desdeJson(jsonDecode(jsonEncode(paso.estado.aJson()))); // ida y vuelta por SharedPreferences
-    anterior = p.nivel;
-    visto = min(p.minuto);
     ultimoComo = paso.como;
     return paso.sale;
   }
@@ -123,10 +119,18 @@ void main() {
     });
 
     test('la retención soltada al mismo nivel ya viene confirmada; a otro nivel no', () {
-      expect(Telefono(at).secuencia([Pub(30, at, 5.6, retenido: al), Pub(60, al, 5.9), Pub(90, al, 5.95)]),
+      expect(Telefono(at).secuencia([Pub(50, at, 5.6, retenido: al), Pub(60, al, 5.9), Pub(90, al, 5.95)]),
           [null, al, null]);
-      expect(Telefono(at).secuencia([Pub(30, at, 5.6, retenido: al), Pub(60, ev, 6.7), Pub(90, ev, 6.75)]),
+      expect(Telefono(at).secuencia([Pub(50, at, 5.6, retenido: al), Pub(60, ev, 6.7), Pub(90, ev, 6.75)]),
           [null, null, ev]);
+    });
+
+    test('una retención vista hace rato (no la publicación anterior) no confirma', () {
+      // El servidor mira solo la publicación anterior (pub_antes): acá, hasta 40 min antes.
+      expect(Telefono(at).secuencia([Pub(30, at, 5.6, retenido: al), Pub(200, al, 5.9), Pub(230, al, 5.95)]),
+          [null, null, al]);
+      expect(Telefono(at).secuencia([Pub(30, at, 5.6, retenido: al), Pub(71, al, 5.9)]), [null, null]);
+      expect(Telefono(at).secuencia([Pub(30, at, 5.6, retenido: al), Pub(70, al, 5.9)]), [null, al]);
     });
 
     test('bajar reinicia la espera y una nueva subida vuelve a avisar', () {
@@ -158,7 +162,6 @@ void main() {
       t.ve(Pub(30, al, 5.9, lectura: 25));
       final paso = pasoM1(t.estado,
           anterior: al,
-          vistoAntes: t.visto,
           nivel: al,
           lectura: LecturaM1(generado: null, fecha: min(25), valorM: 5.9, fuente: estacion),
           retenidoAhora: null,
@@ -191,15 +194,19 @@ void main() {
       expect(Telefono(at).secuencia([Pub(30, al, 5.9, lectura: 25), Pub(200, al, 5.9, lectura: 25)]), [null, al]);
     });
 
-    test('más de 60 min sin revisar y la lectura contradice a la candidata: no sale por tope, espera otra', () {
-      final t = Telefono(at);
-      expect(t.secuencia([Pub(30, al, 5.9), Pub(200, al, 7.2)]), [null, null]); // salto de 1,3 m
-      expect(t.ultimoComo, 'espera');
-      expect(t.ve(Pub(230, al, 7.25)), al); // la candidata nueva se confirma
-      // Otra fuente después del hueco: lo mismo.
-      final u = Telefono(at);
-      expect(u.secuencia([Pub(30, al, 5.9), Pub(200, al, 5.95, fuente: 'Prefectura'), Pub(230, al, 5.96, fuente: 'Prefectura')]),
-          [null, null, al]);
+    test('más de 60 min sin revisar y la lectura no confirma (salto u otra fuente): sale por tope, como el servidor', () {
+      expect(Telefono(at).secuencia([Pub(30, al, 5.9), Pub(200, al, 7.2)]), [null, al]); // salto de 1,3 m
+      expect(Telefono(at).secuencia([Pub(30, al, 5.9), Pub(200, al, 5.95, fuente: 'Prefectura')]), [null, al]);
+    });
+
+    test('fuentes alternadas o salto sostenido con revisiones espaciadas no callan el urgente', () {
+      final fuentes = [estacion, 'Prefectura'];
+      final alternadas = [for (var i = 0; i < 6; i++) Pub(30 + 90 * i, al, 5.9, fuente: fuentes[i % 2])];
+      expect(Telefono(at).secuencia(alternadas).whereType<Nivel>(), [al]);
+      final saltos = [for (var i = 0; i < 6; i++) Pub(30 + 90 * i, al, 5.9 + 1.5 * (i % 2))];
+      expect(Telefono(at).secuencia(saltos).whereType<Nivel>(), [al]);
+      // El lector publicando cada 70 min: sale a la segunda.
+      expect(Telefono(at).secuencia([Pub(0, al, 5.9), Pub(70, al, 7.5, fuente: 'Prefectura')]), [null, al]);
     });
 
     test('con revisiones seguidas el salto sostenido sale a los 60 min (no se vio un hueco)', () {
@@ -281,7 +288,7 @@ void main() {
 
     test('nivel_retenido del lector llega al teléfono', () async {
       final p = await prefs({claveUrgente: true, claveUltimoNivel: 'atencion'});
-      expect(await titulos(pub('08:30', 'atencion', 5.6, retenido: {'nivel': 'alerta'}), p), isEmpty);
+      expect(await titulos(pub('08:50', 'atencion', 5.6, retenido: {'nivel': 'alerta'}), p), isEmpty);
       expect(await titulos(pub('09:00', 'alerta', 5.9), p), ['Río Uruguay: subió a ALERTA']);
     });
 
@@ -321,6 +328,69 @@ void main() {
       expect(await titulos(pub('08:30', 'alerta', 5.9), p), ['Río Uruguay: subió a ALERTA']);
       expect(await titulos(pub('09:00', 'alerta', 5.95), p), isEmpty);
     });
+
+    test('push que no pudo bajar el dato: también queda anotado', () async {
+      final p = await prefs({claveUrgente: true, claveUltimoNivel: 'atencion'});
+      final avisos = <Aviso>[];
+      await atenderMensajePush({'tipo': 'urgente', 'nivel': 'alerta', 'ciudad': 'paysandu'}, p,
+          (_) => Future.error(Exception('sin red')), (a) async => avisos.add(a),
+          enviado: DateTime.parse('2026-10-17T08:32:00-03:00'), reloj: () => ahora, espera: Duration.zero);
+      expect(avisos, [avisoUrgenteSinDato]);
+      expect(leerEstadoM1(p).push?.nivel, Nivel.alerta);
+      expect(await titulos(pub('08:30', 'alerta', 5.9), p), ['Río Uruguay: subió a ALERTA']);
+    });
+
+    test('el teléfono avisó antes que el servidor: el push de la misma subida no se repite', () async {
+      // Lo último que vio es de más de 20 min antes del envío, pero él mismo avisó esa subida hace poco.
+      final p = await prefs({claveUrgente: true, claveUltimoNivel: 'atencion'});
+      expect(await titulos(pub('08:00', 'alerta', 5.9), p), isEmpty);
+      expect(await titulos(pub('08:30', 'alerta', 5.95), p), ['Río Uruguay: subió a ALERTA']);
+      final avisos = <Aviso>[];
+      await atenderMensajePush({'tipo': 'urgente', 'nivel': 'alerta', 'ciudad': 'paysandu'}, p,
+          (_) async => Datos(actual: pub('09:00', 'alerta', 6.0)), (a) async => avisos.add(a),
+          enviado: DateTime.parse('2026-10-17T09:15:00-03:00'), reloj: () => ahora, espera: Duration.zero);
+      expect(avisos, isEmpty);
+    });
+
+    test('una bajada no vista: el push de horas después sí avisa', () async {
+      final p = await prefs({claveUrgente: true, claveUltimoNivel: 'atencion'});
+      await titulos(pub('03:00', 'alerta', 5.9), p);
+      expect(await titulos(pub('03:30', 'alerta', 5.95), p), ['Río Uruguay: subió a ALERTA']);
+      final avisos = <Aviso>[];
+      await atenderMensajePush({'tipo': 'urgente', 'nivel': 'alerta', 'ciudad': 'paysandu'}, p,
+          (_) async => Datos(actual: pub('09:00', 'alerta', 6.0)), (a) async => avisos.add(a),
+          enviado: DateTime.parse('2026-10-17T09:05:00-03:00'), reloj: () => ahora, espera: Duration.zero);
+      expect(avisos.single.titulo, 'Río Uruguay: subió a ALERTA');
+    });
+
+    test('caché vieja: una publicación anterior a la última vista no toca nada', () async {
+      final p = await prefs({claveUrgente: true, claveUltimoNivel: 'atencion'});
+      expect(await titulos(pub('08:30', 'alerta', 5.9), p), isEmpty);
+      expect(await titulos(pub('09:00', 'alerta', 5.95), p), ['Río Uruguay: subió a ALERTA']);
+      final guardado = p.getString(claveConfirmacionUrgente);
+      expect(await titulos(pub('08:00', 'atencion', 5.6), p), isEmpty); // copia vieja
+      expect(p.getString(claveConfirmacionUrgente), guardado);
+      expect(await titulos(pub('09:30', 'alerta', 6.0), p), isEmpty); // no se repite
+    });
+
+    test('todo en una sola clave: migra ultimo_nivel y ultimo_nivel_generado y los borra', () async {
+      final p = await prefs({
+        claveUrgente: true,
+        claveUltimoNivel: 'atencion',
+        claveUltimoGenerado: '2026-10-17T11:00:00.000Z', // 08:00 en Uruguay
+      });
+      expect(nivelVisto(p), Nivel.atencion);
+      expect(await titulos(pub('08:30', 'alerta', 5.9), p), isEmpty);
+      expect(p.containsKey(claveUltimoNivel), isFalse);
+      expect(p.containsKey(claveUltimoGenerado), isFalse);
+      final e = leerEstadoM1(p);
+      expect(e.nivel, Nivel.alerta);
+      expect(e.visto, DateTime.parse('2026-10-17T08:30:00-03:00'));
+      expect(e.rachas[Nivel.alerta]?.avisado, isFalse);
+      // Una copia de las claves viejas que quedara no pisa lo nuevo.
+      await p.setString(claveUltimoNivel, 'normal');
+      expect(nivelVisto(p), Nivel.alerta);
+    });
   });
 
   group('los mismos casos que decidió el servidor (avisos.py)', () {
@@ -335,22 +405,32 @@ void main() {
       expect(todos, containsAll(['alerta', 'evacuacion', null]));
     });
 
-    test('viendo solo algunas publicaciones (revisiones salteadas): nunca con la primera, nunca dos veces', () {
+    test('viendo solo algunas publicaciones (revisiones salteadas): nunca con la primera, nunca dos veces, '
+        'y avisa si el servidor avisó y vio dos lecturas del nivel a 60 min o más', () {
       final azar = Random(20261104);
+      var vivacidadComprobada = 0;
       for (final caso in casos) {
+        final filas = (caso['pubs'] as List).cast<List>();
+        final servidor = (caso['urgentes'] as List).cast<String?>();
+        final niveles = [for (final f in filas) nivelDesdeTexto(f[1] as String)];
         for (var vuelta = 0; vuelta < 5; vuelta++) {
           final t = Telefono();
           Nivel? antes;
           final avisadoEnLaSubida = <Nivel, bool>{};
-          for (final f in (caso['pubs'] as List).cast<List>()) {
+          final vistas = <int>[];
+          final salidas = <int, Nivel>{};
+          for (var i = 0; i < filas.length; i++) {
             if (azar.nextDouble() < 0.5) continue; // esta revisión no corrió
-            final nivel = nivelDesdeTexto(f[1] as String);
+            final f = filas[i];
+            final nivel = niveles[i];
+            vistas.add(i);
             final sale = t.ve(Pub(f[0] as int, nivel, (f[2] as num).toDouble(),
                 lectura: f[3] as int, fuente: fuentes[f[4] as int]));
             for (final x in nivelesUrgentes) {
               if (ordenDeNivel(nivel) < ordenDeNivel(x)) avisadoEnLaSubida.remove(x);
             }
             if (sale != null) {
+              salidas[i] = sale;
               expect(sale, nivel, reason: 'solo avisa el nivel que muestra el dato');
               expect(antes != null && ordenDeNivel(antes) >= ordenDeNivel(sale), isTrue,
                   reason: 'nunca con la primera lectura vista de la subida: ${caso['nombre']}');
@@ -359,8 +439,36 @@ void main() {
             }
             antes = nivel;
           }
+          // Vivacidad: por cada subida (racha continua con x o más) en la que el servidor
+          // avisó x, si el teléfono vio antes una publicación más baja y vio 2 o más
+          // lecturas de x con 60 min o más entre ellas, tiene que haber avisado x (o más).
+          for (final x in nivelesUrgentes) {
+            var i = 0;
+            while (i < filas.length) {
+              if (ordenDeNivel(niveles[i]) < ordenDeNivel(x)) {
+                i++;
+                continue;
+              }
+              var j = i;
+              while (j + 1 < filas.length && ordenDeNivel(niveles[j + 1]) >= ordenDeNivel(x)) {
+                j++;
+              }
+              final servidorAviso = [for (var k = i; k <= j; k++) servidor[k]].contains(nivelATexto(x));
+              final antesVista = vistas.where((k) => k < i);
+              final base = antesVista.isNotEmpty && ordenDeNivel(niveles[antesVista.last]) < ordenDeNivel(x);
+              final deX = [for (final k in vistas) if (k >= i && k <= j && niveles[k] == x) filas[k][0] as int];
+              if (servidorAviso && base && deX.length >= 2 && deX.last - deX.first >= 60) {
+                vivacidadComprobada++;
+                final avisoTelefono = salidas.entries
+                    .any((e) => e.key >= i && e.key <= j && ordenDeNivel(e.value) >= ordenDeNivel(x));
+                expect(avisoTelefono, isTrue, reason: 'calló ${nivelATexto(x)}: ${caso['nombre']} vistas=$vistas');
+              }
+              i = j + 1;
+            }
+          }
         }
       }
+      expect(vivacidadComprobada, greaterThan(100)); // que la propiedad se haya comprobado de verdad
     });
 
     for (final caso in casos) {

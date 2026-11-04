@@ -2,7 +2,8 @@ name: Tests del lector
 
 on:
   push:
-    paths: ["lector/**", "pytest.ini", ".github/workflows/tests.yml"]
+    # El fixture de la app lo genera y lo comprueba lector/tests/test_casos_m1_app.py.
+    paths: ["lector/**", "pytest.ini", ".github/workflows/tests.yml", "app/test/fixtures/casos_m1_servidor.json"]
   pull_request:
 
 permissions:

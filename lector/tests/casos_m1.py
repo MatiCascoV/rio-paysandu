@@ -133,15 +133,26 @@ def _aleatoria_cada_10(azar):
     return [_fila(10 * i, n, round(altura[n] + 0.01 * (i // 3), 2), 30 * (i // 3)) for i, n in enumerate(niveles)]
 
 
-def _aleatoria_con_huecos(azar):
-    """Como test_propiedades_con_saltos_de_tiempo_aleatorios: con huecos de publicación."""
+def _aleatoria_con_huecos(azar, raras=False):
+    """Como test_propiedades_con_saltos_de_tiempo_aleatorios: con huecos de publicación.
+    Con `raras`, además la fuente cambia con probabilidad 0,1 en cada publicación
+    (y sigue así) y una de cada 10 trae un salto de 1,5 m."""
     niveles, tiempos = ["atencion"], [0]
     for _ in range(azar.randint(8, 30)):
         niveles.append(niveles[-1] if azar.random() < 0.75
                        else azar.choice(["normal", "atencion", "alerta", "evacuacion"]))
         tiempos.append(tiempos[-1] + azar.choice([10, 10, 10, 10, 20, 30, 70, 130, 200]))
     altura = {"normal": 4.0, "atencion": 5.0, "alerta": 5.9, "evacuacion": 6.8}
-    return [_fila(t, n, round(altura[n] + 0.01 * (t // 30), 2), 30 * (t // 30)) for n, t in zip(niveles, tiempos)]
+    filas, fuente = [], 0
+    for n, t in zip(niveles, tiempos):
+        valor = altura[n] + 0.01 * (t // 30)
+        if raras:
+            if azar.random() < 0.1:
+                fuente = 1 - fuente
+            if azar.random() < 0.1:
+                valor += 1.5
+        filas.append(_fila(t, n, round(valor, 2), 30 * (t // 30), fuente))
+    return filas
 
 
 def generar():
@@ -154,6 +165,10 @@ def generar():
         casos.append({"nombre": f"cada 10 min #{i}", "pubs": _aleatoria_cada_10(azar)})
     for i in range(100):
         casos.append({"nombre": f"con huecos #{i}", "pubs": _aleatoria_con_huecos(azar)})
+    # Aparte, con su propio azar, para no cambiar los casos de arriba.
+    otro = random.Random(20261105)
+    for i in range(100):
+        casos.append({"nombre": f"con huecos, fuentes y saltos #{i}", "pubs": _aleatoria_con_huecos(otro, raras=True)})
     for c in casos:
         c["urgentes"] = _decidir_secuencia(plantilla, c["pubs"])
     return {

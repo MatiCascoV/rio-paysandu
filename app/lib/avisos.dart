@@ -46,8 +46,11 @@ const claveUltimoResumen = 'ultimo_resumen_dia';
 /// `generado` de la última publicación con dato que vio este teléfono.
 const claveUltimoGenerado = 'ultimo_nivel_generado';
 
-/// M-1: la subida en curso a cada nivel urgente (candidata y si ya se avisó) y un
-/// push urgente que llegó antes que el dato (ver confirmacion_urgente.dart).
+/// Todo lo del urgente en una sola clave (JSON, ver EstadoM1 en
+/// confirmacion_urgente.dart): último nivel con dato visto y su `generado`, la
+/// subida en curso a cada nivel urgente (M-1: candidata y si ya se avisó) y un push
+/// urgente que llegó antes que el dato. Reemplaza a [claveUltimoNivel] y
+/// [claveUltimoGenerado], que se leen una vez para migrar y se borran.
 const claveConfirmacionUrgente = 'urgente_confirmacion';
 
 Object? _json(String? texto) {
@@ -121,6 +124,7 @@ const _clavesDeInstalacionExistente = [
   claveViejaActivos,
   claveUrl,
   claveUltimoNivel,
+  claveConfirmacionUrgente,
   'permiso_avisos_pedido', // notificaciones.dart (acá no se importa: lleva plugins)
   'temas_al_dia', // push.dart, ídem
   'tema', // claro/oscuro, en main.dart
@@ -309,10 +313,25 @@ enum Origen { app, respaldo, push }
 ///   la altura; dos notificaciones juntas sobran).
 Future<List<Aviso>> decidirAvisos(Actual actual, SharedPreferences prefs, DateTime ahora,
     {Origen origen = Origen.respaldo, Nivel? subidaInformada, DateTime? enviado}) async {
-  // Dentro de un mismo isolate (la app abierta y un push en primer plano) las
-  // decisiones van de a una: si no, las dos leerían la marca vieja y avisarían
-  // las dos. Entre isolates distintos queda una ventana de milisegundos; en el
-  // peor caso, la notificación repetida reemplaza a la primera (mismo número).
+  return _enTurno(() => _decidir(actual, prefs, ahora, origen, subidaInformada, enviado));
+}
+
+/// Dentro de un mismo isolate (la app abierta y un push en primer plano) las
+/// decisiones van de a una: si no, las dos leerían lo guardado viejo y avisarían
+/// las dos.
+///
+/// Entre isolates distintos (push con la app cerrada y workmanager) no hay
+/// candado: queda una ventana de milisegundos entre que uno lee lo guardado y lo
+/// escribe. En el peor caso los dos avisan (la notificación repetida reemplaza a
+/// la primera: mismo número) o el que escribe último pisa lo del otro (por
+/// ejemplo, una candidata nueva o un push anotado), y eso se rehace con la
+/// revisión siguiente.
+///
+/// Lo guardado se escribe ANTES de mostrar la notificación: si Android mata el
+/// proceso entre las dos cosas, ese urgente queda como avisado y no se muestra
+/// (se prefiere eso a repetirlo en cada revisión). El push urgente ya mostró el
+/// genérico "hay novedades" si tuvo que esperar el dato.
+Future<T> _enTurno<T>(Future<T> Function() tarea) async {
   while (_decidiendo) {
     final turno = Completer<void>();
     _enEspera.add(turno);
@@ -320,12 +339,46 @@ Future<List<Aviso>> decidirAvisos(Actual actual, SharedPreferences prefs, DateTi
   }
   _decidiendo = true;
   try {
-    return await _decidir(actual, prefs, ahora, origen, subidaInformada, enviado);
+    return await tarea();
   } finally {
     _decidiendo = false;
     if (_enEspera.isNotEmpty) _enEspera.removeAt(0).complete();
   }
 }
+
+/// Si lo último visto es de más de esto después del reloj del teléfono, no se usa
+/// para descartar un dato por viejo (ver `_decidir`).
+const margenFuturoVisto = Duration(hours: 6);
+
+/// Lo guardado del urgente. Si todavía no hay nada, toma `ultimo_nivel` y
+/// `ultimo_nivel_generado` de la versión anterior.
+EstadoM1 leerEstadoM1(SharedPreferences prefs) => EstadoM1.desdeJson(_json(prefs.getString(claveConfirmacionUrgente)),
+    nivelViejo: prefs.getString(claveUltimoNivel), vistoViejo: prefs.getString(claveUltimoGenerado));
+
+/// Último nivel con dato que vio este teléfono (por cualquiera de las tres puertas).
+Nivel? nivelVisto(SharedPreferences prefs) => leerEstadoM1(prefs).nivel;
+
+/// Todo junto, en una sola escritura. Las claves de antes ya quedaron adentro: se
+/// borran después de escribir (un corte en el medio no pierde nada).
+Future<void> _guardarEstado(SharedPreferences prefs, EstadoM1 estado) async {
+  await prefs.setString(claveConfirmacionUrgente, jsonEncode(estado.aJson()));
+  if (prefs.containsKey(claveUltimoNivel)) await prefs.remove(claveUltimoNivel);
+  if (prefs.containsKey(claveUltimoGenerado)) await prefs.remove(claveUltimoGenerado);
+}
+
+/// Anota un push urgente que el dato todavía no muestra (ver [PushPendiente]). Si
+/// ya había uno de un nivel más alto, queda ese.
+Future<void> _anotarPush(SharedPreferences prefs, EstadoM1 estado, Nivel nivel, DateTime enviado) {
+  final previo = estado.push;
+  if (previo != null && ordenNivel(previo.nivel) > ordenNivel(nivel)) return Future.value();
+  return _guardarEstado(prefs, estado.conPush(PushPendiente(nivel, enviado)));
+}
+
+/// Para el push que no pudo bajar el dato: anota el urgente para la próxima revisión.
+Future<void> anotarPushUrgente(SharedPreferences prefs, Nivel nivel, DateTime enviado) => _enTurno(() async {
+      await prefs.reload();
+      await _anotarPush(prefs, leerEstadoM1(prefs), nivel, enviado);
+    });
 
 bool _decidiendo = false;
 final _enEspera = <Completer<void>>[];
@@ -350,18 +403,37 @@ Future<List<Aviso>> _decidir(Actual actual, SharedPreferences prefs, DateTime ah
   // El nivel lo calcula el lector (con su margen al bajar); acá se descarta un dato viejo y se cruza con la altura (nunca baja la gravedad).
   final nivel = actual.nivelVigente(ahora, prefs.getInt(claveHorasSinDato) ?? 48);
   final lectura = LecturaM1.de(actual);
-  if (nivel == Nivel.sinDato || lectura == null) return const []; // "sin dato" ni avisa ni se recuerda
-  final guardado = prefs.getString(claveUltimoNivel);
-  var anterior = guardado == null ? null : nivelDesdeTexto(guardado);
-  if (anterior == Nivel.sinDato) anterior = null;
-  final visto = DateTime.tryParse(prefs.getString(claveUltimoGenerado) ?? '');
-  if (subidaInformada != null) {
-    if (anterior == null) {
-      anterior = Nivel.normal;
-    } else if (ordenNivel(anterior) >= ordenNivel(subidaInformada) &&
-        enviado != null &&
-        visto != null &&
-        visto.isBefore(enviado.subtract(margenEnvio))) {
+  final estado = leerEstadoM1(prefs);
+  if (nivel == Nivel.sinDato || lectura == null) {
+    // "sin dato" ni avisa ni se recuerda; un push urgente queda anotado.
+    if (subidaInformada != null) await _anotarPush(prefs, estado, subidaInformada, enviado ?? ahora);
+    return const [];
+  }
+  final visto = estado.visto;
+  final generado = actual.generado;
+  // Caché vieja: una publicación anterior a la última vista no cambia nada (si no,
+  // un nivel más bajo reiniciaría la subida y el urgente se repetiría). Salvo que lo
+  // visto sea de bastante después del reloj del teléfono: así un `generado` mal
+  // puesto en el futuro no congela los avisos para siempre.
+  if (generado != null &&
+      visto != null &&
+      generado.isBefore(visto) &&
+      !visto.isAfter(ahora.add(margenFuturoVisto))) {
+    if (subidaInformada != null) await _anotarPush(prefs, estado, subidaInformada, enviado ?? ahora);
+    return const [];
+  }
+  var anterior = estado.nivel;
+  if (subidaInformada != null && anterior != null && enviado != null && visto != null) {
+    // Lo último que vio es de bastante antes del envío y ya estaba en ese nivel o
+    // más: hubo una bajada en el medio que el teléfono no vio. Salvo que el propio
+    // teléfono haya avisado esta subida hace poco (antes que el servidor, que
+    // espera hasta 60 min y manda con hasta [margenEnvio] de atraso).
+    final avisadoEn = estado.rachas[subidaInformada]?.avisadoEn;
+    final avisoReciente =
+        avisadoEn != null && !avisadoEn.isBefore(enviado.subtract(ventanaConfirmacion + margenEnvio));
+    if (ordenNivel(anterior) >= ordenNivel(subidaInformada) &&
+        visto.isBefore(enviado.subtract(margenEnvio)) &&
+        !avisoReciente) {
       anterior = subidaInformada == Nivel.evacuacion ? Nivel.alerta : Nivel.atencion;
     }
   }
@@ -372,9 +444,8 @@ Future<List<Aviso>> _decidir(Actual actual, SharedPreferences prefs, DateTime ah
   // ya avisada. Lo prueba "el mismo urgente por dos temas (dos pushes iguales) avisa
   // una sola vez" en avisos_test.dart.
   final paso = pasoM1(
-    EstadoM1.desdeJson(_json(prefs.getString(claveConfirmacionUrgente))),
+    estado,
     anterior: anterior,
-    vistoAntes: visto,
     nivel: nivel,
     lectura: lectura,
     retenidoAhora: actual.nivelRetenido,
@@ -382,10 +453,7 @@ Future<List<Aviso>> _decidir(Actual actual, SharedPreferences prefs, DateTime ah
     enviado: enviado,
     ahora: ahora,
   );
-  await prefs.setString(claveConfirmacionUrgente, jsonEncode(paso.estado.aJson()));
-  await prefs.setString(claveUltimoNivel, nivelATexto(nivel));
-  final generado = actual.generado;
-  if (generado != null) await prefs.setString(claveUltimoGenerado, generado.toUtc().toIso8601String());
+  await _guardarEstado(prefs, paso.estado);
 
   final avisos = <Aviso>[];
   final sale = paso.sale;
@@ -500,7 +568,12 @@ Future<void> atenderMensajePush(Map<String, Object?> datos, SharedPreferences pr
     await Future<void>.delayed(espera);
     actual = await bajarUna() ?? actual;
   }
-  if (actual == null) return;
+  if (actual == null) {
+    // Sin dato: el genérico ya salió. El urgente queda anotado para que la próxima
+    // revisión que vea la subida avise sin esperar otra lectura (el servidor ya confirmó).
+    if (urgente) await anotarPushUrgente(prefs, mensaje.nivel!, enviado ?? reloj());
+    return;
+  }
   for (final aviso in await decidirAvisos(actual, prefs, reloj(),
       origen: Origen.push, subidaInformada: urgente ? mensaje.nivel : null, enviado: enviado)) {
     await mostrar(aviso);
@@ -519,7 +592,7 @@ String _tema(String tipo, bool prueba) => '${prueba ? 'prueba-' : ''}$tipo-$ciud
 /// resumen → resumen-paysandu. Un solo tema urgente por teléfono: avisos.yml
 /// manda el urgente de evacuación en dos mensajes (uno a cada tema urgente) y
 /// así le llega uno solo. Si quedara en los dos (sincronización a medias), le
-/// llegan dos pushes, pero la app no repite el aviso (claveUltimoNivel, en _decidir).
+/// llegan dos pushes, pero la app no repite el aviso (claveConfirmacionUrgente, en _decidir).
 Set<String> temasDeseados(PreferenciasAvisos p, {bool prueba = temasDePrueba}) => {
       if (p.urgente) _tema(p.desde == Nivel.evacuacion ? 'evacuacion' : 'alerta', prueba),
       if (p.resumen) _tema('resumen', prueba),
