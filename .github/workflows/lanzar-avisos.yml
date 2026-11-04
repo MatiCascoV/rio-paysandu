@@ -224,8 +224,8 @@ jobs:
     needs: revisar
     if: needs.revisar.outputs.commits != ''
     runs-on: ubuntu-latest
-    # Con 12 commits y GitHub caído: hasta 13 min de intentos sueltos (30 s la consulta
-    # + 30 s el lanzamiento + la pausa, por commit) más los 6 min de reintentos.
+    # Con 12 commits y GitHub colgado: hasta 15 min de intentos sueltos (35 s la consulta
+    # + 35 s el lanzamiento + la pausa, por commit) más los 6 min de reintentos.
     timeout-minutes: 25
     permissions:
       actions: write # lanzar avisos.yml (incluye leer sus corridas)
@@ -272,38 +272,40 @@ jobs:
           # también una fallida o cancelada. Se relee antes de cada lanzamiento. Si la
           # consulta falla se sigue sin ella (lo normal es que no haya repetidos).
           titulos() {
-            timeout 30 gh api "repos/$REPO/actions/workflows/avisos.yml/runs?branch=main&event=workflow_dispatch&per_page=100" \
+            timeout -k 5 30 gh api "repos/$REPO/actions/workflows/avisos.yml/runs?branch=main&event=workflow_dispatch&per_page=100" \
               --jq '.workflow_runs[].display_title' 2>/dev/null || true
           }
           ya_lanzado() {  # $1 = commit
             grep -qxF "Avisos $1 prueba=$prueba" <<< "$(titulos)"
           }
 
-          # Vale reintentar si el error es pasajero: HTTP 5xx, 429, 403 por límite de
+          # Vale reintentar si el error es pasajero: HTTP 5xx, 408, 429, 403 por límite de
           # pedidos, red o tiempo (el 4/11/2026 un 502 perdió un aviso, issue #44). Un
           # 404, un 422 o un 403 de permisos fallan igual la próxima vez: no se reintentan.
+          # "error connecting to api.github.com" es lo que dice gh si falla el DNS.
           pasajero() {  # $1 = código de salida, $2 = lo que dijo gh
-            if [ "$1" -eq 124 ]; then return 0; fi # lo cortó timeout
+            case "$1" in 124|137) return 0 ;; esac # lo cortó timeout (o su kill)
             if [[ "$2" =~ HTTP\ ([0-9]{3}) ]]; then
               case "${BASH_REMATCH[1]}" in
-                5??|429) return 0 ;;
+                5??|408|429) return 0 ;;
                 403) grep -qi "rate limit" <<< "$2"; return ;;
                 *) return 1 ;;
               esac
             fi
-            grep -qiE "time(d )?out|connection (reset|refused)|EOF|no such host|TLS handshake|temporary failure|network is unreachable" <<< "$2"
+            grep -qiE "time(d )?out|deadline exceeded|connection (reset|refused)|error connecting|EOF|no such host|server misbehaving|GOAWAY|broken pipe|TLS handshake|temporary failure|network is unreachable" <<< "$2"
           }
 
-          # Hasta 4 intentos por commit. Un 502 puede llegar aunque GitHub sí haya creado
+          # Un intento más que esperas por commit (hoy 4). Un 502 puede llegar aunque GitHub sí haya creado
           # la corrida, y avisos.yml no guarda estado: con dos corridas del mismo commit
           # saldrían dos push. Por eso antes de cada reintento, pasada la espera (le da
           # tiempo a figurar), se relee el nombre de las corridas. Si esa consulta falla
           # se reintenta igual: es peor perder un urgente, y un push repetido lo absorbe
           # la marca compartida de la app. Deja en "estado" lanzado, ya_estaba o falló.
           lanzar() {  # $1 = commit
-            local espera esperas salida codigo intento
+            local espera esperas salida codigo intento total
             read -r -a esperas <<< "$ESPERAS_S"
-            for intento in 1 2 3 4; do
+            total=$(( ${#esperas[@]} + 1 ))
+            for (( intento = 1; intento <= total; intento++ )); do
               if [ "$intento" -gt 1 ]; then
                 espera=${esperas[intento-2]}
                 if [ $(( SECONDS + espera )) -ge "$TOPE_REINTENTOS_S" ]; then
@@ -317,15 +319,16 @@ jobs:
                 fi
               fi
               codigo=0
-              salida=$(timeout 30 gh workflow run avisos.yml --repo "$REPO" --ref main \
+              salida=$(timeout -k 5 30 gh workflow run avisos.yml --repo "$REPO" --ref main \
                 -f commit="$1" -f prueba="$prueba" 2>&1) || codigo=$?
-              echo "$salida"
+              # Sin "::": lo que dice gh no puede pasar por un comando de Actions.
+              printf '%s\n' "${salida//::/: :}"
               if [ "$codigo" -eq 0 ]; then estado=lanzado; return 0; fi
               if ! pasajero "$codigo" "$salida"; then
                 echo "No es un error pasajero: no se reintenta $1"
                 break
               fi
-              echo "::warning::Error pasajero al lanzar $1 (intento $intento de 4)"
+              echo "::warning::Error pasajero al lanzar $1 (intento $intento de $total)"
             done
             estado=falló; return 1
           }
@@ -343,7 +346,7 @@ jobs:
             fi
             if lanzar "$commit"; then
               if [ "$estado" = ya_estaba ]; then
-                echo "  - \`$commit\`: lanzado (GitHub dio error, pero la corrida se creó)" >> "$GITHUB_STEP_SUMMARY"
+                echo "  - \`$commit\`: ya figura una corrida después del error" >> "$GITHUB_STEP_SUMMARY"
               else
                 echo "Lanzado avisos.yml para $commit (prueba=$prueba)"
                 echo "  - \`$commit\`: lanzado" >> "$GITHUB_STEP_SUMMARY"

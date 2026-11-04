@@ -257,10 +257,11 @@ nodos, la diferencia es de segundos, y la app ya espera 3 s y reintenta una vez.
   los commits de `datos` que cambiaron `data/actual.json` antes del primero de la lista del resumen de
   `revisar` (`git log origin/datos -- data/actual.json`). Si alguno importa, hay que lanzar `avisos.yml` a
   mano con ese commit.
-- **GitHub da un error pasajero al lanzar** (HTTP 5xx, 429, 403 por límite de pedidos, red o tiempo; el
-  4/11/2026 un 502 perdió un aviso, issue #44): cada lanzamiento se intenta hasta 4 veces, con esperas de
-  10, 30 y 60 s, mientras el paso lleve menos de 6 min. Un 404, un 422 o un 403 de permisos no se
-  reintentan (fallarían igual). Si los 4 intentos fallan, cuenta como el caso siguiente.
+- **GitHub da un error pasajero al lanzar** (HTTP 5xx, 408, 429, 403 por límite de pedidos, red o tiempo;
+  el 4/11/2026 un 502 perdió un aviso, issue #44): cada lanzamiento se intenta hasta 4 veces, con esperas
+  de 10, 30 y 60 s. Un reintento solo arranca si el paso lleva menos de 6 min contando su espera, y cada
+  llamada a `gh` se corta a los 30 s. Un 404, un 422 o un 403 de permisos no se reintentan (fallarían
+  igual). Si no sale (4 intentos fallidos, error no pasajero o tope cumplido), cuenta como el caso siguiente.
 - **Falla `lanzar-avisos.yml` por otra cosa** (API, red, un lanzamiento que no salió): se abre un issue, y
   "Re-run failed jobs" recupera sin repetir **si se re-corre dentro de las 3 h**. Después, el filtro de
   antigüedad deja la lista vacía y la corrida termina en verde sin lanzar nada.
