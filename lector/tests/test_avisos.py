@@ -1140,14 +1140,16 @@ def test_propiedades_con_saltos_de_tiempo_aleatorios():
 
 # ---------- silencios del servidor (revisión de M-1) ----------
 
-def pm(minutos, nivel, valor, lectura_min=None, fuente=None, retenido=None):
+def pm(minutos, nivel, valor, lectura_min=None, fuente=None, retenido=None, reloj=None):
     """Publicación a `minutos` desde las 00:00 del 17/10, con la lectura de altura
     a `lectura_min` (por defecto 5 min antes), `fuente` (None = la del fixture) y,
-    si se pasa, la retención del lector con el nivel `retenido`."""
+    si se pasa, la retención del lector con el nivel `retenido`. `reloj` pisa los
+    minutos de `generado` (un reloj corrido) o, si es texto, lo deja inválido."""
     base = datetime(2026, 10, 17, tzinfo=avisos.ZONA_LOCAL)
     lectura_min = minutos - 5 if lectura_min is None else lectura_min
+    reloj = minutos if reloj is None else reloj
     p = pub(nivel, prefectura=AYER, valor=valor,
-            generado=(base + timedelta(minutes=minutos)).isoformat(),
+            generado=reloj if isinstance(reloj, str) else (base + timedelta(minutes=reloj)).isoformat(),
             lectura=(base + timedelta(minutes=lectura_min)).isoformat())
     if fuente is not None:
         p["altura_actual"]["fuente"] = fuente
@@ -1259,12 +1261,28 @@ def test_no_lee_la_racha_entera_de_evacuacion_al_bajar_a_alerta():
     assert len(leidas) <= 4
 
 
+def test_generado_desordenado_no_hace_que_el_corte_calle_la_alerta():
+    # Un revert o un commit a mano deja una publicación con el reloj 26 min adelantado.
+    # El corte de la historia medía contra esa publicación y la alerta sostenida no
+    # salía nunca; leyendo toda la historia sí sale. El plazo se mide desde el
+    # `generado` más temprano de la racha, y cortar vuelve a dar lo mismo.
+    salidas = secuencia(
+        pm(0, "atencion", 5.5),
+        pm(60, "evacuacion", 6.9, 55, reloj=86),
+        pm(65, "evacuacion", 6.9, 55, reloj=60),
+        pm(126, "evacuacion", 6.9, 55),             # misma lectura: no confirma
+        *[pm(150 + 30 * i, "alerta", 6.0, 55) for i in range(12)])
+    assert salidas[:4] == [None, None, None, "evacuacion"]
+    assert salidas[4:] == [None] * 12               # bajada tras la evacuación avisada
+
+
 def test_propiedad_ningun_nivel_sostenido_queda_mudo(monkeypatch):
     """Secuencias que mezclan fuentes, saltos de más de 1 m, lecturas repetidas,
     huecos, retenciones y sin_dato. (a) Si dos publicaciones DE NIVEL L (alerta o
     evacuación) de la misma racha continua con L o más quedan a 60 min o más, sale
     un urgente de L o más en esa racha hasta la segunda: nunca callar. (b) Cortar la
-    lectura de la historia (_racha_vencida) nunca cambia la decisión."""
+    lectura de la historia (_racha_vencida) nunca cambia la decisión, también con
+    `generado` corrido (que no crece) o inválido."""
     import random
     azar = random.Random(20261104)
     rango = {"normal": 0, "atencion": 1, "alerta": 2, "evacuacion": 3}
@@ -1300,6 +1318,11 @@ def test_propiedad_ningun_nivel_sostenido_queda_mudo(monkeypatch):
         publicaciones = [pm(*f) for f in filas]
         salidas = decidir_todo(publicaciones, cortar=True)
         assert salidas == decidir_todo(publicaciones, cortar=False), filas       # (b)
+        # (b) con el reloj sucio: corrido hasta 40 min para cualquier lado, o roto.
+        relojes = [f[0] + azar.choice([-40, -26, -10, 10, 26, 40]) if azar.random() < 0.2
+                   else ("roto" if azar.random() < 0.03 else f[0]) for f in filas]
+        sucias = [pm(*f, reloj=r) for f, r in zip(filas, relojes)]
+        assert decidir_todo(sucias, cortar=True) == decidir_todo(sucias, cortar=False), (filas, relojes)
         con_dato = [k for k, f in enumerate(filas) if f[1] in rango]
         for L in (2, 3):
             for a, k in enumerate(con_dato):
