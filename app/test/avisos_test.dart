@@ -70,25 +70,30 @@ Future<List<Aviso>> avisosDePush(Map<String, Object?> datos, SharedPreferences p
 
 void main() {
   group('aviso urgente', () {
-    // A las 08:00 todavía no hay resumen (antes de las 10, sin Prefectura del día).
-    Actual a(String nivel) => actualEn('2026-10-09T08:00', nivel: nivel, prefectura: '2026-10-08T06:00');
-    final ahora = hora('2026-10-09T08:05');
+    // Antes de las 10 y sin Prefectura del día: todavía no hay resumen. Cada
+    // publicación trae una lectura nueva de la estación (medida a la misma hora).
+    Actual a(String nivel, [String h = '08:00']) =>
+        actualEn('2026-10-09T$h', nivel: nivel, prefectura: '2026-10-08T06:00');
+    final ahora = hora('2026-10-09T09:45');
 
-    test('avisa al subir a alerta y a evacuación, una sola vez cada subida', () async {
+    test('avisa al subir a alerta y a evacuación con la segunda lectura, una sola vez cada subida', () async {
       final prefs = await prefsCon(todoPrendido);
-      expect(await decidirAvisos(a('normal'), prefs, ahora), isEmpty); // primera vez: solo se recuerda
-      expect(await decidirAvisos(a('atencion'), prefs, ahora), isEmpty); // normal → atención no avisa
-      expect(tipos(await decidirAvisos(a('alerta'), prefs, ahora)), [TipoAviso.urgente]);
-      expect(await decidirAvisos(a('alerta'), prefs, ahora), isEmpty); // la misma subida no se repite
-      final evacuacion = await decidirAvisos(a('evacuacion'), prefs, ahora);
+      expect(await decidirAvisos(a('normal', '06:30'), prefs, ahora), isEmpty); // primera vez: solo se recuerda
+      expect(await decidirAvisos(a('atencion', '07:00'), prefs, ahora), isEmpty); // normal → atención no avisa
+      expect(await decidirAvisos(a('alerta', '07:30'), prefs, ahora), isEmpty); // M-1: primera lectura
+      expect(tipos(await decidirAvisos(a('alerta', '08:00'), prefs, ahora)), [TipoAviso.urgente]);
+      expect(await decidirAvisos(a('alerta', '08:30'), prefs, ahora), isEmpty); // la misma subida no se repite
+      expect(await decidirAvisos(a('evacuacion', '09:00'), prefs, ahora), isEmpty);
+      final evacuacion = await decidirAvisos(a('evacuacion', '09:30'), prefs, ahora);
       expect(evacuacion.single.titulo, 'Río Uruguay: subió a EVACUACIÓN');
     });
 
     test('no avisa por bajadas, y avisa de nuevo si vuelve a subir', () async {
       final prefs = await prefsCon({...todoPrendido, claveUltimoNivel: 'evacuacion'});
-      expect(await decidirAvisos(a('alerta'), prefs, ahora), isEmpty);
-      expect(await decidirAvisos(a('normal'), prefs, ahora), isEmpty);
-      expect(tipos(await decidirAvisos(a('alerta'), prefs, ahora)), [TipoAviso.urgente]);
+      expect(await decidirAvisos(a('alerta', '07:00'), prefs, ahora), isEmpty);
+      expect(await decidirAvisos(a('normal', '07:30'), prefs, ahora), isEmpty);
+      expect(await decidirAvisos(a('alerta', '08:00'), prefs, ahora), isEmpty);
+      expect(tipos(await decidirAvisos(a('alerta', '08:30'), prefs, ahora)), [TipoAviso.urgente]);
     });
 
     test('"sin dato" en el medio se saltea: se compara con el último nivel con dato', () async {
@@ -100,17 +105,20 @@ void main() {
       final sinNivel = actualEn('2026-10-09T08:00', nivel: 'sin_dato', prefectura: null);
       expect(await decidirAvisos(sinNivel, prefs, ahora), isEmpty);
       expect(prefs.getString(claveUltimoNivel), 'atencion');
-      expect(tipos(await decidirAvisos(a('alerta'), prefs, ahora)), [TipoAviso.urgente]);
+      expect(await decidirAvisos(a('alerta', '08:00'), prefs, ahora), isEmpty);
+      expect(tipos(await decidirAvisos(a('alerta', '08:30'), prefs, ahora)), [TipoAviso.urgente]);
 
       // alerta → sin dato → alerta no es una subida.
       expect(await decidirAvisos(sinNivel, prefs, ahora), isEmpty);
-      expect(await decidirAvisos(a('alerta'), prefs, ahora), isEmpty);
+      expect(await decidirAvisos(a('alerta', '09:00'), prefs, ahora), isEmpty);
     });
 
     test('"Solo evacuación" no avisa al subir a alerta', () async {
       final prefs = await prefsCon({...todoPrendido, claveUrgenteDesde: 'evacuacion', claveUltimoNivel: 'normal'});
-      expect(await decidirAvisos(a('alerta'), prefs, ahora), isEmpty);
-      expect(tipos(await decidirAvisos(a('evacuacion'), prefs, ahora)), [TipoAviso.urgente]);
+      expect(await decidirAvisos(a('alerta', '07:30'), prefs, ahora), isEmpty);
+      expect(await decidirAvisos(a('alerta', '08:00'), prefs, ahora), isEmpty); // confirmada, pero no la pidió
+      expect(await decidirAvisos(a('evacuacion', '08:30'), prefs, ahora), isEmpty);
+      expect(tipos(await decidirAvisos(a('evacuacion', '09:00'), prefs, ahora)), [TipoAviso.urgente]);
     });
 
     test('apagado no avisa, pero igual recuerda el nivel', () async {
@@ -196,6 +204,9 @@ void main() {
 
     test('si en la misma pasada sube a alerta, queda solo el urgente', () async {
       final prefs = await prefsCon({...todoPrendido, claveUltimoNivel: 'atencion'});
+      // La primera lectura en alerta (antes de Prefectura) no avisa; la segunda trae Prefectura.
+      expect(await decidirAvisos(actualEn('2026-10-09T08:00', prefectura: '2026-10-08T06:00'), prefs,
+          hora('2026-10-09T08:01')), isEmpty);
       final avisos = await decidirAvisos(actualEn('2026-10-09T08:30'), prefs, hora('2026-10-09T08:31'));
       expect(tipos(avisos), [TipoAviso.urgente]);
       expect(prefs.getString(claveUltimoResumen), '2026-10-09');
@@ -218,6 +229,7 @@ void main() {
       final prefs = await prefsCon({...todoPrendido, claveUltimoNivel: 'atencion'});
       final alerta = actualEn('2026-10-09T08:00', prefectura: '2026-10-08T06:00');
       final ahora = hora('2026-10-09T08:01');
+      expect(await decidirAvisos(actualEn('2026-10-09T07:30', prefectura: '2026-10-08T06:00'), prefs, ahora), isEmpty);
       expect(tipos(await decidirAvisos(alerta, prefs, ahora)), [TipoAviso.urgente]);
       final push = await avisosDePush({'tipo': 'urgente', 'nivel': 'alerta', 'ciudad': 'paysandu'}, prefs,
           (_) async => datos(alerta),
@@ -268,6 +280,7 @@ void main() {
       final prefs = await prefsCon({...todoPrendido, claveUltimoNivel: 'atencion'});
       final alerta = actualEn('2026-10-09T08:00', prefectura: '2026-10-08T06:00');
       final ahora = hora('2026-10-09T08:01');
+      expect(await decidirAvisos(actualEn('2026-10-09T07:30', prefectura: '2026-10-08T06:00'), prefs, ahora), isEmpty);
       final juntas = await Future.wait([
         decidirAvisos(alerta, prefs, ahora, origen: Origen.app),
         decidirAvisos(alerta, prefs, ahora, origen: Origen.push),
@@ -428,6 +441,8 @@ void main() {
 
       test('si el teléfono ya vio la publicación de la subida, el push no la repite', () async {
         final prefs = await prefsCon({...todoPrendido, claveUltimoNivel: 'atencion'});
+        expect(await decidirAvisos(actualEn('2026-10-09T07:30', prefectura: '2026-10-08T06:00'), prefs, ahora),
+            isEmpty);
         expect(tipos(await decidirAvisos(alerta, prefs, ahora)), [TipoAviso.urgente]); // la vio el respaldo
         expect(
             await avisosDePush(urgente, prefs, (_) async => Datos(actual: alerta),

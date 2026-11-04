@@ -151,9 +151,19 @@ void main() {
   group('notificaciones (12)', () {
     final ahora = DateTime.parse('2026-10-09T13:00:00-03:00');
 
-    test('un dato a verificar igual avisa, lo aclara y se recuerda', () async {
+    /// La misma publicación media hora antes, con la lectura anterior de la estación.
+    Actual primeraLectura([List<String> avisos = const []]) => Actual.desdeJson(actualCon((j) {
+          j['generado'] = '2026-10-09T11:55:36-03:00';
+          j['altura_actual']['fecha'] = '2026-10-09T11:30:00-03:00';
+          j['avisos'] = avisos;
+        }))!;
+
+    test('un dato a verificar igual avisa (con la segunda lectura), lo aclara y se recuerda', () async {
       SharedPreferences.setMockInitialValues({'ultimo_nivel': 'normal', claveUrgente: true});
       final prefs = await SharedPreferences.getInstance();
+      // M-1: la primera lectura de la subida no avisa, con o sin la marca.
+      final primera = await decidirAvisos(primeraLectura(['dato_a_verificar']), prefs, ahora);
+      expect(primera.where((a) => a.tipo == TipoAviso.urgente), isEmpty);
       final dudoso = Actual.desdeJson(actualCon((j) => j['avisos'] = ['dato_a_verificar']))!;
       final avisos = await decidirAvisos(dudoso, prefs, ahora);
       final urgente = avisos.singleWhere((a) => a.tipo == TipoAviso.urgente);
@@ -167,6 +177,7 @@ void main() {
     test('sin el aviso del lector el texto no habla de verificar', () async {
       SharedPreferences.setMockInitialValues({'ultimo_nivel': 'normal', claveUrgente: true});
       final prefs = await SharedPreferences.getInstance();
+      await decidirAvisos(primeraLectura(), prefs, ahora);
       final avisos = await decidirAvisos(Actual.desdeJson(jsonDecode(actualReal))!, prefs, ahora);
       expect(avisos.first.texto, isNot(contains('verificar')));
     });
@@ -175,6 +186,8 @@ void main() {
       SharedPreferences.setMockInitialValues({'ultimo_nivel': 'normal', claveUrgente: true});
       final prefs = await SharedPreferences.getInstance();
       final atrasado = DateTime.parse('2026-10-09T09:00:00-03:00'); // la lectura es de las 12:00
+      final primera = await decidirAvisos(primeraLectura(), prefs, atrasado);
+      expect(primera.where((a) => a.tipo == TipoAviso.urgente), isEmpty);
       final avisos = await decidirAvisos(Actual.desdeJson(jsonDecode(actualReal))!, prefs, atrasado);
       expect(avisos.where((a) => a.tipo == TipoAviso.urgente), hasLength(1));
       expect(prefs.getString('ultimo_nivel'), 'alerta');
