@@ -63,19 +63,11 @@ class Telefono {
 
 const at = Nivel.atencion, al = Nivel.alerta, ev = Nivel.evacuacion, no = Nivel.normal;
 
-/// Casos del servidor en los que la app decide distinto a propósito: avisos.py no
-/// avisa nunca aunque el río siga en alerta (contra su propio "nunca callar") y el
-/// teléfono sí. Caso → {posición: lo que avisa la app}. Si se corrige avisos.py,
-/// esta prueba falla y hay que sacarlos de acá. Detalle en docs/respaldo-m1.md.
-const diferenciasConocidas = <String, Map<int, String>>{
-  // La retención era de alerta pero se soltó en evacuación: el servidor da la alerta
-  // por "ya avisada" en esa publicación (sin avisar). La app espera su confirmación.
-  'borde servidor: retencion soltada en evacuacion y despues alerta': {3: 'alerta'},
-  // Una sola publicación de evacuación tras un hueco de más de 2 h: el servidor corta
-  // la historia (_racha_vencida) suponiendo que esa evacuación ya avisó.
-  'borde servidor: evacuacion de una lectura tras un hueco y alerta sostenida': {4: 'alerta'},
-  'con huecos #52': {6: 'alerta'}, // el mismo corte de _racha_vencida
-};
+/// Casos del servidor en los que la app decidiría distinto a propósito. Caso →
+/// {posición: lo que avisa la app}. Vacío: desde #46 (los dos bordes en los que
+/// avisos.py callaba una alerta sostenida) la app y el servidor coinciden en todos.
+/// Si alguna vez hace falta uno, explicarlo acá y en docs/respaldo-m1.md.
+const diferenciasConocidas = <String, Map<int, String>>{};
 
 void main() {
   group('regla M-1 (pasoM1)', () {
@@ -123,6 +115,27 @@ void main() {
           [null, al, null]);
       expect(Telefono(at).secuencia([Pub(50, at, 5.6, retenido: al), Pub(60, ev, 6.7), Pub(90, ev, 6.75)]),
           [null, null, ev]);
+    });
+
+    test('retención de alerta soltada en evacuación: la alerta sale en la primera publicación de alerta', () {
+      // Como avisos.py desde #46: la retención ya confirmó la alerta; la evacuación espera la suya.
+      expect(
+          Telefono(at).secuencia(
+              [Pub(50, at, 5.6, retenido: al), Pub(60, ev, 6.7), Pub(90, al, 6.0), Pub(120, al, 6.05)]),
+          [null, null, al, null]);
+      // Si antes se confirma la evacuación, la alerta ya no sale.
+      expect(
+          Telefono(at).secuencia(
+              [Pub(50, at, 5.6, retenido: al), Pub(60, ev, 6.7), Pub(90, ev, 6.75), Pub(120, al, 6.0)]),
+          [null, null, ev, null]);
+    });
+
+    test('el tope se mide desde el generado más temprano de la subida (reloj que no crece)', () {
+      // La segunda publicación tiene un generado anterior a la candidata: desde ahí se cuentan los 60 min.
+      final t = Telefono(at);
+      expect(t.secuencia([Pub(100, al, 5.9, lectura: 95), Pub(50, al, 5.9, lectura: 95), Pub(115, al, 5.9, lectura: 95)]),
+          [null, null, al]);
+      expect(t.ultimoComo, 'plazo');
     });
 
     test('una retención vista hace rato (no la publicación anterior) no confirma', () {

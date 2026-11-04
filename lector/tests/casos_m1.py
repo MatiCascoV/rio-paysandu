@@ -111,8 +111,11 @@ def _fijos():
             f(0, "atencion", 5.5, 5), f(10, "alerta", 5.9, 5), f(140, "alerta", 5.9, 5)],
         "sin anterior no avisa": [f(h("08:00"), "alerta", 5.9), f(h("08:30"), "alerta", 5.95),
                                   f(h("09:30"), "alerta", 6.0)],
-        # Bordes en los que avisos.py no avisa nunca aunque el río siga en alerta; la
-        # app sí avisa (ver DIFERENCIAS_CONOCIDAS en confirmacion_urgente_test.dart).
+        "reloj que no crece: el tope cuenta desde el generado mas temprano": [
+            f(h("08:00"), "atencion", 5.5), f(h("10:00"), "alerta", 5.9, h("09:55")),
+            f(h("09:10"), "alerta", 5.9, h("09:55")), f(h("10:15"), "alerta", 5.9, h("09:55"))],
+        # Bordes en los que avisos.py callaba una alerta sostenida hasta #46 (los encontró
+        # esta comparación); quedan como casos fijos.
         "borde servidor: retencion soltada en evacuacion y despues alerta": [
             f(h("08:00"), "atencion", 5.5), f(h("08:30"), "atencion", 5.6, retenido="alerta"),
             f(h("09:00"), "evacuacion", 6.7), f(h("09:30"), "alerta", 6.0), f(h("10:00"), "alerta", 6.05),

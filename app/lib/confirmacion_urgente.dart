@@ -13,13 +13,15 @@
 ///   nivel o más, después de una con nivel menor. Esa primera no avisa.
 /// - Avisa la primera publicación posterior DE ESE NIVEL que la confirma (fecha de
 ///   lectura mayor, misma fuente, salto de hasta 1 m), o la primera de ese nivel
-///   con `generado` 60 min o más después de la candidata (tope: nunca callar).
+///   con `generado` 60 min o más después del más temprano de la subida (tope:
+///   nunca callar; el más temprano y no el de la candidata, por si el reloj no crece).
 /// - `dato_a_verificar` solo no frena (en el teléfono las alturas siempre se
 ///   pueden comparar: sin altura no hay nivel).
 /// - Si la publicación vista justo antes (hasta [margenRetencion] antes) retenía
 ///   este mismo nivel (`nivel_retenido`), el lector ya esperó una segunda
-///   lectura: avisa de una. Es el `pub_antes` del servidor: una retención vista
-///   hace horas no cuenta.
+///   lectura: avisa la primera publicación de ese nivel de la subida (de una, o
+///   más tarde si la subida arrancó en un nivel más alto). Es el `pub_antes` del
+///   servidor: una retención vista hace horas no cuenta.
 /// - Cada nivel avisa una vez por subida; si avisa evacuación, la alerta de esa
 ///   misma subida ya no avisa. Bajar del nivel reinicia la espera.
 /// - Sin nivel anterior conocido no se avisa (como el servidor).
@@ -115,17 +117,46 @@ class RachaM1 {
   /// después por la misma subida (ver `_decidir` en avisos.dart).
   final DateTime? avisadoEn;
 
-  const RachaM1(this.inicio, {required this.avisado, this.avisadoEn});
+  /// Desde dónde se mide el tope de 60 min: el `generado` más temprano de las
+  /// publicaciones vistas en la subida (como avisos.py, por si el reloj no crece).
+  /// Null si la candidata no tenía `generado` (no se puede medir: se prefiere avisar).
+  final DateTime? base;
 
-  RachaM1 yaAvisada(DateTime? en) => avisado ? this : RachaM1(inicio, avisado: true, avisadoEn: en);
+  /// La subida arrancó justo después de una retención de este nivel que se soltó
+  /// en un nivel más alto: avisa la primera publicación de ESTE nivel (avisos.py).
+  final bool porRetencion;
 
-  Map<String, Object?> aJson() => {'inicio': inicio?.aJson(), 'avisado': avisado, 'avisado_en': _iso(avisadoEn)};
+  RachaM1(this.inicio, {required this.avisado, this.avisadoEn, DateTime? base, this.porRetencion = false})
+      : base = base ?? inicio?.generado;
+
+  RachaM1 _con({bool? avisado, DateTime? avisadoEn, DateTime? base, bool? porRetencion}) => RachaM1(inicio,
+      avisado: avisado ?? this.avisado,
+      avisadoEn: avisadoEn ?? this.avisadoEn,
+      base: base ?? this.base,
+      porRetencion: porRetencion ?? this.porRetencion);
+
+  RachaM1 yaAvisada(DateTime? en) => avisado ? this : _con(avisado: true, avisadoEn: en, porRetencion: false);
+
+  /// Con [g] (el `generado` de una publicación de la subida) como base si es más temprano.
+  RachaM1 conBase(DateTime? g) => (base != null && g != null && g.isBefore(base!)) ? _con(base: g) : this;
+
+  Map<String, Object?> aJson() => {
+        'inicio': inicio?.aJson(),
+        'avisado': avisado,
+        'avisado_en': _iso(avisadoEn),
+        'base': _iso(base),
+        'por_retencion': porRetencion,
+      };
 
   static RachaM1? desdeJson(Object? j) {
     if (j is! Map) return null;
     final inicio = LecturaM1.desdeJson(j['inicio']);
     final avisado = j['avisado'] == true || inicio == null; // sin candidata no hay nada que esperar
-    return RachaM1(inicio, avisado: avisado, avisadoEn: _fecha(j['avisado_en']));
+    return RachaM1(inicio,
+        avisado: avisado,
+        avisadoEn: _fecha(j['avisado_en']),
+        base: _fecha(j['base']),
+        porRetencion: j['por_retencion'] == true);
   }
 }
 
@@ -262,8 +293,13 @@ PasoM1 pasoM1(
     if (!sigue) {
       // Empieza una subida a x (o más) con esta publicación: es la candidata.
       // Sin nivel anterior conocido no se avisa (como el servidor).
-      rachas[x] = RachaM1(lectura, avisado: anterior == null, avisadoEn: anterior == null ? g : null);
-      if (anterior != null && x == nivel && previo.retenido == x && retencionReciente) eventos[x] = 'retencion';
+      // Si la publicación de justo antes retenía x, el lector ya esperó la segunda
+      // lectura: avisa la primera publicación DE ESE NIVEL de la subida (esta, o una
+      // posterior si la subida arrancó en un nivel más alto).
+      final retencion = anterior != null && previo.retenido == x && retencionReciente;
+      rachas[x] = RachaM1(lectura,
+          avisado: anterior == null, avisadoEn: anterior == null ? g : null, porRetencion: retencion && x != nivel);
+      if (retencion && x == nivel) eventos[x] = 'retencion';
       continue;
     }
     if (previa == null) {
@@ -273,18 +309,23 @@ PasoM1 pasoM1(
       rachas[x] = RachaM1(lectura, avisado: true);
       continue;
     }
-    rachas[x] = previa;
+    // La base del tope se actualiza con esta publicación DESPUÉS de evaluarla (como
+    // avisos.py: se mide contra las anteriores de la subida).
+    rachas[x] = previa.conBase(g);
     // Solo una publicación DE ESE NIVEL confirma o vence el tope (avisos.py, _evento_en).
     if (previa.avisado || x != nivel) continue;
-    final inicio = previa.inicio!;
-    if (confirmaLectura(inicio, lectura)) {
+    if (previa.porRetencion) {
+      eventos[x] = 'retencion';
+      continue;
+    }
+    if (confirmaLectura(previa.inicio!, lectura)) {
       eventos[x] = 'confirmada';
       continue;
     }
-    // Tope de 60 min: sale aunque no confirme, como el servidor. Si no se puede
-    // medir el tiempo se prefiere avisar a callar.
-    final g0 = inicio.generado;
-    if (g0 == null || g == null || g.difference(g0) >= ventanaConfirmacion) eventos[x] = 'plazo';
+    // Tope de 60 min desde el `generado` más temprano de la subida: sale aunque no
+    // confirme, como el servidor. Si no se puede medir se prefiere avisar a callar.
+    final base = previa.base;
+    if (base == null || g == null || g.difference(base) >= ventanaConfirmacion) eventos[x] = 'plazo';
   }
 
   // Push: el servidor ya vio la segunda lectura. El de ahora o uno anotado antes.

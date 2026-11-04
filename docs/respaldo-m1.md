@@ -13,10 +13,15 @@ aunque el servidor (`lector/avisos.py`, PR #40) espera una segunda.
   - **confirma** si es del mismo nivel y trae una lectura con fecha mayor, de la misma fuente y con un salto
     de hasta 1 m (la misma cuenta que `_confirma`);
   - si no confirma, **sale por tope** en la primera publicación de ese nivel con `generado` 60 min o más
-    después de la candidata, aunque la lectura no confirme (como el servidor: "nunca callar");
+    después del `generado` más temprano de las publicaciones vistas en la subida (normalmente la candidata; el
+    más temprano por si el reloj no crece, como el servidor desde #46), aunque la lectura no confirme ("nunca
+    callar");
   - `dato_a_verificar` solo no frena (como el servidor: decide el salto);
   - si la publicación vista justo antes (hasta 40 min antes) retenía ese mismo nivel (`nivel_retenido.nivel`),
-    avisa de una. Es el `pub_antes` del servidor; una retención vista hace horas no cuenta. Son 40 min y no
+    avisa la primera publicación de ese nivel de la subida: de una, o más tarde si la subida arrancó en un nivel
+    más alto (se retuvo alerta y se soltó en evacuación: la alerta sale al volver a alerta, salvo que antes se
+    confirme la evacuación; como el servidor desde #46). Es el `pub_antes` del servidor; una retención vista
+    hace horas no cuenta. Son 40 min y no
     menos porque el lector solo publica cuando algo cambia (`guardar_actual`) y la estación informa cada
     30 min: la publicación que suelta la retención suele llegar ~30 min después de la que retenía;
   - bajar del nivel reinicia la espera; cada nivel avisa una vez por subida; si avisa evacuación, la alerta de
@@ -62,7 +67,7 @@ Workmanager corre cada 30 min si Android lo deja, y en los Xiaomi puede pasar ho
 - Si al volver a revisar el río **ya bajó** del nivel, no sale nada: la subida terminó (no se manda un
   urgente viejo).
 - Si el río **sigue** en el nivel, la regla es la del servidor: sale si la lectura nueva confirma a la candidata
-  o si su `generado` está 60 min o más después del de la candidata, aunque no confirme (salto, otra fuente o la
+  o si su `generado` está 60 min o más después del más temprano de la subida, aunque no confirme (salto, otra fuente o la
   misma lectura repetida). El texto lleva la hora de la lectura. Se probó frenar el tope cuando el teléfono no
   vio lo del medio, pero podía callar el urgente para siempre (fuentes que se alternan, un salto sostenido, o un
   lector que publica cada más de 60 min), así que no se hace.
@@ -72,8 +77,9 @@ Workmanager corre cada 30 min si Android lo deja, y en los Xiaomi puede pasar ho
 ## Pruebas
 
 - `app/test/confirmacion_urgente_test.dart` (nuevo): la regla sola (candidata → confirmación, salto de más de
-  1 m, justo 1 m, otra fuente, misma fecha, tope de 60 min, sin `generado`, `dato_a_verificar`, retención al
-  mismo nivel, a otro nivel y vieja, bajada y nueva subida, niveles mezclados, sin nivel anterior, lo guardado
+  1 m, justo 1 m, otra fuente, misma fecha, tope de 60 min, tope desde el `generado` más temprano, sin
+  `generado`, `dato_a_verificar`, retención al mismo nivel, a otro nivel, soltada en evacuación con alerta
+  después, y vieja, bajada y nueva subida, niveles mezclados, sin nivel anterior, lo guardado
   roto, actualización desde la versión anterior), revisiones espaciadas (fuentes alternadas y salto sostenido
   no callan), push (antes y después del dato, sin poder bajarlo, anotado y descartado, el teléfono avisó antes
   que el servidor, bajada no vista), por `decidirAvisos` (preferencias apagadas, "Solo evacuación", P-04,
@@ -81,15 +87,17 @@ Workmanager corre cada 30 min si Android lo deja, y en los Xiaomi puede pasar ho
   nunca con la primera lectura vista de la subida, nunca dos veces en la misma subida, solo el nivel que
   muestra el dato, y **vivacidad**: si el servidor avisó en una subida y el teléfono vio antes una publicación
   más baja y 2 o más lecturas de ese nivel con 60 min o más entre ellas, el teléfono termina avisando.
-- **Mismos casos que el servidor:** `lector/tests/casos_m1.py` arma 320 secuencias (las de `test_avisos.py`,
-  100 cada 10 min, 100 con huecos de publicación y 100 con huecos, cambios de fuente y saltos de 1,5 m), las
+- **Mismos casos que el servidor:** `lector/tests/casos_m1.py` arma 321 secuencias (las de `test_avisos.py`,
+  los dos bordes que corrigió #46, un reloj que no crece, 100 cada 10 min, 100 con huecos de publicación y 100 con huecos, cambios de fuente y saltos de 1,5 m), las
   decide con `avisos.decidir` y las escribe en `app/test/fixtures/casos_m1_servidor.json`. La prueba de la app
   las pasa por su regla y exige el mismo urgente en cada publicación. `lector/tests/test_casos_m1_app.py` falla
   si el archivo no está al día con `avisos.py` (regenerar con `python lector/tests/casos_m1.py`); el workflow de
   tests de Python también corre si cambia el fixture.
-- Diferencias conocidas (3 casos, en `diferenciasConocidas` de la prueba): bordes en los que `avisos.py` no
-  avisa nunca aunque el río siga horas en alerta, y la app sí (ver "Límites que quedan" en
-  `docs/fase-4-avisos-push.md`). Si se corrige `avisos.py`, la prueba de la app falla hasta sacarlos de la lista.
+- **Sin diferencias:** la app coincide con el servidor en las 321 secuencias, publicación por publicación
+  (`diferenciasConocidas` está vacía). Antes de #46 había 3: dos bordes en los que `avisos.py` callaba una
+  alerta sostenida (retención de alerta soltada en evacuación; evacuación de una sola lectura tras un hueco de
+  más de 2 h) y un caso al azar con el segundo borde. Los encontró esta comparación y se corrigieron en el
+  servidor; la app llevó además el tope medido desde el `generado` más temprano.
 
 ## Cómo probarlo en el teléfono
 
@@ -110,7 +118,8 @@ nuevo que la anterior (una más vieja se ignora como caché).
    `generado` 30 min más tarde) con 8,20 m: no sale (salto de más de 1 m); tercera, 30 min después, con 6,80 m:
    sale "…subió a EVACUACIÓN".
 5. Tope: candidata en `alerta` y después publicaciones con la **misma** `altura_actual.fecha` y `generado`
-   cada vez más tarde: sale recién con `generado` 60 min o más después de la candidata.
+   cada vez más tarde: sale recién con `generado` 60 min o más después de la candidata (con un `generado` que
+   crece; uno más viejo que el último visto se ignora como caché).
 6. Push: con la candidata del paso 2 sin confirmar, mandar `.\herramientas\enviar_aviso_prueba.ps1 -Tipo
    urgente -Nivel alerta` con la app cerrada: sale "subió a ALERTA" de una (el servidor ya confirmó). Después
    actualizar: nada.
@@ -124,10 +133,17 @@ primer arranque, con todo apagado).
 
 ## Diferencias que quedan con el servidor
 
+Viendo las mismas publicaciones deciden lo mismo (ver "Sin diferencias" arriba). Las diferencias vienen de lo
+que el teléfono no ve:
+
 - El teléfono solo ve lo que baja. Si se salteó publicaciones, puede avisar **más tarde** que el servidor (su
   candidata es la primera que vio) y también **antes**: si no vio una bajada del medio, la subida siguiente
   le parece la misma, y la publicación que para el servidor es una candidata nueva al teléfono le confirma (o
   le vence el tope de) una candidata vieja. También avisa antes con un push o con una retención.
 - La retención (`nivel_retenido`) solo cuenta si el teléfono vio la publicación que retenía, y hasta 40 min
-  antes.
-- Los dos bordes en los que el servidor no avisa nunca (arriba): la app avisa.
+  antes (el servidor mira la publicación anterior, sin límite de tiempo).
+- Caché vieja: `decidirAvisos` ignora una publicación con `generado` anterior a la última vista (la comparación
+  con el servidor pasa por `pasoM1` directo, que sí la cuenta como el servidor). Si el reloj del lector
+  retrocede de verdad (un revert o un commit a mano), el teléfono deja de mirar hasta que `generado` vuelva a
+  pasar el último visto; el servidor sigue decidiendo. Se eligió así para no repetir urgentes por una copia
+  vieja servida por caché.
