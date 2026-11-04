@@ -81,10 +81,17 @@ un "subió a EVACUACIÓN" a todos los suscritos, el urgente espera una segunda l
 - **Tope de 60 minutos**: si no llega esa segunda lectura (la estación se atrasa, o hay un salto brusco
   sostenido), el urgente sale igual en la **primera publicación con 60 minutos o más** desde la primera. Con la
   latencia de Pages y del lanzamiento puede llegar hasta ~70 minutos después. Nunca se calla una crecida.
+  Los 60 minutos se miden contra el `generado` más temprano de las publicaciones anteriores de la subida, no
+  solo contra la primera: si el reloj no crece (un revert o un commit a mano de `data/actual.json` con la hora
+  corrida), el plazo no se estira.
 - Si el lector acaba de soltar una retención por salto brusco (`nivel_retenido`), el lector ya esperó una
   lectura más nueva: la subida sale de una, **solo si** el nivel que se suelta es el mismo que guardó la
   retención (`nivel_retenido.nivel`, el calculado de la lectura retenida). Si se retuvo "alerta" y se suelta
   "evacuación", hay una sola lectura alta y se espera otra; lo mismo con retenciones viejas sin ese campo.
+  La retención confirma su nivel en la **primera publicación de ese nivel** de la subida, no solo en la
+  primera de todas: si se retuvo "alerta", se soltó "evacuación" (que espera su segunda lectura) y el río
+  vuelve a alerta, la alerta sale ahí, confirmada. Antes esa alerta no salía nunca (la confirmación quedaba
+  atada a la publicación de evacuación) aunque el río siguiera horas en alerta.
 - Si entre medio el nivel baja, la confirmación se reinicia (un pico de una sola lectura no avisa nunca).
   Las publicaciones `sin_dato` en el medio se saltean, como siempre.
 - **Niveles mezclados** (alerta → evacuación → alerta): cada nivel avisa a lo sumo una vez por subida, en la
@@ -105,15 +112,30 @@ un "subió a EVACUACIÓN" a todos los suscritos, el urgente espera una segunda l
 - Oscilación alerta ↔ atención (M-3): cada baja publicada reinicia la espera, así que un río que oscila en el
   umbral manda el urgente solo cuando se queda dos lecturas seguidas arriba (el margen al bajar del lector
   ya amortigua esas oscilaciones).
-- Sigue sin guardar estado: la decisión se reconstruye del historial de `data/actual.json` (se leen solo las
-  publicaciones del último plazo, no toda una racha larga), así que es la misma al re-correr un commit y
-  nunca sale dos veces.
+- Sigue sin guardar estado: la decisión se reconstruye del historial de `data/actual.json`, así que es la
+  misma al re-correr un commit y nunca sale dos veces. No se lee toda una racha larga: la búsqueda hacia
+  atrás corta en cuanto encuentra una publicación anterior del nivel nuevo o de uno más alto que queda a
+  60 minutos o más de la más vieja leída **sin que el nivel baje en el medio** (ese urgente ya salió, por
+  confirmación o por plazo, y la publicación nueva no avisa). Cortar así da lo mismo que leer toda la
+  historia porque el plazo se mide contra el `generado` más temprano de la subida (ver "Tope de 60
+  minutos"): con eso vale también si `generado` no crece o es inválido. Si el plazo se midiera solo contra
+  la primera publicación, el corte supondría un `generado` creciente y con un reloj corrido podría callar un
+  urgente. Lo comprueba un test de propiedades, con relojes ordenados, corridos y rotos. Antes también cortaba si las
+  publicaciones leídas abarcaban más de 2 horas, suponiendo que un nivel más alto ya había avisado; tras un
+  hueco del lector eso fallaba con una evacuación de una sola lectura (que nunca avisó) y la alerta sostenida
+  que seguía quedaba muda. Ese corte se sacó; con el criterio por nivel la búsqueda sigue leyendo, en la
+  práctica, lo mismo (unas 3 versiones en promedio por corrida, ver "Costo" abajo) y nunca más de
+  `MAX_HISTORIA` (200).
 - Mientras tanto el lector publica la primera lectura con `dato_a_verificar`, y la app ya la muestra como
   "Este dato puede tener un error" sin cambios en `app/`. La marca dura mientras el lector repite la misma
   lectura y se va con la primera distinta.
 - Costo: el urgente llega unos 30 minutos más tarde (la estación informa cada 30 min), hasta 60 como tope. Una
   crecida del río Uruguay sube de a centímetros por hora, así que no cambia mucho el tiempo para reaccionar
-  (criterio, no medido).
+  (criterio, no medido). En `avisos.yml` cada versión leída es un `git show`: con secuencias simuladas
+  (fuentes alternadas, saltos, huecos, retenciones) una decisión con alerta o evacuación lee 3 versiones en
+  promedio y 13 en el percentil 99, igual que antes del cambio del corte. El máximo depende de la cadencia
+  de publicación (con más publicaciones por hora se leen más versiones para cubrir los mismos 60 minutos):
+  dio entre 24 y 30 en las simulaciones, siempre por debajo de `MAX_HISTORIA`.
 - Con un salto brusco marcado ya no sale el "subió a …" en el primer push (era un error: `avisos.py` ignoraba
   `dato_a_verificar`).
 
@@ -135,7 +157,12 @@ un "subió a EVACUACIÓN" a todos los suscritos, el urgente espera una segunda l
   min, evacuación a los 250 y normal a los 260): un urgente en espera puede no salir si el nivel baja antes
   de la siguiente publicación, porque la decisión solo se toma al publicar. Es un caso más del límite anterior
   y lo cubriría la misma mejora futura (chequeo de "urgente en espera sin publicaciones nuevas"); no se
-  cambió la lógica por esto.
+  cambió la lógica por esto. Un fuzz aparte, que no está en el repositorio (54 000 secuencias con fuentes
+  alternadas, saltos de más de 1 m, lecturas repetidas, huecos de hasta 400 min, retenciones y `sin_dato`;
+  el test de propiedades del repositorio corre 250), no encontró otros silencios: cuando
+  un nivel tiene dos publicaciones propias a 60 minutos o más dentro de la misma subida, el urgente sale. Lo
+  que queda es este borde, con una sola publicación de cada nivel (una de alerta y la primera de evacuación,
+  que todavía espera la suya): una publicación de evacuación no puede sacar una alerta.
 - En el modo de dos archivos (`avisos.py ANTERIOR.json NUEVO.json`, solo para pruebas manuales) no hay
   historial: el urgente nunca sale. El workflow usa `--commit`.
 

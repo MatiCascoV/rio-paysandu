@@ -1136,3 +1136,205 @@ def test_propiedades_con_saltos_de_tiempo_aleatorios():
                 else:
                     cuenta = 0
                 assert cuenta <= 1, (nivel, list(zip(niveles, tiempos)), salidas)
+
+
+# ---------- silencios del servidor (revisión de M-1) ----------
+
+def pm(minutos, nivel, valor, lectura_min=None, fuente=None, retenido=None, reloj=None):
+    """Publicación a `minutos` desde las 00:00 del 17/10, con la lectura de altura
+    a `lectura_min` (por defecto 5 min antes), `fuente` (None = la del fixture) y,
+    si se pasa, la retención del lector con el nivel `retenido`. `reloj` pisa los
+    minutos de `generado` (un reloj corrido) o, si es texto, lo deja inválido."""
+    base = datetime(2026, 10, 17, tzinfo=avisos.ZONA_LOCAL)
+    lectura_min = minutos - 5 if lectura_min is None else lectura_min
+    reloj = minutos if reloj is None else reloj
+    p = pub(nivel, prefectura=AYER, valor=valor,
+            generado=reloj if isinstance(reloj, str) else (base + timedelta(minutes=reloj)).isoformat(),
+            lectura=(base + timedelta(minutes=lectura_min)).isoformat())
+    if fuente is not None:
+        p["altura_actual"]["fuente"] = fuente
+    if retenido is not None:
+        p["nivel_retenido"] = {"nivel": retenido}
+    return p
+
+
+def test_retencion_de_alerta_soltada_en_evacuacion_y_vuelve_a_alerta_avisa_la_alerta():
+    # Bug: la retención confirmaba la alerta solo en la primera publicación de la
+    # subida, que era la de evacuación (de otro nivel, no avisa). La alerta quedaba
+    # muda aunque el río siguiera horas en alerta.
+    salidas = secuencia(
+        pm(8 * 60, "atencion", 5.5),
+        pm(8 * 60 + 30, "atencion", 5.6, retenido="alerta"),
+        pm(9 * 60, "evacuacion", 6.7),
+        pm(9 * 60 + 30, "alerta", 6.0),
+        pm(10 * 60, "alerta", 6.05),
+        pm(10 * 60 + 30, "alerta", 6.1),
+        pm(11 * 60 + 40, "alerta", 6.1),
+        *[pm(12 * 60 + 10 * i, "alerta", 6.1 + 0.01 * i) for i in range(72)])
+    assert salidas[:4] == [None, None, None, "alerta"]
+    assert salidas.count("alerta") == 1 and "evacuacion" not in salidas
+
+
+def test_retencion_de_alerta_soltada_en_alerta_sigue_saliendo_de_una():
+    # La retención del mismo nivel sigue confirmando en la primera publicación,
+    # aunque después suba a evacuación y vuelva.
+    salidas = secuencia(
+        pm(0, "atencion", 5.5, retenido="alerta"),
+        pm(10, "alerta", 5.9),
+        pm(20, "evacuacion", 6.8),
+        pm(30, "alerta", 6.0),
+        pm(40, "alerta", 6.0))
+    assert salidas == [None, "alerta", None, None, None]
+
+
+def test_evacuacion_de_una_lectura_tras_un_hueco_y_alerta_sostenida_avisa_la_alerta():
+    # Bug: tras un hueco de más de 2 h, la búsqueda hacia atrás cortaba suponiendo que
+    # la evacuación ya había avisado; tenía una sola lectura y nunca salió, y la alerta
+    # quedaba muda horas.
+    salidas = secuencia(
+        pm(0, "atencion", 5.0, 0),
+        pm(60, "alerta", 5.92, 60),
+        pm(70, "alerta", 5.92, 60),
+        pm(270, "evacuacion", 6.89, 270),
+        pm(280, "alerta", 5.99, 270),
+        pm(300, "alerta", 6.0, 300),
+        pm(330, "alerta", 6.0, 330),
+        *[pm(400 + 10 * i, "alerta", 6.0, 390 + 10 * i) for i in range(100)])
+    assert salidas[:5] == [None, None, None, None, "alerta"]
+    assert salidas.count("alerta") == 1 and "evacuacion" not in salidas
+
+
+def test_evacuacion_sostenida_tras_un_hueco_y_bajada_a_alerta_no_avisa_la_alerta():
+    # Lo que cuidaba el corte viejo: la evacuación sí avisó (por plazo), así que
+    # volver a alerta es una bajada.
+    salidas = secuencia(
+        pm(0, "atencion", 5.0),
+        pm(60, "alerta", 5.92, 60),
+        pm(270, "evacuacion", 6.89, 270),
+        pm(280, "evacuacion", 6.89, 270),
+        pm(340, "evacuacion", 6.9, 270),
+        pm(350, "alerta", 6.0),
+        pm(360, "alerta", 6.0))
+    assert salidas == [None, None, None, None, "evacuacion", None, None]
+
+
+@pytest.mark.parametrize("hueco", [0, 200])
+def test_fuentes_alternadas_salen_por_el_tope(hueco):
+    # Una fuente repite su lectura vieja y la otra trae lecturas nuevas: ninguna
+    # confirma a la primera (otra fuente o misma fecha), pero el tope saca el urgente.
+    a, b = "CARU – estación automática Paysandú", "Prefectura"
+    salidas = secuencia(
+        pm(0, "atencion", 5.5, fuente=a),
+        pm(10, "alerta", 5.9, 5, fuente=a),
+        pm(30 + hueco, "alerta", 5.92, fuente=b),
+        pm(50 + hueco, "alerta", 5.9, 5, fuente=a),
+        pm(70 + hueco, "alerta", 5.93, fuente=b),
+        pm(90 + hueco, "alerta", 5.9, 5, fuente=a),
+        pm(110 + hueco, "alerta", 5.94, fuente=b))
+    tope = 2 if hueco else 4        # la primera publicación a 60 min o más de la primera
+    esperado = [None] * 7
+    esperado[tope] = "alerta"
+    assert salidas == esperado
+
+
+def test_salto_de_mas_de_1_m_persistente_tras_huecos_sale_por_el_tope():
+    salidas = secuencia(
+        pm(0, "atencion", 5.5),
+        pm(10, "alerta", 5.9),
+        pm(100, "alerta", 7.1),
+        pm(190, "alerta", 5.9),
+        pm(280, "alerta", 7.1))
+    assert salidas == [None, None, "alerta", None, None]
+
+
+def test_no_lee_la_racha_entera_de_evacuacion_al_bajar_a_alerta():
+    # Sin el corte por "más de 2 h" la búsqueda sigue cortando: una evacuación sostenida
+    # 60 min o más ya avisó, así que la alerta que sigue es una bajada.
+    leidas = []
+
+    def historia():
+        for i in range(500):
+            leidas.append(i)
+            yield pm(23 * 60 + 30 - 30 * i, "evacuacion", 6.9)
+    d = avisos.decidir(pm(23 * 60 + 59, "alerta", 6.0), historia())
+    assert d["urgente"] is None
+    assert len(leidas) <= 4
+
+
+def test_generado_desordenado_no_hace_que_el_corte_calle_la_alerta():
+    # Un revert o un commit a mano deja una publicación con el reloj 26 min adelantado.
+    # El corte de la historia medía contra esa publicación y la alerta sostenida no
+    # salía nunca; leyendo toda la historia sí sale. El plazo se mide desde el
+    # `generado` más temprano de la racha, y cortar vuelve a dar lo mismo.
+    salidas = secuencia(
+        pm(0, "atencion", 5.5),
+        pm(60, "evacuacion", 6.9, 55, reloj=86),
+        pm(65, "evacuacion", 6.9, 55, reloj=60),
+        pm(126, "evacuacion", 6.9, 55),             # misma lectura: no confirma
+        *[pm(150 + 30 * i, "alerta", 6.0, 55) for i in range(12)])
+    assert salidas[:4] == [None, None, None, "evacuacion"]
+    assert salidas[4:] == [None] * 12               # bajada tras la evacuación avisada
+
+
+def test_propiedad_ningun_nivel_sostenido_queda_mudo(monkeypatch):
+    """Secuencias que mezclan fuentes, saltos de más de 1 m, lecturas repetidas,
+    huecos, retenciones y sin_dato. (a) Si dos publicaciones DE NIVEL L (alerta o
+    evacuación) de la misma racha continua con L o más quedan a 60 min o más, sale
+    un urgente de L o más en esa racha hasta la segunda: nunca callar. (b) Cortar la
+    lectura de la historia (_racha_vencida) nunca cambia la decisión, también con
+    `generado` corrido (que no crece) o inválido."""
+    import random
+    azar = random.Random(20261104)
+    rango = {"normal": 0, "atencion": 1, "alerta": 2, "evacuacion": 3}
+    altura = {"normal": 4.0, "atencion": 5.0, "alerta": 5.9, "evacuacion": 6.8, "sin_dato": 5.0}
+    fuentes = ["CARU – estación automática Paysandú", "Prefectura"]
+    corte = avisos._racha_vencida
+
+    def decidir_todo(publicaciones, cortar):
+        monkeypatch.setattr(avisos, "_racha_vencida", corte if cortar else (lambda *_: False))
+        historia, salidas = [], []
+        for p in publicaciones:
+            salidas.append(avisos.decidir(p, iter(historia))["urgente"])
+            historia.insert(0, p)
+        return salidas
+
+    for _ in range(250):
+        filas, t, lectura, fuente = [], 0, -5, 0
+        nivel = azar.choice(["normal", "atencion"])
+        for k in range(azar.randint(6, 30)):
+            if k:
+                if azar.random() > 0.65:
+                    nivel = azar.choice(["sin_dato", "normal", "atencion", "alerta", "evacuacion"])
+                t += azar.choice([10, 10, 10, 20, 30, 59, 60, 70, 119, 121, 200, 400])
+            if azar.random() < 0.6:
+                lectura = t - 5
+            if azar.random() < 0.15:
+                fuente = 1 - fuente
+            salto = azar.choice([1.5, -1.5, 1.01]) if azar.random() < 0.15 else 0
+            retenido = (azar.choice(["alerta", "evacuacion"])
+                        if nivel in ("normal", "atencion") and azar.random() < 0.15 else None)
+            filas.append((t, nivel, round(altura[nivel] + salto + 0.01 * (t // 30), 2), lectura,
+                          fuentes[fuente], retenido))
+        publicaciones = [pm(*f) for f in filas]
+        salidas = decidir_todo(publicaciones, cortar=True)
+        assert salidas == decidir_todo(publicaciones, cortar=False), filas       # (b)
+        # (b) con el reloj sucio: corrido hasta 40 min para cualquier lado, o roto.
+        relojes = [f[0] + azar.choice([-40, -26, -10, 10, 26, 40]) if azar.random() < 0.2
+                   else ("roto" if azar.random() < 0.03 else f[0]) for f in filas]
+        sucias = [pm(*f, reloj=r) for f, r in zip(filas, relojes)]
+        assert decidir_todo(sucias, cortar=True) == decidir_todo(sucias, cortar=False), (filas, relojes)
+        con_dato = [k for k, f in enumerate(filas) if f[1] in rango]
+        for L in (2, 3):
+            for a, k in enumerate(con_dato):
+                if a == 0 or rango[filas[k][1]] < L or rango[filas[con_dato[a - 1]][1]] >= L:
+                    continue        # no empieza una racha con L o más
+                racha = [k]
+                for k2 in con_dato[a + 1:]:
+                    if rango[filas[k2][1]] < L:
+                        break
+                    racha.append(k2)
+                de_l = [k2 for k2 in racha if rango[filas[k2][1]] == L]
+                segunda = next((k2 for k2 in de_l if filas[k2][0] - filas[de_l[0]][0] >= 60), None)
+                if segunda is not None:                                          # (a)
+                    assert any(salidas[k2] and rango[salidas[k2]] >= L
+                               for k2 in racha if k2 <= segunda), (filas, salidas)

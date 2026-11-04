@@ -183,23 +183,27 @@ def _rango(nivel):
     return NIVELES_CON_DATO.index(nivel)
 
 
-def _racha_vencida(racha, nivel):
-    """True si ya se leyó historia de más: o bien una publicación del mismo nivel
-    pasó el plazo de confirmación contra la más vieja leída (el urgente de ese nivel
-    ya salió en ella o antes), o bien las publicaciones ANTERIORES abarcan más del
-    doble del plazo (una racha de nivel más alto ya tuvo su propio aviso). Se mide
-    contra la publicación anterior y no contra la nueva: tras un hueco de
-    publicaciones la nueva sigue evaluándose y sale por plazo. Con eso no se lee
-    más historia."""
+def _racha_vencida(racha):
+    """True si ya se leyó historia de más: una publicación ANTERIOR de algún nivel
+    L (el nuevo o uno más alto) pasó el plazo de confirmación contra la más vieja
+    leída, sin que el nivel baje de L entre las dos. Entonces el urgente de L ya
+    salió en ella o antes (por confirmación o por plazo): si L es el nivel nuevo,
+    ya avisó; si es más alto, la nueva es una bajada. En los dos casos la nueva no
+    avisa, así que no hace falta leer más historia.
+
+    Se mide contra publicaciones anteriores y no contra la nueva: tras un hueco
+    de publicaciones la nueva sigue evaluándose y sale por plazo. Un tramo largo
+    no alcanza para cortar: una evacuación de una sola lectura tras un hueco de
+    horas nunca avisó y la alerta que sigue tiene que poder salir."""
     vieja = _generado(racha[-1])
     if vieja is None:
         return False
-    reciente = _generado(racha[0])
-    if reciente is not None and reciente - vieja >= 2 * VENTANA_CONFIRMACION:
-        return True
-    for r in racha[:-1]:
+    piso = _rango(_nivel(racha[-1]))    # nivel mínimo desde r hasta la más vieja
+    for r in reversed(racha[:-1]):
+        rango = _rango(_nivel(r))
+        piso = min(piso, rango)
         g = _generado(r)
-        if _nivel(r) == nivel and g is not None and g - vieja >= VENTANA_CONFIRMACION:
+        if rango == piso and g is not None and g - vieja >= VENTANA_CONFIRMACION:
             return True
     return False
 
@@ -214,25 +218,36 @@ def _evento_en(cadena, j, pub_antes):
     pueden confirmar o vencer: una publicación de un nivel más alto en el medio
     decide su propio aviso, no el de este nivel. El evento es el primero que
     confirma (fecha mayor, misma fuente, sin salto brusco) o que llega 60 min
-    después de la primera."""
+    después de la primera (del `generado` más temprano de las anteriores de la
+    racha, por si el reloj no crece). Si la subida arranca justo después de una
+    retención del mismo nivel, sale confirmada en la primera publicación DE ESE
+    NIVEL de la racha (aunque antes haya una de un nivel más alto)."""
     nivel = _nivel(cadena[j])
     s = j
     while s > 0 and _rango(_nivel(cadena[s - 1])) >= _rango(nivel):
         s -= 1
     run = cadena[s:j + 1]
     if s == 0 and _retencion_confirma(pub_antes, nivel):
-        return (j == 0), ("confirmada" if j == 0 else "")
-    gen0 = _generado(run[0])
+        # Sale en la primera publicación DE ESE NIVEL: si la subida arranca en un
+        # nivel más alto (se retuvo alerta y se soltó evacuación), la alerta sale al
+        # volver a alerta y no queda muda.
+        primera = next(i for i, p in enumerate(run) if _nivel(p) == nivel)
+        return (primera == len(run) - 1), ("confirmada" if primera == len(run) - 1 else "")
+    # El plazo se mide desde el `generado` más temprano de las publicaciones previas
+    # de la racha y no solo desde la primera: si el reloj no crece (un revert o un
+    # commit a mano), el corte de _racha_vencida sigue sin cambiar la decisión.
+    base = _generado(run[0])
     for i in range(1, len(run)):
         p = run[i]
-        if _nivel(p) != nivel:
-            continue
         gen = _generado(p)
-        if _confirma(run[0], p):
-            return (i == len(run) - 1), "confirmada"
-        # Si no se puede medir el tiempo se prefiere avisar a callar.
-        if gen0 is None or gen is None or gen - gen0 >= VENTANA_CONFIRMACION:
-            return (i == len(run) - 1), "plazo"
+        if _nivel(p) == nivel:
+            if _confirma(run[0], p):
+                return (i == len(run) - 1), "confirmada"
+            # Si no se puede medir el tiempo se prefiere avisar a callar.
+            if base is None or gen is None or gen - base >= VENTANA_CONFIRMACION:
+                return (i == len(run) - 1), "plazo"
+        if base is not None and gen is not None and gen < base:
+            base = gen
     return False, "espera"
 
 
@@ -278,7 +293,8 @@ def decidir(nuevo, anteriores):
       brusco contra la primera; la marca dato_a_verificar sola no bloquea), o
       en la primera que llega 60 min después de aquella, lo que pase antes. Si el
       lector acababa de soltar una retención del mismo nivel (nivel_retenido.nivel) ya hubo
-      segunda lectura.
+      segunda lectura: sale en la primera publicación de ese nivel de la subida,
+      aunque la subida haya arrancado en un nivel más alto.
       El nivel publicado ya trae la retención y el margen al bajar del lector,
       así que no se recalcula desde la altura.
     - Resumen: `resumen_listo(nuevo)` no es None y ninguna publicación anterior
@@ -301,9 +317,10 @@ def decidir(nuevo, anteriores):
         if buscar_nivel and _nivel(anterior):
             if _rango(_nivel(anterior)) >= _rango(nivel_ahora):
                 racha.append(anterior)
-                if _racha_vencida(racha, nivel_ahora):
-                    # La publicación anterior ya había pasado el plazo: el urgente
-                    # (si correspondía) salió antes. No se lee más historia.
+                if _racha_vencida(racha):
+                    # Una publicación anterior del nivel nuevo o de uno más alto ya
+                    # había pasado el plazo: ese urgente salió antes y la nueva no
+                    # avisa. No se lee más historia.
                     buscar_nivel = False
                     racha = None
             else:
