@@ -2,6 +2,8 @@
 /// guardada que después se muestre como real, ni avisos inventados.
 library;
 
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -32,8 +34,9 @@ void main() {
   const iniciales = {'avisos_activos': true, 'avisar_desde': 'alerta', 'ultimo_nivel': 'normal', 'tema': 'claro'};
 
   /// Abre la app con [repositorio] y devuelve las claves guardadas al final.
-  Future<Map<String, Object>> abrirApp(WidgetTester t, Repositorio repositorio) async {
-    SharedPreferences.setMockInitialValues(iniciales);
+  Future<Map<String, Object>> abrirApp(WidgetTester t, Repositorio repositorio,
+      {Map<String, Object> mas = const {}}) async {
+    SharedPreferences.setMockInitialValues({...iniciales, ...mas});
     final prefs = await SharedPreferences.getInstance();
     await t.pumpWidget(RioPaysanduApp(config: config, prefs: prefs, repositorio: repositorio));
     await t.pumpAndSettle();
@@ -53,8 +56,25 @@ void main() {
   });
 
   testWidgets('control: con un repositorio normal los mismos datos sí se guardan y se avisa', (t) async {
-    final claves = await abrirApp(t, Repositorio(config.urlBase, cliente: clienteDeEjemplo('alerta')));
-    expect(claves.keys, containsAll(['cache_actual', 'cache_umbrales', 'cache_historial', 'ultimo_nivel']));
+    // M-1: el urgente sale con la segunda lectura. La primera (de hace una hora,
+    // con el río ya en alerta) la había visto una revisión anterior.
+    final antes = DateTime.now().toUtc().subtract(const Duration(minutes: 60));
+    final claves = await abrirApp(t, Repositorio(config.urlBase, cliente: clienteDeEjemplo('alerta')), mas: {
+      'urgente_confirmacion': jsonEncode({
+        'nivel': 'alerta',
+        'visto': antes.toIso8601String(),
+        'alerta': {
+          'inicio': {
+            'generado': antes.toIso8601String(),
+            'fecha': antes.subtract(const Duration(minutes: 20)).toIso8601String(),
+            'valor_m': 5.80,
+            'fuente': 'CARU – estación automática Paysandú',
+          },
+          'avisado': false,
+        },
+      }),
+    });
+    expect(claves.keys, containsAll(['cache_actual', 'cache_umbrales', 'cache_historial', 'urgente_confirmacion']));
     expect(llamadas, contains('show'));
   });
 

@@ -186,7 +186,7 @@ lo mostraría Android solo y no probaría nada de la app.
 | 7 | Seguido del 6. | resumen otra vez | Nada (uno por día). |
 | 8 | Gist en `normal`. | resumen | Nada. |
 | 9 | Apagar el urgente en la pestaña, esperar unos segundos. | urgente alerta | Nada. |
-| 10 | Sin push: gist de `atencion` a `alerta` y esperar el respaldo (hasta 30 min, si Android lo deja). | — | El mismo aviso del caso 1, una sola vez aunque después llegue el push. |
+| 10 | Sin push: gist de `atencion` a `alerta` y esperar el respaldo (hasta 30 min, si Android lo deja). | — | Nada con esa primera lectura (M-1). Con una segunda lectura en el gist (otra `altura_actual.fecha` y `generado`), el mismo aviso del caso 1, una sola vez aunque después llegue el push. Ver `docs/respaldo-m1.md`. |
 
 Para el caso 10 el respaldo puede tardar mucho más en un Xiaomi; es justamente lo que el push viene a
 resolver.

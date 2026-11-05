@@ -152,6 +152,13 @@ int? _caudal(Object? v) {
   return n != null && n >= 0 && n <= _caudalMaximo ? n.round() : null;
 }
 
+/// `nivel_retenido.nivel`: solo un nivel con dato; cualquier otra cosa es null.
+Nivel? _nivelRetenido(Object? j) {
+  if (j is! Map) return null;
+  final n = nivelDesdeTexto(_texto(j['nivel']));
+  return n == Nivel.sinDato ? null : n;
+}
+
 class Actual {
   final Lectura? altura;
   final Lectura? prefectura;
@@ -171,6 +178,11 @@ class Actual {
   /// 30 min): un pico que todavía no confirmó no debe subir el nivel acá.
   final bool retenido;
 
+  /// Nivel que calculó el lector para la lectura retenida (`nivel_retenido.nivel`),
+  /// o null. Lo usa la confirmación del urgente (M-1, ver confirmacion_urgente.dart):
+  /// si la publicación siguiente suelta ese mismo nivel, ya hubo segunda lectura.
+  final Nivel? nivelRetenido;
+
   const Actual({
     this.altura,
     this.prefectura,
@@ -181,6 +193,7 @@ class Actual {
     this.generado,
     this.umbrales,
     this.retenido = false,
+    this.nivelRetenido,
   });
 
   static Actual? desdeJson(Object? j) {
@@ -195,6 +208,7 @@ class Actual {
       cero: _textoCorto(j['cero'], largoMaximoEtiqueta),
       generado: _fecha(j['generado']),
       retenido: j['nivel_retenido'] is Map,
+      nivelRetenido: _nivelRetenido(j['nivel_retenido']),
     );
   }
 
@@ -212,6 +226,7 @@ class Actual {
       generado: generado,
       umbrales: u,
       retenido: retenido,
+      nivelRetenido: nivelRetenido,
     );
     if (!base._cruce().incoherente || avisos.contains('dato_a_verificar')) return base;
     return Actual(
@@ -224,6 +239,7 @@ class Actual {
       generado: generado,
       umbrales: u,
       retenido: retenido,
+      nivelRetenido: nivelRetenido,
     );
   }
 
