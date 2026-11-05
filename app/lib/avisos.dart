@@ -350,6 +350,17 @@ Future<T> _enTurno<T>(Future<T> Function() tarea) async {
 /// para descartar un dato por viejo (ver `_decidir`).
 const margenFuturoVisto = Duration(hours: 6);
 
+/// Decisión del dueño (revertible con [topeConRelojDelTelefono]): hace [ventanaConfirmacion]
+/// o más, medido con el reloj del teléfono, que `generado` no avanza. Una publicación
+/// anterior a la última vista ya no se descarta como caché: o el lector retrocedió el
+/// reloj de verdad, o la caché lleva demasiado, y dejar de decidir para siempre es peor.
+/// Riesgo: una copia vieja servida después de ese tiempo reinicia la subida y el urgente
+/// puede repetirse una vez, cuando vuelva la publicación nueva.
+bool _llevaMuchoSinAvance(EstadoM1 estado, DateTime ahora) {
+  final local = estado.vistoLocal;
+  return local != null && ahora.difference(local) >= ventanaConfirmacion;
+}
+
 /// Lo guardado del urgente. Si todavía no hay nada, toma `ultimo_nivel` y
 /// `ultimo_nivel_generado` de la versión anterior.
 EstadoM1 leerEstadoM1(SharedPreferences prefs) => EstadoM1.desdeJson(_json(prefs.getString(claveConfirmacionUrgente)),
@@ -418,7 +429,8 @@ Future<List<Aviso>> _decidir(Actual actual, SharedPreferences prefs, DateTime ah
   if (generado != null &&
       visto != null &&
       generado.isBefore(visto) &&
-      !visto.isAfter(ahora.add(margenFuturoVisto))) {
+      !visto.isAfter(ahora.add(margenFuturoVisto)) &&
+      !(topeConRelojDelTelefono && _llevaMuchoSinAvance(estado, ahora))) {
     if (subidaInformada != null) await _anotarPush(prefs, estado, subidaInformada, enviado ?? ahora);
     return const [];
   }

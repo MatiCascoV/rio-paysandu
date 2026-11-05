@@ -42,6 +42,11 @@ library;
 
 import 'modelos.dart';
 
+/// DECISIÓN DEL DUEÑO POR DEFECTO (revertible, poner en false): cuando el aviso que sale
+/// es el de un nivel y el dato ya está en uno más alto, el texto dice el nivel real de
+/// ahora (evacuación), no el que se anunció (alerta). Con false, dice el anunciado.
+const avisarNivelRealActual = true;
+
 /// Tope de espera de la segunda lectura (`VENTANA_CONFIRMACION` de avisos.py).
 const ventanaConfirmacion = Duration(minutes: 60);
 
@@ -55,6 +60,13 @@ const nivelesUrgentes = [Nivel.alerta, Nivel.evacuacion];
 /// publica si algo cambió (`guardar_actual`), y la estación informa cada 30 min:
 /// la que suelta la retención suele llegar ~30 min después de la que retenía.
 const margenRetencion = Duration(minutes: 40);
+
+/// DECISIÓN DEL DUEÑO POR DEFECTO (revertible, poner en false): si el lector se corta y
+/// `generado` no avanza (queda igual o retrocede), el teléfono usa su propio reloj como
+/// tope de 60 min desde que vio la candidata, para no quedar mudo para siempre. Solo
+/// actúa cuando `generado` no avanza: con un lector que publica no cambia nada. Con
+/// false, el teléfono vuelve a medir el tope solo con `generado`, como el servidor.
+const topeConRelojDelTelefono = true;
 
 DateTime? _fecha(Object? v) => v is String ? DateTime.tryParse(v) : null;
 String? _iso(DateTime? f) => f?.toUtc().toIso8601String();
@@ -126,14 +138,22 @@ class RachaM1 {
   /// en un nivel más alto: avisa la primera publicación de ESTE nivel (avisos.py).
   final bool porRetencion;
 
-  RachaM1(this.inicio, {required this.avisado, this.avisadoEn, DateTime? base, this.porRetencion = false})
+  /// DECISIÓN DEL DUEÑO (por defecto, revertible): hora del reloj del teléfono en que
+  /// empezó la subida. Solo sirve de tope de respaldo cuando el lector se corta y
+  /// `generado` no avanza (ver [pasoM1], "plazo_reloj"). Para revertir: poner
+  /// [topeConRelojDelTelefono] en false.
+  final DateTime? local;
+
+  RachaM1(this.inicio,
+      {required this.avisado, this.avisadoEn, DateTime? base, this.porRetencion = false, this.local})
       : base = base ?? inicio?.generado;
 
   RachaM1 _con({bool? avisado, DateTime? avisadoEn, DateTime? base, bool? porRetencion}) => RachaM1(inicio,
       avisado: avisado ?? this.avisado,
       avisadoEn: avisadoEn ?? this.avisadoEn,
       base: base ?? this.base,
-      porRetencion: porRetencion ?? this.porRetencion);
+      porRetencion: porRetencion ?? this.porRetencion,
+      local: local);
 
   RachaM1 yaAvisada(DateTime? en) => avisado ? this : _con(avisado: true, avisadoEn: en, porRetencion: false);
 
@@ -146,6 +166,7 @@ class RachaM1 {
         'avisado_en': _iso(avisadoEn),
         'base': _iso(base),
         'por_retencion': porRetencion,
+        'local': _iso(local),
       };
 
   static RachaM1? desdeJson(Object? j) {
@@ -156,7 +177,8 @@ class RachaM1 {
         avisado: avisado,
         avisadoEn: _fecha(j['avisado_en']),
         base: _fecha(j['base']),
-        porRetencion: j['por_retencion'] == true);
+        porRetencion: j['por_retencion'] == true,
+        local: _fecha(j['local']));
   }
 }
 
@@ -186,14 +208,29 @@ class EstadoM1 {
   final DateTime? retenidoEn;
   final PushPendiente? push;
 
-  const EstadoM1({this.nivel, this.visto, this.rachas = const {}, this.retenido, this.retenidoEn, this.push});
+  /// Hora del reloj del teléfono en que `visto` cambió por última vez (la última vez
+  /// que el teléfono vio una publicación con otro `generado`). Si pasa [ventanaConfirmacion]
+  /// sin cambios, una publicación con `generado` anterior al visto deja de ignorarse como
+  /// caché vieja (ver `_decidir` en avisos.dart). Parte de la misma decisión del dueño
+  /// que [topeConRelojDelTelefono].
+  final DateTime? vistoLocal;
 
-  EstadoM1 conPush(PushPendiente? p) =>
-      EstadoM1(nivel: nivel, visto: visto, rachas: rachas, retenido: retenido, retenidoEn: retenidoEn, push: p);
+  const EstadoM1(
+      {this.nivel, this.visto, this.rachas = const {}, this.retenido, this.retenidoEn, this.push, this.vistoLocal});
+
+  EstadoM1 conPush(PushPendiente? p) => EstadoM1(
+      nivel: nivel,
+      visto: visto,
+      rachas: rachas,
+      retenido: retenido,
+      retenidoEn: retenidoEn,
+      push: p,
+      vistoLocal: vistoLocal);
 
   Map<String, Object?> aJson() => {
         'nivel': nivel == null ? null : nivelATexto(nivel!),
         'visto': _iso(visto),
+        'visto_local': _iso(vistoLocal),
         for (final n in nivelesUrgentes) nivelATexto(n): rachas[n]?.aJson(),
         'retenido': retenido == null ? null : nivelATexto(retenido!),
         'retenido_en': _iso(retenidoEn),
@@ -226,6 +263,7 @@ class EstadoM1 {
     return EstadoM1(
       nivel: conDato(j['nivel']),
       visto: _fecha(j['visto']),
+      vistoLocal: _fecha(j['visto_local']),
       rachas: {
         for (final n in nivelesUrgentes) n: ?RachaM1.desdeJson(j[nivelATexto(n)]),
       },
@@ -283,6 +321,10 @@ PasoM1 pasoM1(
   if (anterior == null && pendiente != null) anterior = Nivel.normal;
   final g = lectura.generado;
   final retenidoEn = previo.retenidoEn;
+  // `generado` no avanza: falta, o es igual o anterior al último visto (el lector se cortó,
+  // o su reloj retrocedió).
+  final vistoAntes = previo.visto;
+  final sinAvance = g == null || (vistoAntes != null && !g.isAfter(vistoAntes));
   final retencionReciente =
       retenidoEn != null && g != null && g.isAfter(retenidoEn) && g.difference(retenidoEn) <= margenRetencion;
 
@@ -298,7 +340,10 @@ PasoM1 pasoM1(
       // posterior si la subida arrancó en un nivel más alto).
       final retencion = anterior != null && previo.retenido == x && retencionReciente;
       rachas[x] = RachaM1(lectura,
-          avisado: anterior == null, avisadoEn: anterior == null ? g : null, porRetencion: retencion && x != nivel);
+          avisado: anterior == null,
+          avisadoEn: anterior == null ? g : null,
+          porRetencion: retencion && x != nivel,
+          local: ahora);
       if (retencion && x == nivel) eventos[x] = 'retencion';
       continue;
     }
@@ -306,7 +351,7 @@ PasoM1 pasoM1(
       // Ya estaba en x o más y no hay racha guardada: viene de la versión anterior de
       // la app (que avisaba con la primera lectura) o se perdió lo guardado. Se da por
       // avisada: repetir un urgente es peor.
-      rachas[x] = RachaM1(lectura, avisado: true);
+      rachas[x] = RachaM1(lectura, avisado: true, local: ahora);
       continue;
     }
     // La base del tope se actualiza con esta publicación DESPUÉS de evaluarla (como
@@ -325,7 +370,14 @@ PasoM1 pasoM1(
     // Tope de 60 min desde el `generado` más temprano de la subida: sale aunque no
     // confirme, como el servidor. Si no se puede medir se prefiere avisar a callar.
     final base = previa.base;
-    if (base == null || g == null || g.difference(base) >= ventanaConfirmacion) eventos[x] = 'plazo';
+    if (base == null || g == null || g.difference(base) >= ventanaConfirmacion) {
+      eventos[x] = 'plazo';
+    } else if (topeConRelojDelTelefono && sinAvance && previa.local != null) {
+      // Decisión del dueño (revertible): el lector no publica nada nuevo (o su reloj
+      // retrocedió), así que `generado` nunca llega a los 60 min. El reloj del teléfono
+      // pone el tope para no callar la subida para siempre.
+      if (ahora.difference(previa.local!) >= ventanaConfirmacion) eventos[x] = 'plazo_reloj';
+    }
   }
 
   // Push: el servidor ya vio la segunda lectura. El de ahora o uno anotado antes.
@@ -339,6 +391,17 @@ PasoM1 pasoM1(
     // Si no, el dato todavía es anterior al push: queda anotado para la próxima revisión.
   }
 
+  // Decisión del dueño (revertible): si el push anuncia un nivel y el dato ya muestra uno
+  // más alto (subió a ALERTA pero ya está en evacuación), se avisa el nivel real de ahora,
+  // no el anunciado: nada de "subió a ALERTA" con el río en evacuación. Es un solo aviso
+  // y esa subida queda avisada. Para revertir: [avisarNivelRealActual] en false.
+  if (avisarNivelRealActual && eventos.length == 1 && nivelesUrgentes.contains(nivel)) {
+    final e = eventos.keys.single;
+    if (_rango(nivel) > _rango(e)) {
+      final como = eventos.remove(e)!;
+      eventos[nivel] = como;
+    }
+  }
   Nivel? sale;
   for (final e in eventos.keys) {
     if (sale == null || _rango(e) > _rango(sale)) sale = e;
@@ -351,6 +414,7 @@ PasoM1 pasoM1(
   final estado = EstadoM1(
     nivel: nivel,
     visto: g ?? previo.visto,
+    vistoLocal: (g != null && g != previo.visto) || previo.vistoLocal == null ? ahora : previo.vistoLocal,
     rachas: rachas,
     retenido: retenidoAhora,
     retenidoEn: retenidoAhora == null ? null : g,

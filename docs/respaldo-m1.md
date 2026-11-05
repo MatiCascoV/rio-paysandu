@@ -34,8 +34,10 @@ aunque el servidor (`lector/avisos.py`, PR #40) espera una segunda.
   evacuación"; en una instalación nueva todo apagado hasta elegir, P-04). La subida avanza aunque el urgente
   esté apagado: prenderlo después no saca un aviso viejo. El resumen del día no cambió.
 - **Caché vieja:** una publicación con `generado` anterior a la última vista no cambia nada (si no, un nivel más
-  bajo reiniciaría la subida y el urgente se repetiría). Excepción: si lo último visto es de más de 6 h después
-  del reloj del teléfono, no se usa para esto (un `generado` mal puesto en el futuro no congela los avisos).
+  bajo reiniciaría la subida y el urgente se repetiría). Excepciones: si lo último visto es de más de 6 h después
+  del reloj del teléfono, no se usa para esto (un `generado` mal puesto en el futuro no congela los avisos); y
+  si pasaron 60 min o más de reloj del teléfono sin que `generado` avance (decisión del dueño, abajo), se vuelve
+  a decidir.
 - `app/lib/modelos.dart`: `Actual.nivelRetenido` (lee `nivel_retenido.nivel`).
 - **Push:** el servidor ya confirmó, así que un push urgente avisa de una si el dato bajado muestra ese nivel o
   más. Si el dato todavía no lo muestra (Pages atrasado), no se pudo bajar o es una copia vieja, sale el
@@ -71,8 +73,32 @@ Workmanager corre cada 30 min si Android lo deja, y en los Xiaomi puede pasar ho
   misma lectura repetida). El texto lleva la hora de la lectura. Se probó frenar el tope cuando el teléfono no
   vio lo del medio, pero podía callar el urgente para siempre (fuentes que se alternan, un salto sostenido, o un
   lector que publica cada más de 60 min), así que no se hace.
-- Si el lector se corta después de la primera lectura, el teléfono tampoco avisa (necesita una publicación
-  nueva, como el servidor). Antes el respaldo avisaba con la primera lectura y cubría ese caso; ya no.
+- Si el lector se corta después de la primera lectura, el teléfono usa su propio reloj como tope (ver "Decisiones
+  del dueño por defecto" abajo). Antes el respaldo avisaba con la primera lectura; ahora espera 60 min.
+
+## Decisiones del dueño por defecto (propuestas, aplicadas; revertibles)
+
+Dos decisiones que el dueño puede revertir. Cada una es una constante en `app/lib/confirmacion_urgente.dart`.
+
+1. **Reloj del teléfono como tope de 60 min** (`topeConRelojDelTelefono`, poner en `false` para revertir).
+   Si el lector se corta y `generado` no avanza (queda igual, falta o retrocede), el teléfono mide el tope de
+   60 min con su propio reloj, desde que vio la candidata (`RachaM1.local`), y avisa con `como == 'plazo_reloj'`.
+   Así no queda mudo para siempre. Solo actúa cuando `generado` no avanza: con un lector que publica, el tope
+   sigue siendo el del servidor (por `generado`), y una revisión espaciada con `generado` que avanza poco no
+   avisa por reloj. Con **caché vieja** (`generado` menor al ya visto) tampoco se deja de decidir para siempre:
+   si pasaron 60 min o más de reloj desde que `generado` cambió por última vez (`EstadoM1.vistoLocal`), la
+   publicación se decide y pasa a ser la referencia nueva. Riesgo: una copia vieja servida después de ese
+   tiempo reinicia la subida y el urgente puede repetirse una vez cuando vuelva la publicación nueva. El
+   reloj del teléfono mal puesto solo puede adelantar o atrasar este respaldo; el tope por `generado` no cambia.
+   Con `false` vuelve a lo de antes: el teléfono no avisa si el lector se corta y descarta toda caché vieja.
+2. **Subió a ALERTA con el dato ya en evacuación** (`avisarNivelRealActual`, `false` para revertir). Un push
+   de alerta que llega cuando el dato bajado ya muestra evacuación avisa **"subió a EVACUACIÓN"** (nivel real
+   de ahora, con su altura), una sola notificación, y esa subida de evacuación queda avisada (no se repite
+   al confirmarse la segunda lectura). Antes decía "subió a ALERTA" y después otra por evacuación. Con `false`
+   vuelve el texto del nivel anunciado y la evacuación espera su propia lectura.
+
+El arreglo del bug 1 del servidor (#46, retención soltada en otro nivel) ya estaba portado: `RachaM1.porRetencion`
+avisa en la primera publicación de ese nivel de la subida. Se verificó con el fixture regenerado.
 
 ## Pruebas
 
@@ -93,6 +119,10 @@ Workmanager corre cada 30 min si Android lo deja, y en los Xiaomi puede pasar ho
   las pasa por su regla y exige el mismo urgente en cada publicación. `lector/tests/test_casos_m1_app.py` falla
   si el archivo no está al día con `avisos.py` (regenerar con `python lector/tests/casos_m1.py`); el workflow de
   tests de Python también corre si cambia el fixture.
+- **Con el reloj del teléfono:** el fixture se regeneró contra `avisos.py` de main (3f42bf5) y salió idéntico.
+  La prueba corre con el reloj del teléfono igual al `generado` de cada publicación, y ahí el tope por reloj
+  nunca se adelanta al del servidor, así que no cambia nada. Sus propias pruebas están en el grupo "tope con
+  el reloj del teléfono".
 - **Sin diferencias:** la app coincide con el servidor en las 321 secuencias, publicación por publicación
   (`diferenciasConocidas` está vacía). Antes de #46 había 3: dos bordes en los que `avisos.py` callaba una
   alerta sostenida (retención de alerta soltada en evacuación; evacuación de una sola lectura tras un hueco de

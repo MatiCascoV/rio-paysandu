@@ -44,7 +44,8 @@ class Telefono {
   /// [anterior]: como si viniera de la versión anterior con `ultimo_nivel` guardado.
   Telefono([Nivel? anterior]) : estado = EstadoM1(nivel: anterior);
 
-  Nivel? ve(Pub p, {Nivel? push, DateTime? enviado}) {
+  /// [ahora]: el reloj del teléfono (por defecto, el `generado` de la publicación).
+  Nivel? ve(Pub p, {Nivel? push, DateTime? enviado, DateTime? ahora}) {
     final paso = pasoM1(estado,
         anterior: estado.nivel,
         nivel: p.nivel,
@@ -52,7 +53,7 @@ class Telefono {
         retenidoAhora: p.retenido,
         push: push,
         enviado: enviado,
-        ahora: min(p.minuto));
+        ahora: ahora ?? min(p.minuto));
     estado = EstadoM1.desdeJson(jsonDecode(jsonEncode(paso.estado.aJson()))); // ida y vuelta por SharedPreferences
     ultimoComo = paso.como;
     return paso.sale;
@@ -264,10 +265,38 @@ void main() {
       expect(t.secuencia([Pub(90, al, 5.9), Pub(120, al, 5.95)]), [null, al]); // una subida nueva espera su lectura
     });
 
-    test('push de alerta con el dato ya en evacuación: avisa la alerta y la evacuación espera su lectura', () {
+    test('push de alerta con el dato ya en evacuación: avisa el nivel real (evacuación), una sola vez', () {
+      // Decisión del dueño (avisarNivelRealActual): nada de "subió a ALERTA" con el río en evacuación.
       final t = Telefono(at);
-      expect(t.ve(Pub(30, ev, 6.7), push: al, enviado: min(32)), al);
-      expect(t.ve(Pub(60, ev, 6.75)), ev);
+      expect(t.ve(Pub(30, ev, 6.7), push: al, enviado: min(32)), ev);
+      expect(t.ve(Pub(60, ev, 6.75)), isNull); // la evacuación ya quedó avisada
+      expect(t.ve(Pub(90, ev, 6.8)), isNull);
+    });
+  });
+
+  group('tope con el reloj del teléfono (decisión del dueño, revertible)', () {
+    test('el lector se corta: la misma publicación, 60 min de reloj del teléfono después, avisa', () {
+      final t = Telefono(at);
+      expect(t.ve(Pub(30, al, 5.9), ahora: min(35)), isNull); // candidata
+      expect(t.ve(Pub(30, al, 5.9), ahora: min(70)), isNull); // 35 min de reloj
+      expect(t.ve(Pub(30, al, 5.9), ahora: min(95)), al); // 60 min de reloj
+      expect(t.ultimoComo, 'plazo_reloj');
+      expect(t.ve(Pub(30, al, 5.9), ahora: min(130)), isNull); // una sola vez
+    });
+
+    test('generado que retrocede (revert del lector): también sale por el reloj del teléfono', () {
+      final t = Telefono(at);
+      expect(t.ve(Pub(100, al, 5.9, lectura: 95), ahora: min(110)), isNull);
+      expect(t.ve(Pub(40, al, 5.9, lectura: 95), ahora: min(150)), isNull);
+      expect(t.ve(Pub(40, al, 5.9, lectura: 95), ahora: min(172)), al);
+      expect(t.ultimoComo, 'plazo_reloj');
+    });
+
+    test('con un lector que publica no cambia nada: no sale por reloj si generado avanza', () {
+      // Revisión espaciada: 3 h de reloj entre las dos, pero generado avanza 10 min (menos de 60 y sin confirmar).
+      final t = Telefono(at);
+      expect(t.ve(Pub(30, al, 5.9, lectura: 25), ahora: min(35)), isNull);
+      expect(t.ve(Pub(40, al, 5.9, lectura: 25), ahora: min(215)), isNull);
     });
   });
 
@@ -297,6 +326,25 @@ void main() {
       expect(avisos.single.titulo, 'Río Uruguay: subió a ALERTA');
       expect(avisos.single.texto, contains('Dato a verificar por CARU.'));
       expect(await titulos(pub('09:30', 'alerta', 6.0), p), isEmpty);
+    });
+
+    test('caché vieja (generado menor al visto): se ignora, pero no para siempre (60 min de reloj)', () async {
+      final p = await prefs({claveUrgente: true, claveUltimoNivel: 'atencion'});
+      final t0 = DateTime.parse('2026-10-17T09:00:00-03:00');
+      await decidirAvisos(pub('09:00', 'alerta', 5.9), p, t0); // candidata
+      // Copia vieja a los 30 min de reloj: se ignora.
+      expect(await decidirAvisos(pub('08:00', 'alerta', 5.9), p, t0.add(const Duration(minutes: 30))), isEmpty);
+      expect(leerEstadoM1(p).visto, DateTime.parse('2026-10-17T09:00:00-03:00'));
+      // A los 60 min de reloj sin que generado avance, la sigue tratando como publicación.
+      await decidirAvisos(pub('08:00', 'alerta', 5.9), p, t0.add(const Duration(minutes: 61)));
+      expect(leerEstadoM1(p).visto, DateTime.parse('2026-10-17T08:00:00-03:00'));
+    });
+
+    test('push de alerta con el dato ya en evacuación: el texto dice EVACUACIÓN', () async {
+      final p = await prefs({claveUrgente: true, claveUltimoNivel: 'atencion'});
+      final avisos = await decidirAvisos(pub('09:00', 'evacuacion', 6.7), p, ahora,
+          origen: Origen.push, subidaInformada: Nivel.alerta, enviado: ahora);
+      expect(avisos.single.titulo, 'Río Uruguay: subió a EVACUACIÓN');
     });
 
     test('nivel_retenido del lector llega al teléfono', () async {
