@@ -183,10 +183,15 @@ que el teléfono no ve:
 - Un push anotado vence a las 6 h desde su envío (`vigenciaPushAnotado`); uno anotado de nivel más alto no se
   pisa con uno más bajo.
 - Observaciones 3 a 6 de la revisión, aceptadas sin cambios de código:
-  - La ventana sin candado entre isolates (push con la app cerrada y workmanager) puede repetir o perder un aviso;
-    se rehace en la revisión siguiente.
-  - El tope por reloj del teléfono depende de que el reloj sea razonable; un reloj muy corrido solo adelanta o
-    atrasa este respaldo.
-  - Con la guarda de 6 h de `generado` en el futuro, el teléfono sigue tomando como referencia lo visto y no
-    puede distinguir un `generado` mal puesto de un revert; ambos se resuelven a los 60 min de reloj.
-  - La caché vieja que se decide después de 60 min puede repetir un urgente una vez (ver decisión A).
+  - Tras un `plazo_reloj`, `avisadoEn` guarda el `generado` viejo. Si el lector se recupera y el servidor manda su
+    push mucho después, `avisoReciente` da false y, si `visto` es anterior a `enviado` - 20 min, la notificación
+    puede repetirse. Caso raro; se cubriría guardando también la hora local del aviso.
+  - Una racha guardada corrupta (sin `inicio`) o perdida se lee como ya avisada y esa subida queda en silencio.
+    Es una decisión consciente (probada en "lo guardado roto"), contraria al principio "nunca callar" del servidor.
+  - `nivelVigente` (`modelos.dart`) puede subir el nivel por encima del publicado cuando no hay `nivel_retenido`;
+    el servidor no. Con datos incoherentes el teléfono puede avisar con una publicación donde el servidor no, pero
+    igual pasa por M-1.
+  - La evacuación sale con una sola lectura (decisión B), con la confirmación de la alerta como único respaldo.
+    El lector ya filtra picos con `nivel_retenido`.
+- Riesgos de las decisiones A y B: una caché vieja servida tras 60 min de reloj sin cambios puede repetir un
+  urgente una vez; un reloj mal puesto solo adelanta o atrasa este respaldo.
