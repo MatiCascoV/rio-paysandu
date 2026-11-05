@@ -177,3 +177,16 @@ que el teléfono no ve:
   retrocede de verdad (un revert o un commit a mano), el teléfono deja de mirar hasta que `generado` vuelva a
   pasar el último visto; el servidor sigue decidiendo. Se eligió así para no repetir urgentes por una copia
   vieja servida por caché.
+
+## Límites conocidos (revisión del Code Reviewer, aprobada con observaciones)
+
+- Un push anotado vence a las 6 h desde su envío (`vigenciaPushAnotado`); uno anotado de nivel más alto no se
+  pisa con uno más bajo.
+- Observaciones 3 a 6 de la revisión, aceptadas sin cambios de código:
+  - La ventana sin candado entre isolates (push con la app cerrada y workmanager) puede repetir o perder un aviso;
+    se rehace en la revisión siguiente.
+  - El tope por reloj del teléfono depende de que el reloj sea razonable; un reloj muy corrido solo adelanta o
+    atrasa este respaldo.
+  - Con la guarda de 6 h de `generado` en el futuro, el teléfono sigue tomando como referencia lo visto y no
+    puede distinguir un `generado` mal puesto de un revert; ambos se resuelven a los 60 min de reloj.
+  - La caché vieja que se decide después de 60 min puede repetir un urgente una vez (ver decisión A).

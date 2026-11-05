@@ -300,6 +300,39 @@ void main() {
     });
   });
 
+  group('observaciones de la revisión', () {
+    test('ida y vuelta JSON de visto_local y local', () {
+      final t = Telefono(at);
+      t.ve(Pub(30, al, 5.9), ahora: min(35));
+      final e = EstadoM1.desdeJson(jsonDecode(jsonEncode(t.estado.aJson())));
+      expect(e.vistoLocal, min(35));
+      expect(e.rachas[al]!.local, min(35));
+    });
+
+    test('dos pushes seguidos: uno de nivel más bajo no pisa al más alto', () {
+      final t = Telefono(at);
+      t.ve(Pub(20, at, 5.6), push: ev, enviado: min(25));
+      t.ve(Pub(21, at, 5.6), push: al, enviado: min(26));
+      expect(t.estado.push!.nivel, ev);
+      // Uno más alto o igual sí reemplaza.
+      t.ve(Pub(22, at, 5.6), push: ev, enviado: min(27));
+      expect(t.estado.push!.enviado, min(27));
+    });
+
+    test('un push anotado vence a las 6 h desde el envío', () {
+      final t = Telefono(at);
+      t.ve(Pub(20, at, 5.6), push: al, enviado: min(25));
+      expect(t.estado.push, isNotNull);
+      // 6 h 5 min después, con el dato ya en alerta: no avisa por el push (es una candidata).
+      expect(t.ve(Pub(400, al, 5.9), ahora: min(25 + 365)), isNull);
+      expect(t.estado.push, isNull);
+      // Dentro de las 6 h sí se usa.
+      final u = Telefono(at);
+      u.ve(Pub(20, at, 5.6), push: al, enviado: min(25));
+      expect(u.ve(Pub(300, al, 5.9), ahora: min(25 + 300)), al);
+    });
+  });
+
   group('por decidirAvisos (preferencias y marcas)', () {
     Actual pub(String h, String nivel, double valor, {String? medido, List<String> avisos = const [], Map? retenido}) =>
         Actual.desdeJson({
@@ -345,6 +378,16 @@ void main() {
       final avisos = await decidirAvisos(pub('09:00', 'evacuacion', 6.7), p, ahora,
           origen: Origen.push, subidaInformada: Nivel.alerta, enviado: ahora);
       expect(avisos.single.titulo, 'Río Uruguay: subió a EVACUACIÓN');
+    });
+
+    test('generado en el futuro (más de 6 h): no congela los avisos', () async {
+      final p = await prefs({claveUrgente: true, claveUltimoNivel: 'atencion'});
+      // Visto con un generado 10 h adelantado al reloj del teléfono.
+      await decidirAvisos(pub('19:30', 'alerta', 5.9), p, ahora);
+      expect(leerEstadoM1(p).visto, DateTime.parse('2026-10-17T19:30:00-03:00'));
+      // Una publicación normal (anterior a lo visto) igual se decide.
+      await decidirAvisos(pub('09:30', 'alerta', 5.95), p, ahora);
+      expect(leerEstadoM1(p).visto, DateTime.parse('2026-10-17T09:30:00-03:00'));
     });
 
     test('nivel_retenido del lector llega al teléfono', () async {

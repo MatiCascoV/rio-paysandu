@@ -53,6 +53,10 @@ const ventanaConfirmacion = Duration(minutes: 60);
 /// Salto máximo (m) entre la candidata y la lectura que la confirma (`SALTO_MAX_M`).
 const saltoMaxConfirmacionM = 1.0;
 
+/// Cuánto vale un push urgente anotado que el dato todavía no mostró: pasado ese tiempo
+/// (medido desde el envío, con el reloj del teléfono) se descarta y no avisa.
+const vigenciaPushAnotado = Duration(hours: 6);
+
 const nivelesUrgentes = [Nivel.alerta, Nivel.evacuacion];
 
 /// Hasta cuánto antes puede ser la publicación que retenía el nivel para que la
@@ -315,7 +319,13 @@ PasoM1 pasoM1(
   final rachas = <Nivel, RachaM1>{};
   final eventos = <Nivel, String>{};
   var pendiente = previo.push;
-  if (push != null) pendiente = PushPendiente(push, enviado ?? ahora);
+  // Un push anotado que lleva más de [vigenciaPushAnotado] sin usarse vence: ya no dice nada
+  // de la subida de ahora.
+  if (pendiente != null && ahora.difference(pendiente.enviado) > vigenciaPushAnotado) pendiente = null;
+  // Un push anotado de un nivel más alto no se pisa con uno más bajo (como _anotarPush).
+  if (push != null && (pendiente == null || _rango(push) >= _rango(pendiente.nivel))) {
+    pendiente = PushPendiente(push, enviado ?? ahora);
+  }
   // Un push (el de ahora o uno anotado) dice que el servidor vio la subida: sirve
   // de nivel anterior si el teléfono todavía no tiene uno.
   if (anterior == null && pendiente != null) anterior = Nivel.normal;
