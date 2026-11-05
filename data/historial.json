@@ -130,7 +130,6 @@
 {"fecha": "2026-10-28T12:00:00-03:00", "valor_m": 4.57, "fuente": "estacion"},
 {"fecha": "2026-10-28T18:00:00-03:00", "valor_m": 4.54, "fuente": "estacion"},
 {"fecha": "2026-10-29T00:00:00-03:00", "valor_m": 4.52, "fuente": "estacion"},
-{"fecha": "2026-10-29T04:00:00-03:00", "valor_m": 4.5, "fuente": "estacion"},
 {"fecha": "2026-10-29T04:30:00-03:00", "valor_m": 4.5, "fuente": "estacion"},
 {"fecha": "2026-10-29T05:00:00-03:00", "valor_m": 4.5, "fuente": "estacion"},
 {"fecha": "2026-10-29T05:30:00-03:00", "valor_m": 4.5, "fuente": "estacion"},
@@ -471,5 +470,6 @@
 {"fecha": "2026-11-05T01:30:00-03:00", "valor_m": 4.1, "fuente": "estacion"},
 {"fecha": "2026-11-05T02:00:00-03:00", "valor_m": 4.09, "fuente": "estacion"},
 {"fecha": "2026-11-05T02:30:00-03:00", "valor_m": 4.08, "fuente": "estacion"},
-{"fecha": "2026-11-05T03:00:00-03:00", "valor_m": 4.08, "fuente": "estacion"}
+{"fecha": "2026-11-05T03:00:00-03:00", "valor_m": 4.08, "fuente": "estacion"},
+{"fecha": "2026-11-05T04:00:00-03:00", "valor_m": 4.06, "fuente": "estacion"}
 ]
