@@ -87,7 +87,7 @@ reintenta en la próxima.
    regla del servidor tal cual (sin nivel anterior no avisa).
 4. **Urgente y resumen juntos**: solo el urgente (ya trae la altura) y el resumen del día se da por hecho.
 5. **Resumen con la app a la vista**: si al abrir la app el resumen de hoy ya está listo, se marca como visto
-   y no se notifica (el dato se está viendo). El reloj de 5 minutos de la app también corre con la app de
+   y no se notifica (el dato se está viendo). El reloj de 15 minutos de la app también corre con la app de
    fondo: ahí sí cuenta como respaldo y notifica.
 6. **"Río hoy" solo con el dato de hoy**: el resumen sale solo si el `generado` es del mismo día de Uruguay
    que el reloj del teléfono, para no titular "Río hoy" con el dato de anoche.

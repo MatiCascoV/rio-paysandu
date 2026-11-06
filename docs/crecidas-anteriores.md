@@ -43,7 +43,7 @@ Rama `crecidas-anteriores`, sobre `main` (0ac471d). Reemplaza la idea del mapa c
 
 ### Rendimiento
 
-El mapa, las capas del fondo (río, arroyos y ~1.200 calles) y la capa de bordes se arman una vez por crecida elegida y paleta, y se guardan. Un redibujo de la página (por ejemplo, el reloj de 5 minutos de `main.dart`) reutiliza los mismos widgets y no vuelve a proyectar nada (lo controla una prueba).
+El mapa, las capas del fondo (río, arroyos y ~1.200 calles) y la capa de bordes se arman una vez por crecida elegida y paleta, y se guardan. Un redibujo de la página (por ejemplo, el reloj de 15 minutos de `main.dart`) reutiliza los mismos widgets y no vuelve a proyectar nada (lo controla una prueba).
 
 ## De dónde salen los datos
 

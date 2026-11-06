@@ -202,9 +202,9 @@ class _PaginaPrincipalState extends State<PaginaPrincipal> with WidgetsBindingOb
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _cargar(primeraVez: true);
-    // Con la app abierta se vuelve a consultar cada 5 minutos, para que una
+    // Con la app abierta se vuelve a consultar cada 15 minutos, para que una
     // pantalla que queda encendida no siga mostrando un dato viejo como actual.
-    _reloj = Timer.periodic(const Duration(minutes: 5), (_) => _cargar());
+    _reloj = Timer.periodic(const Duration(minutes: 15), (_) => _cargar());
   }
 
   @override
@@ -244,7 +244,7 @@ class _PaginaPrincipalState extends State<PaginaPrincipal> with WidgetsBindingOb
       }
       // Con datos de ejemplo nunca se avisa: serían avisos inventados. Con la app a
       // la vista el resumen del día no se notifica (el dato ya se está viendo); el
-      // reloj de 5 minutos también corre con la app de fondo, y ahí sí.
+      // reloj de 15 minutos también corre con la app de fondo, y ahí sí.
       final estado = WidgetsBinding.instance.lifecycleState;
       final aLaVista = estado == null || estado == AppLifecycleState.resumed;
       if (!datos.sinConexion && !widget.repositorio.soloLectura) {
