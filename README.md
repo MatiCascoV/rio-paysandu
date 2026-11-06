@@ -278,8 +278,12 @@ firmado con la clave de depuración). Igual conviene correr `flutter test` y `fl
   calidad en curso.
 - Fase 4.b (varias ciudades y enlace a Google Flood Hub): investigada, sin empezar. Ver
   [docs/proxima-etapa-ciudades.md](docs/proxima-etapa-ciudades.md).
-- Fase 5 (publicación): en preparación. Hay una ficha de Google Play (textos, política de privacidad y enlace
-  en la app) en el PR #23, rama `ficha-play`, todavía sin mergear.
+- Fase 5 (publicación): en curso. La ficha de Google Play (textos, política de privacidad y formularios) está en
+  `docs/play/` y el enlace a la política ya está en la app. Cuenta de desarrollador personal y nueva: antes de
+  producción hace falta una prueba cerrada con 12 testers durante 14 días. Decisiones del 6/11/2026: categoría
+  Herramientas, 18 años o más, solo Uruguay. AAB de release firmado y verificado (1.0.0+1, targetSdk 36).
+  Pendiente: cargar formularios, subir el AAB a la pista cerrada y agregar el SHA-1 de Play App Signing a la
+  clave de API de Firebase.
   - 28/10/2026: dependencias al día (Dependabot #24 a #29 y #31): firebase_core 5.1.0, firebase_messaging 17.0.1,
     fl_chart 1.3.0, flutter_local_notifications 22.3.3, actions/setup-python 7.1.0, Gradle wrapper 9.8.2 y
     google-services 4.5.0.

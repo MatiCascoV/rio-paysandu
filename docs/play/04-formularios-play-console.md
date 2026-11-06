@@ -79,9 +79,8 @@ Verificar el día de cargar contra la guía de Firebase para FCM:
 
 ## 3. Público objetivo y contenido
 
-- Grupo etario: **18 años o más** (sugerido). Es lo más simple porque evita la política de Familias; el contenido
-  es información de crecidas para residentes. **PENDIENTE:** decide el dueño; si incluye menores de 13 se activan
-  los requisitos de Familias, que no conviene asumir.
+- Grupo etario: **18 años o más** (decidido por el dueño el 6/11/2026). Evita la política de Familias; el
+  contenido es información de crecidas para residentes.
 - «¿La app atrae a niños?»: **No** (sin personajes, dibujos animados ni mecánicas infantiles).
 - Programa Designed for Families: **no participar**.
 
@@ -109,7 +108,7 @@ Verificar el día de cargar contra la guía de Firebase para FCM:
 | Permisos fusionados (`WAKE_LOCK`, `RECEIVE_BOOT_COMPLETED`, etc.) | Los agregan WorkManager y Firebase; no requieren formulario | Manifiesto empaquetado, líneas 46-69 |
 | Alarmas exactas, intención de pantalla completa, consulta de paquetes | **No usa** | Manifiesto |
 | Política de privacidad (URL) | URL pública de `03-politica-de-privacidad.md`. **PENDIENTE:** publicar y cargar; falta además el enlace dentro de la app (ver `05`) | |
-| Países de disponibilidad | **PENDIENTE:** sugerido solo Uruguay (la app trata un solo punto, Paysandú) | `README.md` |
+| Países de disponibilidad | **Solo Uruguay** (decidido por el dueño el 6/11/2026; la app trata un solo punto, Paysandú) | `README.md` |
 | Tipo de cuenta y datos del desarrollador | **PENDIENTE:** persona física en Uruguay; ver `05` | |
 
 ## 7. Declaración de app de noticias / gobierno / emergencias
@@ -148,7 +147,8 @@ seguimiento de salud. Responder «No» en todas las casillas de «Funciones fina
 
 ## 10. Otros campos de la ficha
 
-- Categoría de la app: **Herramientas** o **Clima** (**PENDIENTE:** el dueño; evitar «Noticias y revistas» para
-  no activar esa declaración).
-- Datos de contacto públicos: correo (**PENDIENTE: confirmar**); sitio web opcional (la política).
+- Categoría de la app: **Herramientas** (decidido por el dueño el 6/11/2026; evita «Noticias y revistas» y su
+  declaración).
+- Datos de contacto públicos: **matiascas13@gmail.com** (decidido el 6/11/2026; es el mismo de la política);
+  sitio web opcional (la política).
 - Texto de la ficha y capturas: ver `05`.
