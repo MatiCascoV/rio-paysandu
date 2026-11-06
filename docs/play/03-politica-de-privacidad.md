@@ -12,9 +12,8 @@
 del río Uruguay en Paysandú. **No es una app oficial**: no tiene vínculo con CARU, el Cecoed, el Sinae ni
 ningún organismo del Estado.
 
-Responsable: **PENDIENTE: nombre y apellido del dueño** (persona física, Uruguay).
-Contacto de privacidad: **matiascas13@gmail.com** (**PENDIENTE:** el dueño confirma que ese es el correo que
-quiere publicar).
+Responsable: **Matías Casco** (persona física, Uruguay).
+Contacto de privacidad: **matiascas13@gmail.com**.
 
 ## Qué datos usa la app
 
@@ -66,9 +65,9 @@ revisa el río por su cuenta cada tanto.
 - **Datos en tu teléfono:** hasta que desinstales la app o borres sus datos.
 - **Identificador y token de FCM, y suscripción a temas:** los administra Google. El identificador y el token siguen
   hasta que desinstalás la app o borrás sus datos; apagar los interruptores en la pestaña Avisos solo quita las
-  suscripciones a temas. Según la documentación de Firebase, Google también descarta los tokens que llevan mucho
-  tiempo sin actividad. **PENDIENTE (revisar):** confirmar el plazo vigente en la documentación de FCM antes
-  de publicar y, si se quiere, ponerlo acá.
+  suscripciones a temas. Según la documentación de Firebase (consultada el 6/11/2026), Google considera «inactivo» un
+  token si la app no se conectó en un mes y lo elimina por completo tras **270 días** sin actividad en Android
+  (<https://firebase.google.com/docs/cloud-messaging/manage-tokens>).
 - **Registros de GitHub Pages:** los conserva GitHub según su política:
   <https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement>.
 - **Lo que yo guardo sobre vos:** nada. No tengo una base de datos de usuarios.
@@ -80,9 +79,7 @@ tus datos personales, los derechos de **acceso, rectificación, actualización, 
 iniciar la acción de *habeas data*. Como la app no me permite saber quién sos (no hay cuentas y no recibo tu
 identificador de FCM), en la práctica casi no tengo datos tuyos para entregarte, corregirte o borrarte. Aun así:
 
-- Escribime a **matiascas13@gmail.com** (**PENDIENTE:** confirmar) y te respondo dentro de los plazos legales
-  (**PENDIENTE:** el dueño confirma que se compromete a responder en 5 días hábiles, el plazo que fija la ley
-  para acceso y rectificación; verificarlo con el texto vigente).
+- Escribime a **matiascas13@gmail.com** y te respondo dentro de los plazos legales (5 días hábiles).
 - Para dejar de recibir avisos: apagá los interruptores en la pestaña Avisos (quita las suscripciones, pero el
   identificador sigue). Para que Google deje de tener el identificador: desinstalá la app o borrá sus datos.
 - Los derechos sobre lo que tengan Google o GitHub los podés ejercer directamente ante ellos.
@@ -111,10 +108,10 @@ el Cecoed. Ante cualquier duda o peligro, comunicate con los canales oficiales o
 ## Cambios en esta política
 
 Si cambia lo que hace la app con los datos, voy a actualizar esta página y la fecha de arriba, y lo voy a
-avisar en la ficha de la app. Las versiones anteriores quedan en el historial del repositorio. **PENDIENTE:** URL
-final de esta política (la misma que se carga en Play Console).
+avisar en la ficha de la app. Las versiones anteriores quedan en el historial del repositorio. Esta política está publicada en
+<https://github.com/MatiCascoV/rio-paysandu/blob/main/docs/play/03-politica-de-privacidad.md> (la misma URL que
+abre la app y que se carga en Play Console).
 
 ## Contacto
 
-**matiascas13@gmail.com** (**PENDIENTE:** confirmar) · Paysandú, Uruguay (**PENDIENTE:** dirección postal si el
-dueño quiere publicarla; Play Console puede pedir una para la cuenta).
+**matiascas13@gmail.com** · Paysandú, Uruguay.
