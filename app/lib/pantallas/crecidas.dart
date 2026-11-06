@@ -186,7 +186,7 @@ class _PantallaCrecidasState extends State<PantallaCrecidas> {
   ColoresMapa? _colores;
 
   /// Capas del fondo (río, arroyos y calles), armadas una vez por paleta: así
-  /// un redibujo de la página (el reloj de 5 minutos de main.dart, por
+  /// un redibujo de la página (el reloj de 15 minutos de main.dart, por
   /// ejemplo) no vuelve a proyectar las ~1.200 calles.
   List<Widget> _fondo = const [];
   List<Rotulo> _candidatos = const [];

@@ -611,7 +611,7 @@ void main() {
       await t.pumpAndSettle();
       final mapa = t.widget(find.byType(FlutterMap));
       final calles = t.widgetList<PolylineLayer>(find.byType(PolylineLayer)).toList();
-      redibujar(() {}); // como el reloj de 5 minutos de main.dart
+      redibujar(() {}); // como el reloj de 15 minutos de main.dart
       await t.pump();
       expect(vueltas, 2);
       expect(identical(t.widget(find.byType(FlutterMap)), mapa), isTrue);
