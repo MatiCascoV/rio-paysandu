@@ -1,12 +1,18 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../avisos.dart';
 import '../datos.dart';
 import '../modelos.dart';
 import '../notificaciones.dart';
 import '../push.dart';
+import '../reporte.dart';
 import '../tema.dart';
 import '../textos.dart';
 import 'comunes.dart';
@@ -48,6 +54,19 @@ class ControlAvisosDelTelefono implements ControlAvisos {
   bool get pushDisponible => Push.disponible;
 }
 
+/// Versión y build de la app. En las pruebas se cambia por una fija.
+typedef LeerVersion = Future<({String version, String build})> Function();
+
+Future<({String version, String build})> _versionDelPaquete() async {
+  final info = await PackageInfo.fromPlatform();
+  return (version: info.version, build: info.buildNumber);
+}
+
+/// Abre el correo; false si no hay app que lo maneje. En las pruebas se cambia por uno falso.
+typedef AbrirCorreo = Future<bool> Function(Uri mailto);
+
+Future<bool> _abrirCorreoDelTelefono(Uri mailto) => launchUrl(mailto, mode: LaunchMode.externalApplication);
+
 /// Pestaña "Avisos": el aviso urgente (desde alerta o solo evacuación) y el resumen del día.
 class PantallaAjustes extends StatefulWidget {
   final SharedPreferences prefs;
@@ -55,6 +74,8 @@ class PantallaAjustes extends StatefulWidget {
   final Config? config;
   final VoidCallback? alCambiar;
   final ControlAvisos control;
+  final LeerVersion leerVersion;
+  final AbrirCorreo abrirCorreo;
 
   const PantallaAjustes({
     super.key,
@@ -63,6 +84,8 @@ class PantallaAjustes extends StatefulWidget {
     this.config,
     this.alCambiar,
     this.control = const ControlAvisosDelTelefono(),
+    this.leerVersion = _versionDelPaquete,
+    this.abrirCorreo = _abrirCorreoDelTelefono,
   });
 
   @override
@@ -183,6 +206,37 @@ class _PantallaAjustesState extends State<PantallaAjustes> with WidgetsBindingOb
       await widget.control.sincronizarTemas(widget.prefs);
     } catch (_) {}
     if (mounted) setState(() => _sincronizando = false);
+  }
+
+  /// Abre el correo con el reporte armado. No manda nada: la persona lo ve y lo envía ella.
+  Future<void> _reportar() async {
+    var abierto = false;
+    try {
+      final v = await widget.leerVersion();
+      final datos = DatosReporte.desde(
+        version: v.version,
+        build: v.build,
+        androidVersion: kIsWeb ? 'web' : Platform.operatingSystemVersion,
+        ahora: DateTime.now(),
+        actual: widget.datos?.actual,
+        horasSinDato: widget.config?.horasSinDato ?? 48,
+        avisos: _p,
+      );
+      abierto = await widget.abrirCorreo(armarMailto(datos));
+    } catch (_) {}
+    if (abierto || !mounted) return;
+    await showDialog<void>(context: context, builder: (_) => const _DialogoSinCorreo());
+  }
+
+  Future<void> _abrirGitHub() async {
+    final mensajes = ScaffoldMessenger.of(context);
+    var abierto = false;
+    try {
+      abierto = await launchUrl(urlReporteGitHub, mode: LaunchMode.externalApplication);
+    } catch (_) {}
+    if (!abierto) {
+      mensajes.showSnackBar(const SnackBar(content: Text('No se pudo abrir el enlace desde este teléfono.')));
+    }
   }
 
   /// "Ahora el río está en nivel ATENCIÓN (4,10 m). El próximo aviso urgente llega si…"
@@ -362,8 +416,81 @@ class _PantallaAjustesState extends State<PantallaAjustes> with WidgetsBindingOb
           'la app. No recibimos tu nombre, tu ubicación ni tus contactos.',
           style: apoyo,
         ),
+        const SizedBox(height: 24),
+        Semantics(header: true, child: Text('Ayuda', style: tema.titleLarge)),
+        const SizedBox(height: 12),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('¿Algo no anda bien?', style: tema.titleMedium),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(minimumSize: const Size(48, 48)),
+                    onPressed: _reportar,
+                    icon: const Icon(Icons.mail_outline),
+                    label: const Text('Reportar un problema'),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Se abre tu app de correo con un mensaje ya armado. Lo ves y lo podés cambiar antes de '
+                  'mandarlo. No se envía nada solo.',
+                  style: tema.bodyMedium,
+                ),
+                const SizedBox(height: 4),
+                TextButton(
+                  style: TextButton.styleFrom(minimumSize: const Size(48, 48), alignment: Alignment.centerLeft),
+                  onPressed: _abrirGitHub,
+                  child: const Text('También podés avisar en GitHub (hace falta cuenta)'),
+                ),
+              ],
+            ),
+          ),
+        ),
         const SizedBox(height: 8),
         const EnlacePrivacidad(),
+      ],
+    );
+  }
+}
+
+/// Cuando no hay app de correo: la dirección en texto que se puede copiar.
+class _DialogoSinCorreo extends StatelessWidget {
+  const _DialogoSinCorreo();
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('No encontramos una app de correo'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('No encontramos una app de correo. Escribinos a'),
+          const SizedBox(height: 8),
+          SelectableText(correoReportes, style: Theme.of(context).textTheme.titleMedium),
+        ],
+      ),
+      actions: [
+        TextButton(
+          style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+          onPressed: () async {
+            final mensajes = ScaffoldMessenger.of(context);
+            await Clipboard.setData(const ClipboardData(text: correoReportes));
+            mensajes.showSnackBar(const SnackBar(content: Text('Dirección copiada')));
+          },
+          child: const Text('Copiar dirección'),
+        ),
+        TextButton(
+          style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cerrar'),
+        ),
       ],
     );
   }

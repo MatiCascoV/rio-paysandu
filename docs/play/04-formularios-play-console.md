@@ -63,6 +63,14 @@ Verificar el día de cargar contra la guía de Firebase para FCM:
   conservador, consultar a un abogado.
 - Los **temas** (`alerta-paysandu`, etc.) no identifican a nadie, pero quedan asociados al token dentro de Google.
   Por eso la política los menciona.
+- **Botón «Reportar un problema» (`lib/reporte.dart`, `lib/pantallas/ajustes.dart`): Data safety no cambia.** La
+  app solo abre el correo del teléfono (`mailto:`, `launchUrl`) con un mensaje prellenado; el envío lo inicia la
+  persona desde su propia app de correo, y la app no recopila ni transmite nada por su cuenta (sin servidor, sin SDK
+  nuevo que envíe datos). Los «Datos técnicos» (versión, Android, hora, último dato, interruptores de avisos) quedan
+  en un borrador que la persona ve y puede borrar. No incluye ningún ID, ubicación ni modelo de dispositivo. Por eso
+  no se declara como recopilación. `package_info_plus` solo lee la versión de la propia app en el teléfono.
+  **PENDIENTE:** si algún día el reporte se enviara desde la app (formulario o servidor), revisar esta hoja y la
+  política.
 - Mantener la hoja y la política en sintonía: si algún día se suma Crashlytics o Analytics, actualizar ambas
   **antes** de publicar.
 
