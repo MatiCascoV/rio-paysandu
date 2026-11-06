@@ -1,10 +1,6 @@
 # Política de privacidad de Mi Río UY
 
-> **Borrador para publicar en una URL pública** (GitHub Pages u otra). Los textos marcados **PENDIENTE** los
-> tiene que confirmar el dueño antes de publicar. Se puede borrar este recuadro al publicar.
-> Hechos verificados en el código el 27/10/2026; la evidencia está en `04-formularios-play-console.md`.
-
-**Última actualización:** 27 de octubre de 2026 (**PENDIENTE:** poner la fecha real de publicación)
+**Última actualización:** 6 de noviembre de 2026
 
 ## Quién la hace
 
@@ -88,8 +84,7 @@ identificador de FCM), en la práctica casi no tengo datos tuyos para entregarte
 
 ## Niños
 
-La app **no está dirigida a menores de edad** (**PENDIENTE:** confirmar el rango de edad elegido en Play
-Console, ver `04-formularios-play-console.md`) y no recoge a sabiendas datos de nadie, tampoco de niños. Como no
+La app **no está dirigida a menores de edad** (está pensada para personas de 18 años o más) y no recoge a sabiendas datos de nadie, tampoco de niños. Como no
 hay cuentas, no sé la edad de quien la usa.
 
 ## Seguridad
