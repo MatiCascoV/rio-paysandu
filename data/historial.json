@@ -479,5 +479,6 @@
 {"fecha": "2026-11-06T19:00:00-03:00", "valor_m": 3.44, "fuente": "estacion"},
 {"fecha": "2026-11-06T19:30:00-03:00", "valor_m": 3.43, "fuente": "estacion"},
 {"fecha": "2026-11-06T20:00:00-03:00", "valor_m": 3.43, "fuente": "estacion"},
+{"fecha": "2026-11-06T20:30:00-03:00", "valor_m": 3.42, "fuente": "estacion"},
 {"fecha": "2026-11-06T21:00:00-03:00", "valor_m": 3.41, "fuente": "estacion"}
 ]
