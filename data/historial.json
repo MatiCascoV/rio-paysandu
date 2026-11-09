@@ -490,5 +490,6 @@
 {"fecha": "2026-11-08T19:00:00-03:00", "valor_m": 3.45, "fuente": "estacion"},
 {"fecha": "2026-11-08T19:30:00-03:00", "valor_m": 3.45, "fuente": "estacion"},
 {"fecha": "2026-11-08T20:00:00-03:00", "valor_m": 3.45, "fuente": "estacion"},
+{"fecha": "2026-11-08T20:30:00-03:00", "valor_m": 3.46, "fuente": "estacion"},
 {"fecha": "2026-11-08T21:00:00-03:00", "valor_m": 3.46, "fuente": "estacion"}
 ]
