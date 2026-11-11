@@ -5,6 +5,10 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    groups:
+      codeql: # init y analyze tienen que subir juntas: por separado CodeQL falla
+        patterns:
+          - "github/codeql-action/*"
 
   - package-ecosystem: pip # requirements.in -> requirements.txt y requirements-dev.in -> requirements-dev.txt (pip-compile con hashes)
     directory: /lector
