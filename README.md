@@ -160,7 +160,8 @@ un aviso urgente o el resumen del día y, si corresponde, manda un mensaje sin t
 Messaging (FCM). Usa la identidad federada de GitHub con Google Cloud: no hay ninguna clave guardada en
 GitHub. Lo lanza solo `lanzar-avisos.yml` cada vez que GitHub Pages termina de publicar datos nuevos
 (también se puede lanzar a mano). Mientras la variable del repositorio `AVISOS_REALES` no sea `true`, va solo a
-los temas de prueba (`prueba-…`). Diseño completo en [docs/fase-4-avisos-push.md](docs/fase-4-avisos-push.md);
+los temas de prueba (`prueba-…`); desde el 3/11/2026 está en `true` y va a los temas reales. Diseño completo en
+[docs/fase-4-avisos-push.md](docs/fase-4-avisos-push.md);
 cómo se lanza y cómo cortar el lanzamiento automático, en
 [docs/fase-4-lanzar-avisos.md](docs/fase-4-lanzar-avisos.md).
 
@@ -235,57 +236,61 @@ firmado con la clave de depuración). Igual conviene correr `flutter test` y `fl
 
 ## Estado
 
-- Fase 0 (entorno): hecha (`flutter doctor` sin problemas).
-- Fase 1 (lector local): hecha.
-- Fase 2 (automatización y publicación): hecha.
-- Fase 3 (app): hecha y probada en un celular real (Redmi), del 9 al 14/10/2026 sin fallas del lector.
-  - 16/10/2026: nombre "Mi Río UY", identificador `uy.miriouy.app`, firma con clave propia e ícono nuevo.
-  - 16/10/2026: rediseño de Inicio: fondo teñido según el nivel, agua que sube con la altura del río,
-    gráfico de 7 días en Inicio y paleta azulada en modo claro y oscuro.
-- Fase 4 (notificaciones push): en curso. Hechos el margen al bajar y el lector de avisos (`lector/avisos.py`
-  y `avisos.yml`). El 19/10/2026 se creó el proyecto de Firebase y se registró la app.
-  El 21/10/2026 entraron la app con avisos push (probada en el Redmi) y la rama `datos`. Ver
+Al 11/11/2026. El detalle de cada fase está en los documentos enlazados.
+
+- Fases 0 a 2 (entorno, lector local, automatización y publicación): hechas.
+- Fase 3 (app): hecha y probada en un celular real (Redmi), del 9 al 14/10/2026 sin fallas del lector. El
+  16/10/2026 pasó a llamarse "Mi Río UY" (identificador `uy.miriouy.app`, firma con clave propia, ícono nuevo y
+  rediseño de Inicio).
+- Fase 4 (notificaciones push): **en producción**; falta verla trabajar en una subida real para darla por
+  cerrada. Diseño, pasos y prueba de entrega en el Redmi en
   [docs/fase-4-avisos-push.md](docs/fase-4-avisos-push.md).
-  - 21/10/2026: **paso 3, prueba de entrega en el Redmi** (10 casos): con la app abierta, cerrada y en ahorro
-    de batería de MIUI todo llegó en menos de 1 s; en reposo profundo forzado los HIGH llegan al instante y
-    los NORMAL esperan a que el teléfono despierte. Quedan mensajes solo de datos, urgente HIGH y resumen
-    NORMAL. Ver [el resultado](docs/fase-4-avisos-push.md#resultado-de-la-prueba-de-entrega-paso-3-21102026).
-  - 26/10/2026: **paso 6 hecho** (identidad federada de GitHub con Google Cloud, sin claves; aprobado con
-    evidencia). `avisos.yml` mandó un resumen al tema de prueba `prueba-resumen-paysandu` (corrida
-    40333610759) y la re-corrida de esa misma corrida terminó en rojo sin enviar. Prueba de que Google
-    rechaza (10b) desde la rama descartable `probar-wif` (corrida 40334850975): `unauthorized_client`.
-    Registros de auditoría `DATA_READ` de `iam.googleapis.com` y `sts.googleapis.com` activados (7b) y rama
-    `probar-wif` borrada. Detalle en [docs/fase-4-paso-6-guia.md](docs/fase-4-paso-6-guia.md).
-  - 26/10/2026: el ruleset `proteger-main` exige pull request para entrar a `main` (0 aprobaciones, sin
-    bypass): `main` ya no acepta push directo.
-  - 26/10/2026: el urgente de evacuación sale en dos mensajes, uno a cada tema urgente (#18).
-  - 26/10/2026: **el lector ya lanza los avisos.** `lanzar-avisos.yml` (#20) arranca cuando termina
-    `pages-build-deployment` y lanza `avisos.yml`; comprobado que dispara. Sin `AVISOS_REALES=true` manda
-    solo a los temas `prueba-`.
-  - Semana de prueba en los temas `prueba-` desde el 26/10/2026 18:19 UTC hasta el ~2/11/2026. El 27/10 salió
-    el primer resumen del día a `prueba-resumen-paysandu`, sin repetidos ni fallas.
-  - Falta (paso 8): poner `AVISOS_REALES=true` y una semana en los temas reales (con eso se cumple la aceptación: la
-    notificación llega con la app cerrada), verificando que los mensajes llegan al Redmi.
-  - 17/10/2026: arreglados los avisos locales en el APK de release (la reducción de recursos borraba el ícono
-    de notificación).
-  - 19/10/2026: CI de la app (`app.yml`) y dependencias al día (Gradle 9.8.1, AGP 9.4.1, Kotlin 2.4.21).
+  - Hechos entre el 19 y el 26/10/2026: proyecto de Firebase, app con avisos push (probada en el Redmi), rama
+    `datos`, identidad federada de GitHub con Google Cloud sin claves
+    ([guía](docs/fase-4-paso-6-guia.md)) y lanzamiento automático después de cada publicación de Pages
+    ([docs/fase-4-lanzar-avisos.md](docs/fase-4-lanzar-avisos.md)). Del 26/10 al 3/11/2026 corrió a prueba en
+    los temas `prueba-`.
+  - **3/11/2026: `AVISOS_REALES=true`.** Desde entonces `avisos.yml` decide para los temas reales. Al
+    11/11/2026 lleva más de una semana así, sin ninguna corrida fallida de `avisos.yml`. `lanzar-avisos.yml`
+    falló una sola vez (4/11, error pasajero de GitHub, sin aviso perdido); desde #45 reintenta el
+    lanzamiento y no volvió a fallar. No hay issues abiertos.
+  - Lo que falta comprobar: en ese período el río estuvo en alerta sin subir de nivel y desde el 4/11/2026 en
+    normal, así que la cadena automática todavía no tuvo que mandar ningún aviso a los temas reales. La
+    aceptación completa (el urgente llega al Redmi, con la app cerrada, dentro de los 15 minutos de una
+    subida a alerta o evacuación) queda para la próxima subida real.
+  - 3/11/2026: el aviso urgente espera una **segunda lectura** que confirme la subida, con tope de 60 minutos
+    (#40, ajustado en #46). Desde el 5/11/2026 el respaldo local de la app sigue la misma regla (#47); sus
+    límites conocidos están en [docs/respaldo-m1.md](docs/respaldo-m1.md).
+- App, cambios de noviembre:
+  - 3/11/2026: pantalla de primer arranque que pregunta si querés avisos (#39). En una instalación nueva todo
+    queda apagado hasta elegir; el resumen del día ya no viene prendido. Las instalaciones existentes no
+    cambian. Ver [docs/p04-primer-arranque.md](docs/p04-primer-arranque.md).
+  - 6/11/2026: con la app abierta, los datos se vuelven a consultar cada 15 minutos en vez de cada 5 (#50).
 - Pestaña "Crecidas" (los bordes medidos por Dinagua de 5 crecidas reales, sin modelo de agua): en `main`
-  desde el 27/10/2026 (#22). Es lo que lleva la app publicada. Ver
-  [docs/crecidas-anteriores.md](docs/crecidas-anteriores.md).
-- Mapa de inundación con modelo (pestaña "Mapa": hasta dónde llega el agua según la altura actual, con datos de
-  Dinagua e IDE Uruguay): sigue en la rama `mapa-inundacion` hasta que lo revise el Cecoed. La app publicada es
-  la de `main`, que lleva Crecidas y no incluye este mapa. Pipeline v1.1 corrido con datos reales; control de
-  calidad en curso.
+  desde el 27/10/2026 (#22). Ver [docs/crecidas-anteriores.md](docs/crecidas-anteriores.md).
+- Mapa de inundación con modelo (pestaña "Mapa": hasta dónde llegaría el agua según la altura actual, con
+  datos de Dinagua e IDE Uruguay): no se publica. Sigue en la rama `mapa-inundacion` hasta que lo revise el
+  Cecoed; la app de `main` lleva Crecidas en su lugar.
+- Seguridad (28/10/2026, #33 a #35): gitleaks y CodeQL en CI, [SECURITY.md](SECURITY.md) (cómo reportar una
+  vulnerabilidad y limitaciones conocidas), `CODEOWNERS` y topes en el lector contra entradas desmedidas.
+  Desde el 3/11/2026 la CI de la app instala Flutter con `git clone` y controla el commit, sin acciones de
+  terceros (#38).
 - Fase 4.b (varias ciudades y enlace a Google Flood Hub): investigada, sin empezar. Ver
   [docs/proxima-etapa-ciudades.md](docs/proxima-etapa-ciudades.md).
-- Fase 5 (publicación): en curso. La ficha de Google Play (textos, política de privacidad y formularios) está en
-  `docs/play/` y el enlace a la política ya está en la app. Cuenta de desarrollador personal y nueva: antes de
-  producción hace falta una prueba cerrada con 12 testers durante 14 días. Decisiones del 6/11/2026: categoría
-  Herramientas, 18 años o más, solo Uruguay. AAB de release firmado y verificado (1.0.0+1, targetSdk 36).
-  Pendiente: cargar formularios, subir el AAB a la pista cerrada y agregar el SHA-1 de Play App Signing a la
-  clave de API de Firebase.
-  - 28/10/2026: dependencias al día (Dependabot #24 a #29 y #31): firebase_core 5.1.0, firebase_messaging 17.0.1,
-    fl_chart 1.3.0, flutter_local_notifications 22.3.3, actions/setup-python 7.1.0, Gradle wrapper 9.8.2 y
-    google-services 4.5.0.
-- Umbrales de Paysandú: provisorios hasta que los valide el Cecoed. Pendiente consultar a CARU si el
-  registro de alturas tiene acceso por HTTPS.
+- Fase 5 (publicación): en curso. Todo lo de Google Play está en `docs/play/`.
+  - Listo: textos de la ficha ([01](docs/play/01-ficha-textos.md)), política de privacidad con fecha
+    6/11/2026 ([03](docs/play/03-politica-de-privacidad.md)) y su enlace dentro de la app (#37, #48, #51).
+    Decisiones del 6/11/2026 (#49): categoría Herramientas, 18 años o más, solo Uruguay. AAB de release
+    firmado y verificado (1.0.0+1, targetSdk 36).
+  - Pendiente: gráfico de funciones y capturas ([02](docs/play/02-recursos-graficos.md)), cargar los
+    formularios de Play Console ([04](docs/play/04-formularios-play-console.md)), subir el AAB a la pista
+    cerrada y agregar el SHA-1 de Play App Signing a la clave de API de Firebase.
+  - La cuenta de desarrollador es personal y nueva: antes de pedir producción Google exige una prueba cerrada
+    con al menos 12 testers inscriptos durante 14 días seguidos. Ver el apartado 5 de
+    [05](docs/play/05-riesgos-politicas-play.md).
+- Dependencias al día al 11/11/2026 (Dependabot abre los PR; nada se fusiona solo): Gradle wrapper 9.9.0,
+  AGP 9.5.1, actions/setup-java 6.2.0 y CodeQL 4.39.3 (#52, #55 a #57; las dos acciones de CodeQL ahora suben
+  juntas); el 4/11/2026, pytest 9.2.0 y actions/cache 6.1.0.
+- Umbrales de Paysandú: provisorios hasta que los valide el Cecoed.
+- Datos de CARU por HTTP: el registro de alturas no tiene acceso por HTTPS. Se le consultó a CARU por correo
+  y al 11/11/2026 no hay respuesta. Mitigaciones y límites en [SECURITY.md](SECURITY.md).
