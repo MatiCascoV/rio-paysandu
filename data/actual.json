@@ -1,9 +1,9 @@
 {
-  "generado": "2026-11-13T06:19:10-03:00",
+  "generado": "2026-11-13T07:21:06-03:00",
   "cero": "Local",
   "altura_actual": {
     "valor_m": 4.04,
-    "fecha": "2026-11-13T05:00:00-03:00",
+    "fecha": "2026-11-13T07:00:00-03:00",
     "variacion_m": 0.0,
     "periodo": "30 min",
     "estado": "estacionado",
@@ -11,9 +11,9 @@
     "url": "http://190.0.152.194:8080/alturas/web/user/estacion/19/0"
   },
   "lectura_prefectura": {
-    "valor_m": 3.98,
-    "fecha": "2026-11-12T06:00:00-03:00",
-    "variacion_m": 0.16,
+    "valor_m": 4.08,
+    "fecha": "2026-11-13T06:00:00-03:00",
+    "variacion_m": 0.1,
     "periodo": "24 hs",
     "estado": "crece",
     "url": "http://190.0.152.194:8080/alturas/web/user/altura/24"
