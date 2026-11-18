@@ -69,9 +69,8 @@ el resumen del día. **No** incluye tu identificador de Firebase ni el token de 
 publicidad, tu ubicación, el modelo de tu teléfono, tus aplicaciones ni tu conexión.
 
 Si lo enviás, tu correo viaja por tu proveedor de correo, y el mensaje, con tu dirección de correo, lo recibe y
-conserva el responsable de la app, **solo para responderte y corregir el problema**. Plazo de borrado:
-**PENDIENTE** (definir cuánto tiempo se conservan esos correos). Podés pedir que te lo borren escribiendo a la misma
-dirección.
+conserva el responsable de la app, **solo para responderte y corregir el problema**. Esos correos se
+conservan **6 meses** y después se borran. Podés pedir que te lo borren antes escribiendo a la misma dirección.
 
 Debajo del botón hay también un enlace a **GitHub Issues** («También podés avisar en GitHub»). Ese enlace **abre
 GitHub** en tu navegador: ahí hace falta una cuenta de GitHub, lo que escribas es un **reporte público** y lo trata
