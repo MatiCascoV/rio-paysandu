@@ -9,7 +9,7 @@ del río Uruguay en Paysandú. **No es una app oficial**: no tiene vínculo con 
 ningún organismo del Estado.
 
 Responsable: **Matías Casco** (persona física, Uruguay).
-Contacto de privacidad: **matiascas13@gmail.com**.
+Contacto de privacidad: **mcasco.paysandu@gmail.com**.
 
 ## Qué datos usa la app
 
@@ -56,6 +56,27 @@ identificador de publicidad.
 Si tu teléfono no tiene servicios de Google, la app funciona igual: no recibe los avisos al instante, pero
 revisa el río por su cuenta cada tanto.
 
+## Reportar un problema
+
+En la pestaña Avisos hay un botón **«Reportar un problema»**. Al tocarlo, la app abre **tu app de correo** con un
+mensaje ya armado, dirigido a **mcasco.paysandu@gmail.com**. **Nada se envía solo:** el mensaje lo ves, lo podés
+cambiar o borrar, y solo sale si vos tocás «Enviar» en tu correo. La app no manda nada a ningún servidor.
+
+El mensaje viene con un espacio para que cuentes qué pasó y, debajo, unos «Datos técnicos» que podés borrar: versión
+y build de la app, versión de Android, fecha y hora de tu teléfono con su zona horaria, la hora y el valor del último
+dato del río que mostraba la app (y si estaba marcado como desactualizado), y si tenés prendidos el aviso urgente y
+el resumen del día. **No** incluye tu identificador de Firebase ni el token de FCM, ningún identificador de
+publicidad, tu ubicación, el modelo de tu teléfono, tus aplicaciones ni tu conexión.
+
+Si lo enviás, tu correo viaja por tu proveedor de correo, y el mensaje, con tu dirección de correo, lo recibe y
+conserva el responsable de la app, **solo para responderte y corregir el problema**. Esos correos se
+conservan **6 meses** y después se borran. Podés pedir que te lo borren antes escribiendo a la misma dirección.
+
+Debajo del botón hay también un enlace a **GitHub Issues** («También podés avisar en GitHub»). Ese enlace **abre
+GitHub** en tu navegador: ahí hace falta una cuenta de GitHub, lo que escribas es un **reporte público** y lo trata
+GitHub según su política (<https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement>).
+No pongas datos personales en un reporte público.
+
 ## Cuánto tiempo se guardan los datos
 
 - **Datos en tu teléfono:** hasta que desinstales la app o borres sus datos.
@@ -66,7 +87,8 @@ revisa el río por su cuenta cada tanto.
   (<https://firebase.google.com/docs/cloud-messaging/manage-tokens>).
 - **Registros de GitHub Pages:** los conserva GitHub según su política:
   <https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement>.
-- **Lo que yo guardo sobre vos:** nada. No tengo una base de datos de usuarios.
+- **Lo que yo guardo sobre vos:** nada, salvo los correos que me mandes vos con «Reportar un problema» (ver la sección
+  siguiente). No tengo una base de datos de usuarios.
 
 ## Tus derechos (Ley 18.331 de Uruguay)
 
@@ -75,7 +97,7 @@ tus datos personales, los derechos de **acceso, rectificación, actualización, 
 iniciar la acción de *habeas data*. Como la app no me permite saber quién sos (no hay cuentas y no recibo tu
 identificador de FCM), en la práctica casi no tengo datos tuyos para entregarte, corregirte o borrarte. Aun así:
 
-- Escribime a **matiascas13@gmail.com** y te respondo dentro de los plazos legales (5 días hábiles).
+- Escribime a **mcasco.paysandu@gmail.com** y te respondo dentro de los plazos legales (5 días hábiles).
 - Para dejar de recibir avisos: apagá los interruptores en la pestaña Avisos (quita las suscripciones, pero el
   identificador sigue). Para que Google deje de tener el identificador: desinstalá la app o borrá sus datos.
 - Los derechos sobre lo que tengan Google o GitHub los podés ejercer directamente ante ellos.
@@ -109,4 +131,4 @@ abre la app y que se carga en Play Console).
 
 ## Contacto
 
-**matiascas13@gmail.com** · Paysandú, Uruguay.
+**mcasco.paysandu@gmail.com** · Paysandú, Uruguay.

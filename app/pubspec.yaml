@@ -48,6 +48,7 @@ dependencies:
   flutter_map: ^8.3.2
   latlong2: ^0.10.1
   crypto: ^3.0.6
+  package_info_plus: ^10.2.2
 
 dev_dependencies:
   flutter_test:
