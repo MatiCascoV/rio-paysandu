@@ -540,5 +540,7 @@
 {"fecha": "2026-11-19T06:30:00-03:00", "valor_m": 3.71, "fuente": "estacion"},
 {"fecha": "2026-11-19T07:00:00-03:00", "valor_m": 3.7, "fuente": "estacion"},
 {"fecha": "2026-11-19T07:30:00-03:00", "valor_m": 3.7, "fuente": "estacion"},
-{"fecha": "2026-11-19T08:00:00-03:00", "valor_m": 3.69, "fuente": "estacion"}
+{"fecha": "2026-11-19T08:00:00-03:00", "valor_m": 3.69, "fuente": "estacion"},
+{"fecha": "2026-11-19T08:30:00-03:00", "valor_m": 3.68, "fuente": "estacion"},
+{"fecha": "2026-11-19T09:00:00-03:00", "valor_m": 3.68, "fuente": "estacion"}
 ]
