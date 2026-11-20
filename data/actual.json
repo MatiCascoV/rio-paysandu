@@ -1,9 +1,9 @@
 {
-  "generado": "2026-11-20T00:14:00-03:00",
+  "generado": "2026-11-20T01:15:56-03:00",
   "cero": "Local",
   "altura_actual": {
-    "valor_m": 3.4,
-    "fecha": "2026-11-20T00:00:00-03:00",
+    "valor_m": 3.38,
+    "fecha": "2026-11-20T01:00:00-03:00",
     "variacion_m": -0.01,
     "periodo": "30 min",
     "estado": "baja",
