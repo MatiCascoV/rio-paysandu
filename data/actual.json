@@ -1,10 +1,10 @@
 {
-  "generado": "2026-11-25T16:21:24-03:00",
+  "generado": "2026-11-25T17:23:18-03:00",
   "cero": "Local",
   "altura_actual": {
-    "valor_m": 2.69,
-    "fecha": "2026-11-25T16:00:00-03:00",
-    "variacion_m": 0.01,
+    "valor_m": 2.72,
+    "fecha": "2026-11-25T17:00:00-03:00",
+    "variacion_m": 0.02,
     "periodo": "30 min",
     "estado": "crece",
     "fuente": "CARU – estación automática Paysandú",
